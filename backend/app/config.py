@@ -26,6 +26,18 @@ def _float(name: str, default: float) -> float:
         return default
 
 
+def _optional(name: str, cast: type) -> float | int | None:
+    """비어 있으면 None (= 받는 쪽 기본값을 쓴다)."""
+    value = os.getenv(name, "").strip()
+    if not value:
+        return None
+    try:
+        return cast(value)
+    except ValueError:
+        log.warning("%s 값이 올바르지 않아 무시합니다: %r", name, value)
+        return None
+
+
 class Settings:
     data_dir = Path(os.getenv("DATA_DIR") or BACKEND_DIR / "data")
     database_url = os.getenv("DATABASE_URL") or f"sqlite:///{(data_dir / 'ongi.db').as_posix()}"
@@ -49,6 +61,14 @@ class Settings:
     runpod_tts_endpoint_id = os.getenv("RUNPOD_TTS_ENDPOINT_ID", "")
     runpod_video_endpoint_id = os.getenv("RUNPOD_VIDEO_ENDPOINT_ID", "")
     runpod_cost_per_second = _float("RUNPOD_COST_PER_SECOND", 0.0)
+
+    # VIDEO_PROVIDER=runpod일 때 FLOAT 영상 핸들러에 넘기는 옵션 (backend/gpu_worker/video_handler.py).
+    # 비워 두면 핸들러 기본값을 쓴다
+    video_lora_strength = _optional("VIDEO_LORA_STRENGTH", float)
+    video_emotion = os.getenv("VIDEO_EMOTION", "").strip().lower()
+    video_a_cfg_scale = _optional("VIDEO_A_CFG_SCALE", float)
+    video_e_cfg_scale = _optional("VIDEO_E_CFG_SCALE", float)
+    video_seed = _optional("VIDEO_SEED", int)
 
     voice_target_seconds = int(os.getenv("VOICE_TARGET_SECONDS", "180"))
     reference_seconds = 12

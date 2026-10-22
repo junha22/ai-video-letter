@@ -44,5 +44,7 @@ next-env.d.ts
 # backend
 backend/.venv/
 backend/data/
+# FLOAT 원본 소스·체크포인트 (video_handler.py 실행용, 저장소에 넣지 않는다)
+backend/gpu_worker/float/
 __pycache__/
 *.pyc

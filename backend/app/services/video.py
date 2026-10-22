@@ -1,6 +1,7 @@
 """사진 + 음성 -> 모바일용 MP4.
 
-runpod = 선정한 립싱크 모델(학습 불필요형)을 RunPod에서 실행, local = 사진에 천천히 확대되는 효과만 준 개발용 대체.
+runpod = FLOAT + 입 모양 LoRA를 RunPod에서 실행 (backend/gpu_worker/video_handler.py),
+local = 사진에 천천히 확대되는 효과만 준 개발용 대체.
 어느 쪽이든 마지막 인코딩 단계에서 'AI로 만든 영상' 표시를 영상에 직접 입힌다.
 """
 
@@ -98,7 +99,7 @@ def render(photo_path: Path, face: list[int], audio_wav: Path, out_mp4: Path, po
         badge.save(badge_png)
 
         if settings.video_provider == "runpod":
-            return _render_runpod(portrait, audio_wav, badge_png, duration, out_mp4, Path(tmp))
+            return _render_runpod(photo_path, face, audio_wav, badge_png, duration, out_mp4, poster_jpg, Path(tmp))
 
         # 확대 효과가 부드럽도록 2배 크기로 넣는다
         frame_png = Path(tmp) / "frame.png"
@@ -117,27 +118,57 @@ def render(photo_path: Path, face: list[int], audio_wav: Path, out_mp4: Path, po
     return VideoResult("local", round(duration, 2))
 
 
+def _model_options() -> dict:
+    """.env의 VIDEO_* 값 중 채워진 것만 핸들러에 넘긴다 (비어 있으면 핸들러 기본값)."""
+    options = {
+        "lora_strength": settings.video_lora_strength,
+        "emo": settings.video_emotion or None,
+        "a_cfg_scale": settings.video_a_cfg_scale,
+        "e_cfg_scale": settings.video_e_cfg_scale,
+        "seed": settings.video_seed,
+    }
+    return {k: v for k, v in options.items() if v is not None}
+
+
 def _render_runpod(
-    portrait: Image.Image, audio_wav: Path, badge_png: Path, duration: float, out_mp4: Path, tmp: Path
+    photo_path: Path,
+    face: list[int],
+    audio_wav: Path,
+    badge_png: Path,
+    duration: float,
+    out_mp4: Path,
+    poster_jpg: Path,
+    tmp: Path,
 ) -> VideoResult:
-    image_jpg = tmp / "portrait.jpg"
-    portrait.resize((WIDTH, HEIGHT), Image.LANCZOS).save(image_jpg, quality=92)
+    # 입력·출력 계약은 backend/gpu_worker/video_handler.py 참고.
+    # FLOAT은 학습 때와 같은 방식으로 얼굴을 직접 잘라야 품질이 나와서, 4:5로 자른 사진 대신
+    # 저장된 원본 사진(최대 1280px)과 얼굴 위치를 보낸다. 얼굴 검출이 실패하면 핸들러가 이 위치로 자른다.
     output, gpu_seconds = runpod.run(
         settings.runpod_video_endpoint_id,
         {
-            "image_b64": base64.b64encode(image_jpg.read_bytes()).decode(),
+            "image_b64": base64.b64encode(photo_path.read_bytes()).decode(),
+            "face": face,
             "audio_b64": base64.b64encode(audio_wav.read_bytes()).decode(),
             "fps": FPS,
+            **_model_options(),
         },
     )
     if "video_b64" not in output:
         raise runpod.RunPodError(f"영상 응답에 video_b64가 없습니다: {list(output)}")
     model_mp4 = tmp / "model.mp4"
     model_mp4.write_bytes(base64.b64decode(output["video_b64"]))
+
+    # FLOAT 영상(정사각형)을 4:5 화면 가운데에 두고, 남는 위아래는 같은 영상을 흐리게 확대해서 채운다.
+    # 음성 뒤 여백(TAIL_SECONDS) 동안은 마지막 프레임을 유지한다.
     fit = (
-        f"[0:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,"
-        f"pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2,fps={FPS}[base];[base][1:v]overlay=0:0,format=yuv420p[v]"
+        f"[0:v]fps={FPS},tpad=stop_mode=clone:stop_duration={TAIL_SECONDS},split=2[m1][m2];"
+        f"[m1]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT},boxblur=20:2[bg];"
+        f"[m2]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease[fg];"
+        f"[bg][fg]overlay=(W-w)/2:(H-h)/2[base];[base][1:v]overlay=0:0,format=yuv420p[v]"
     )
     # 모델 영상의 소리 대신 원본 TTS 음성을 쓴다
     _encode(["-i", str(model_mp4), "-i", str(badge_png), "-i", str(audio_wav)], fit, 2, duration, out_mp4)
+
+    # 사진 구도와 영상 구도가 달라서 포스터를 실제 영상 첫 화면으로 바꾼다
+    audio.run_ffmpeg(["-y", "-i", str(out_mp4), "-frames:v", "1", "-q:v", "3", str(poster_jpg)])
     return VideoResult("runpod", round(duration, 2), gpu_seconds, runpod.cost(gpu_seconds))
