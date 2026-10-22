@@ -42,16 +42,18 @@ export default function HomePage() {
     if (me && !me.consent_ok) router.replace("/onboarding/consent");
   }, [me, router]);
 
-  // 만드는 중인 영상이 있으면 상태를 계속 확인한다
+  // 만드는 중인 영상이 있거나 목소리를 등록·다듬는 중이면 상태를 계속 확인한다
   const generating = messages?.some((m) => m.status === "generating");
+  const busy = generating || me?.voice.status === "processing";
+  const tuning = me?.voice.tuning === "queued" || me?.voice.tuning === "training";
   useEffect(() => {
-    if (!generating && me?.voice.status !== "processing") return;
+    if (!busy && !tuning) return;
     const t = window.setInterval(() => {
       loadMessages();
       reload();
-    }, 4000);
+    }, busy ? 4000 : 10000);
     return () => window.clearInterval(t);
-  }, [generating, me?.voice.status, loadMessages, reload]);
+  }, [busy, tuning, loadMessages, reload]);
 
   const onNotification = () => {
     loadMessages();
@@ -99,7 +101,18 @@ export default function HomePage() {
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           { title: "부모님 정보", desc: me.parent ? `${me.parent.nickname} · 등록 완료` : "호칭과 연락처를 등록해 주세요", href: "/onboarding/parent", Icon: Mail, color: "bg-[#fff0e7]" },
-          { title: "나의 목소리", desc: me.voice.status === "ready" ? "목소리가 준비되었어요" : "목소리 등록 상태 확인하기", href: "/onboarding/voice", Icon: Mic, color: "bg-[#e9f0e8]" },
+          {
+            title: "나의 목소리",
+            desc:
+              me.voice.status !== "ready"
+                ? "목소리 등록 상태 확인하기"
+                : me.voice.tuning
+                  ? `목소리가 준비되었어요 · ${TUNING_LABEL[me.voice.tuning]}`
+                  : "목소리가 준비되었어요",
+            href: "/onboarding/voice",
+            Icon: Mic,
+            color: "bg-[#e9f0e8]",
+          },
           { title: "얼굴 사진", desc: me.photo ? "사진이 준비되었어요" : "밝은 정면 사진을 준비해 주세요", href: "/onboarding/photo", Icon: ImageIcon, color: "bg-[#f9eced]" },
         ].map(({ title, desc, href, Icon, color }) => (
           <Link key={href} href={me.consent_ok ? href : "/onboarding/consent"} className="rounded-[19px] border border-[#e8e9e2] bg-white p-5 shadow-sm transition-colors hover:border-[#bccdc0]">
