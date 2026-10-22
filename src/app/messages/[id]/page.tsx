@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { CircleCheck, Eye, LoaderCircle, RefreshCw, Send, Sparkles, Video } from "lucide-react";
+import { CircleCheck, Download, Eye, LoaderCircle, RefreshCw, Send, Sparkles, Video } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import { formatDate, formatSeconds } from "@/lib/format";
 import type { Message } from "@/lib/types";
 import { useMe } from "@/lib/useMe";
 import { AppShell } from "@/components/AppShell";
 import { SharePanel } from "@/components/SharePanel";
-import { Button, Card, Notice, Spinner } from "@/components/ui";
+import { AnchorButton, Button, Card, Notice, Spinner } from "@/components/ui";
 
 const EDITABLE = ["draft", "ready", "failed"];
 const SOURCE_LABEL = { llm: "AI가 다듬은 대본", fallback: "기본 문장 (AI 연결 안 됨)", edited: "직접 고친 대본" };
@@ -214,12 +214,36 @@ export default function MessagePage() {
         )}
       </div>
 
+      {process.env.NODE_ENV === "development" && m.video_url && <DebugDownloads m={m} />}
+
       {m.job && m.job.status === "done" && (
         <p className="mt-8 text-center text-xs text-stone-400">
           음성 {m.job.tts_provider} · 영상 {m.job.video_provider} · GPU {m.job.gpu_seconds}초 · ${m.job.cost_usd.toFixed(4)}
         </p>
       )}
     </AppShell>
+  );
+}
+
+// 개발 모드(npm run dev)에서만 보인다. 만든 영상과 영상에 들어가기 전 TTS 음성을 그대로 내려받아 확인할 때 쓴다
+function DebugDownloads({ m }: { m: Message }) {
+  return (
+    <Card className="mt-6 border-dashed">
+      <p className="mb-3 text-sm font-bold text-stone-500">디버그 · 개발 모드에서만 보여요</p>
+      <div className="flex gap-2">
+        <AnchorButton variant="secondary" href={`${m.video_url}&download=1`} download className="flex-1 px-3 text-[15px]">
+          <Download className="h-4 w-4" /> 영상 (mp4)
+        </AnchorButton>
+        {m.audio_url && (
+          <AnchorButton variant="secondary" href={`${m.audio_url}&download=1`} download className="flex-1 px-3 text-[15px]">
+            <Download className="h-4 w-4" /> 음성 (wav)
+          </AnchorButton>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-stone-500">
+        seed {m.tts_seed ?? "없음"} · {formatSeconds(m.duration ?? 0)}
+      </p>
+    </Card>
   );
 }
 

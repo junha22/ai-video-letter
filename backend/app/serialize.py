@@ -138,6 +138,8 @@ def message(db: Session, m: Message) -> dict:
         "captions": m.captions,
         "video_url": f"/api/messages/{m.id}/video?v={version}" if has_video else None,
         "poster_url": f"/api/messages/{m.id}/poster?v={version}" if has_video else None,
+        "audio_url": f"/api/messages/{m.id}/audio?v={version}" if has_video and m.audio_path else None,
+        "tts_seed": m.tts_seed,
         "job": job(jobs.latest(db, "video", m.user_id, m.id)),
         "share": {
             "url": share_url(link.token),

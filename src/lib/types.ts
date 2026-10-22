@@ -64,6 +64,8 @@ export type Message = {
   captions: Caption[] | null;
   video_url: string | null;
   poster_url: string | null;
+  audio_url: string | null;
+  tts_seed: number | null;
   job: Job | null;
   share: { url: string; expires_at: string; view_count: number; first_viewed_at: string | null } | null;
   parent_nickname: string | null;
