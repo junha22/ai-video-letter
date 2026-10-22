@@ -127,20 +127,37 @@ def render(message_id: int, user: User = Depends(current_user), db: Session = De
     m.status = "generating"
     m.error = None
     m.voice_profile_id = voice.id
+    # 사용자가 누른 생성·다시 만들기는 새 seed로 만들고, 작업 자동 재시도는 저장된 seed로 같은 음성을 만든다
+    m.tts_seed = None
     jobs.enqueue(db, "video", user.id, m.id)
     db.commit()
     return serialize.message(db, m)
 
 
-def _file(rel: str | None, media_type: str) -> FileResponse:
+def _file(rel: str | None, media_type: str, filename: str | None = None) -> FileResponse:
+    """filename을 주면 브라우저가 재생하지 않고 그 이름으로 내려받는다."""
     if not rel or not storage.abs_path(rel).exists():
         raise HTTPException(404)
-    return FileResponse(storage.abs_path(rel), media_type=media_type)
+    return FileResponse(storage.abs_path(rel), media_type=media_type, filename=filename)
+
+
+def _download_name(m: Message, ext: str) -> str:
+    # 디버깅할 때 어떤 seed로 만든 결과인지 파일 이름으로 구분한다
+    seed = f"-seed{m.tts_seed}" if m.tts_seed is not None else ""
+    return f"message-{m.id}{seed}.{ext}"
 
 
 @router.get("/{message_id}/video")
-def video(message_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return _file(_get(db, user, message_id).video_path, "video/mp4")
+def video(message_id: int, download: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    m = _get(db, user, message_id)
+    return _file(m.video_path, "video/mp4", _download_name(m, "mp4") if download else None)
+
+
+@router.get("/{message_id}/audio")
+def audio(message_id: int, download: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """TTS가 만든 음성(영상에 들어가기 전 WAV). 디버깅용"""
+    m = _get(db, user, message_id)
+    return _file(m.audio_path, "audio/wav", _download_name(m, "wav") if download else None)
 
 
 @router.get("/{message_id}/poster")

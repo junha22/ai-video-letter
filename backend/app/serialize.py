@@ -4,9 +4,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .db import iso
+from .db import iso, utcnow
 from .models import Consent, Job, Message, ParentProfile, Photo, ShareLink, User, VoiceProfile, VoiceSample
-from .services import jobs, script_llm
+from .services import jobs, s3gen, script_llm
 
 CONSENT_VERSION = "2026-10"
 CONSENT_ITEMS = [
@@ -78,10 +78,27 @@ def job(j: Job | None) -> dict | None:
     }
 
 
+def queue_wait(db: Session, j: Job | None, user_id: int) -> dict | None:
+    """대기 중인 작업이 음색 학습 때문에 기다리는지. 워커가 1개라 학습(약 5분)이 끝나야 다음 작업을 시작한다.
+    다른 사용자의 학습이면 누구 것인지 드러내지 않고 '앞선 작업'으로만 알린다."""
+    if not j or j.status != "queued":
+        return None
+    train = jobs.running(db, "voice_train")
+    if not train or not train.started_at:
+        return None
+    elapsed = (utcnow() - train.started_at).total_seconds()
+    return {
+        "reason": "own_voice_train" if train.user_id == user_id else "voice_train",
+        "seconds": max(60, round(s3gen.EXPECTED_SECONDS - elapsed)),
+    }
+
+
 def voice_summary(db: Session, user_id: int) -> dict:
     profile = db.scalar(select(VoiceProfile).where(VoiceProfile.user_id == user_id))
     return {
         "status": profile.status if profile else "none",
+        # S3Gen 음색 학습: queued | training | applied | skipped | failed | None(학습 안 함)
+        "tuning": profile.s3gen_status if profile else None,
         "total_seconds": voice_seconds(db, user_id),
         "target_seconds": settings.voice_target_seconds,
         "error": profile.error if profile else None,
@@ -120,6 +137,7 @@ def share_url(token: str) -> str:
 
 def message(db: Session, m: Message) -> dict:
     link = db.scalar(select(ShareLink).where(ShareLink.message_id == m.id))
+    render_job = jobs.latest(db, "video", m.user_id, m.id)
     version = int(m.rendered_at.timestamp()) if m.rendered_at else 0
     has_video = bool(m.video_path) and m.status not in ("draft", "generating", "deleted")
     return {
@@ -138,7 +156,10 @@ def message(db: Session, m: Message) -> dict:
         "captions": m.captions,
         "video_url": f"/api/messages/{m.id}/video?v={version}" if has_video else None,
         "poster_url": f"/api/messages/{m.id}/poster?v={version}" if has_video else None,
-        "job": job(jobs.latest(db, "video", m.user_id, m.id)),
+        "audio_url": f"/api/messages/{m.id}/audio?v={version}" if has_video and m.audio_path else None,
+        "tts_seed": m.tts_seed,
+        "job": job(render_job),
+        "wait": queue_wait(db, render_job, m.user_id) if m.status == "generating" else None,
         "share": {
             "url": share_url(link.token),
             "expires_at": iso(link.expires_at),

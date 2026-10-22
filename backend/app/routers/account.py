@@ -9,7 +9,7 @@ from .. import serialize
 from ..auth import current_user
 from ..db import get_db, utcnow
 from ..models import Consent, DeletionLog, Job, Message, ParentProfile, Photo, ShareLink, User, VoiceProfile, VoiceSample
-from ..services import storage
+from ..services import jobs, storage
 
 router = APIRouter(prefix="/api", tags=["account"])
 
@@ -52,6 +52,7 @@ def withdraw_consent(user: User = Depends(current_user), db: Session = Depends(g
         "message_files": storage.delete_tree(root / "messages"),
     }
     detail["voice_samples"] = db.execute(delete(VoiceSample).where(VoiceSample.user_id == user.id)).rowcount
+    voice_id = db.scalar(select(VoiceProfile.tts_voice_id).where(VoiceProfile.user_id == user.id))
     db.execute(delete(VoiceProfile).where(VoiceProfile.user_id == user.id))
     db.execute(delete(Photo).where(Photo.user_id == user.id))
     message_ids = db.scalars(select(Message.id).where(Message.user_id == user.id)).all()
@@ -65,9 +66,15 @@ def withdraw_consent(user: User = Depends(current_user), db: Session = Depends(g
     detail["revoked_links"] = db.execute(
         update(ShareLink).where(ShareLink.message_id.in_(message_ids), ShareLink.revoked.is_(False)).values(revoked=True)
     ).rowcount
+    # 대기 중인 생성 작업은 취소하되, 앞서 넣은 목소리 삭제 작업은 끝까지 실행한다
     db.execute(
-        update(Job).where(Job.user_id == user.id, Job.status == "queued").values(status="canceled", finished_at=utcnow())
+        update(Job)
+        .where(Job.user_id == user.id, Job.status == "queued", Job.type != "voice_delete")
+        .values(status="canceled", finished_at=utcnow())
     )
+    if voice_id:
+        # TTS 서버의 참조 음성은 워커가 순서대로 지운다 (서버가 꺼져 있으면 다시 시도)
+        detail["tts_voice_delete_job"] = jobs.enqueue_voice_delete(db, user.id, voice_id).id
     db.execute(
         update(Consent).where(Consent.user_id == user.id, Consent.withdrawn_at.is_(None)).values(withdrawn_at=utcnow())
     )

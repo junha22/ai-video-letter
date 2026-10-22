@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CircleAlert, CircleCheck, Mic, RotateCcw, Square } from "lucide-react";
 import { api, errorText } from "@/lib/api";
-import { formatSeconds } from "@/lib/format";
+import { formatSeconds, TUNING_LABEL } from "@/lib/format";
 import { quickCheck, VoiceRecorder, type Take } from "@/lib/recorder";
 import type { Sentence, VoiceState } from "@/lib/types";
 import { AppShell } from "@/components/AppShell";
@@ -14,6 +14,7 @@ type Phase = "intro" | "noise" | "ready" | "recording" | "checking" | "result";
 type Result = { ok: boolean; problems: string[] };
 
 const KIND_HINT: Record<Sentence["kind"], string> = {
+  calm: "차분하게 천천히",
   statement: "평소 말하듯이",
   question: "묻듯이 끝을 올려서",
   exclamation: "감정을 담아서",
@@ -50,12 +51,13 @@ export default function VoicePage() {
     return () => recorder.current?.close();
   }, [load]);
 
-  // 등록 처리 중이면 끝날 때까지 상태를 확인한다
+  // 등록 처리 중이거나 음색을 다듬는 중이면 끝날 때까지 상태를 확인한다
+  const tuning = voice?.tuning === "queued" || voice?.tuning === "training";
   useEffect(() => {
-    if (voice?.status !== "processing") return;
-    const t = window.setInterval(load, 3000);
+    if (voice?.status !== "processing" && !tuning) return;
+    const t = window.setInterval(load, tuning ? 10000 : 3000);
     return () => window.clearInterval(t);
-  }, [voice?.status, load]);
+  }, [voice?.status, tuning, load]);
 
   // 마이크가 켜져 있는 동안 음량 막대를 갱신한다
   useEffect(() => {
@@ -192,6 +194,7 @@ export default function VoicePage() {
               <CircleCheck className="mx-auto mb-3 h-14 w-14 text-emerald-600" />
               <p className="text-lg font-bold">목소리 등록이 끝났어요</p>
               <p className="mt-2 text-stone-600">녹음 {formatSeconds(voice.total_seconds)}</p>
+              {voice.tuning && <p className="mt-1 text-sm text-stone-500">{TUNING_LABEL[voice.tuning]}</p>}
             </>
           )}
         </Card>

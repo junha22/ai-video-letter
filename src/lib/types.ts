@@ -5,8 +5,12 @@ export type Parent = {
   tone_examples: string;
 };
 
+// S3Gen 음색 학습 (S3GEN_TRAINING). null이면 학습하지 않음
+export type VoiceTuning = "queued" | "training" | "applied" | "skipped" | "failed" | null;
+
 export type VoiceSummary = {
   status: "none" | "recording" | "processing" | "ready" | "failed";
+  tuning: VoiceTuning;
   total_seconds: number;
   target_seconds: number;
   error: string | null;
@@ -64,7 +68,11 @@ export type Message = {
   captions: Caption[] | null;
   video_url: string | null;
   poster_url: string | null;
+  audio_url: string | null;
+  tts_seed: number | null;
   job: Job | null;
+  // 대기 중인 이유: 워커가 음색 학습(약 5분)을 처리하는 중. own_voice_train이면 내 목소리 학습
+  wait: { reason: "own_voice_train" | "voice_train"; seconds: number } | null;
   share: { url: string; expires_at: string; view_count: number; first_viewed_at: string | null } | null;
   parent_nickname: string | null;
   created_at: string;
@@ -76,12 +84,14 @@ export type Message = {
 export type Sentence = {
   index: number;
   text: string;
-  kind: "statement" | "question" | "exclamation";
+  kind: "calm" | "statement" | "question" | "exclamation";
   sample: { duration: number; ok: boolean } | null;
 };
 
 export type VoiceState = {
   status: VoiceSummary["status"];
+  tuning: VoiceTuning;
+  tuning_report: Record<string, unknown> | null;
   error: string | null;
   total_seconds: number;
   target_seconds: number;
