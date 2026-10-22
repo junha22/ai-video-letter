@@ -1,22 +1,24 @@
 """작업 큐 워커. 웹 서버와 별도 프로세스로 실행한다: python -m app.worker
 
 TTS 서버(TTS_PROVIDER=wemeet)는 GPU 1장으로 요청을 하나씩 처리한다. 이 워커가 작업을 하나씩 처리하므로
-목소리 등록·음성 생성·목소리 삭제가 서버에 순서대로 전달된다. 워커는 1개만 띄운다.
+목소리 등록·음성 생성·목소리 삭제·음색 학습이 서버와 GPU에 순서대로 전달된다. 워커는 1개만 띄운다.
 """
 
 import logging
 import secrets
+import shutil
 import time
 import traceback
 from datetime import timedelta
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .db import SessionLocal, init_db, utcnow
+from .db import SessionLocal, init_db, iso, utcnow
 from .models import Job, Message, Notification, Photo, VoiceProfile, VoiceSample
-from .services import audio, jobs, korean, storage, tts, video, wemeet_tts
+from .services import audio, jobs, korean, s3gen, storage, tts, video, wemeet_tts
 
 log = logging.getLogger("ongi.worker")
 
@@ -58,6 +60,15 @@ def _register_voice(db: Session, profile: VoiceProfile) -> None:
         if e.status == 400:  # 말소리가 너무 짧거나 없음
             e.user_message = "녹음에서 목소리를 읽지 못했어요. 처음부터 다시 녹음해 주세요."
         raise
+    if profile.s3gen_adapter_path:
+        # TTS 서버를 옮기거나 초기화해서 다시 등록하는 경우, 적용해 둔 음색 어댑터도 다시 붙인다
+        adapter = storage.abs_path(profile.s3gen_adapter_path)
+        if adapter.exists():
+            wemeet_tts.set_s3gen_adapter(profile.tts_voice_id, adapter)
+        else:
+            log.warning("음색 어댑터 파일이 없어서 기본 목소리로 등록합니다 (%s)", profile.tts_voice_id)
+            profile.s3gen_adapter_path = None
+            profile.s3gen_status = "failed"
     profile.tts_registered_at = utcnow()
     db.commit()
     log.info(
@@ -68,8 +79,8 @@ def _register_voice(db: Session, profile: VoiceProfile) -> None:
 
 def run_voice(db: Session, job: Job) -> None:
     """녹음 정리: 품질 좋은 문장으로 zero-shot용 참조 음성을 만들고, 전체 녹음을 학습용으로 이어 붙인다.
-    TTS_PROVIDER=wemeet이면 참조 문장 1개를 TTS 서버에 등록한다.
-    S3Gen 사용자별 학습은 이 단계 뒤에 붙인다 (MVP에서는 zero-shot으로 생성)."""
+    TTS_PROVIDER=wemeet이면 참조 문장 1개를 TTS 서버에 등록하고, S3GEN_TRAINING이면 음색 학습 작업을 뒤에 넣는다.
+    등록이 끝나면 바로 zero-shot으로 영상을 만들 수 있다."""
     profile = db.scalar(select(VoiceProfile).where(VoiceProfile.user_id == job.user_id))
     if not profile:
         return
@@ -91,6 +102,7 @@ def run_voice(db: Session, job: Job) -> None:
 
     if settings.tts_provider == "wemeet":
         _register_voice(db, profile)
+        _queue_training(db, profile)
 
     profile.status = "ready"
     profile.error = None
@@ -158,7 +170,93 @@ def run_voice_delete(db: Session, job: Job) -> None:
         log.info("TTS 목소리 %s는 이미 없습니다.", voice_id)
 
 
-HANDLERS = {"voice": run_voice, "video": run_video, "voice_delete": run_voice_delete}
+def _queue_training(db: Session, profile: VoiceProfile) -> None:
+    if not settings.s3gen_training:
+        return
+    reason = s3gen.unavailable_reason()
+    if reason:
+        log.warning("S3Gen 음색 학습을 건너뜁니다: %s", reason)
+        return
+    jobs.enqueue_voice_train(db, profile.user_id, profile.tts_voice_id)
+    profile.s3gen_status = "queued"
+    profile.s3gen_adapter_path = None
+    profile.s3gen_report = None
+
+
+def _train_dir(user_id: int, voice_id: str) -> Path:
+    # voice_id를 폴더 이름에 넣어서, 다시 녹음한 뒤 늦게 끝난 예전 학습이 새 녹음 폴더를 건드리지 않게 한다
+    return storage.abs_path(f"users/{user_id}/voice/s3gen_work_{voice_id}")
+
+
+def _train_target(db: Session, job: Job) -> VoiceProfile | None:
+    """학습을 시작한 목소리가 아직 그대로인지 확인한다. 다시 녹음했거나 동의를 철회했으면 None."""
+    voice_id = (job.payload or {}).get("voice_id")
+    profile = db.scalar(select(VoiceProfile).where(VoiceProfile.user_id == job.user_id))
+    if not profile or not voice_id or profile.tts_voice_id != voice_id or profile.status != "ready":
+        return None
+    return profile
+
+
+def run_voice_train(db: Session, job: Job) -> None:
+    """녹음으로 S3Gen 음색 어댑터를 학습해서, 기본 목소리보다 닮았을 때만 TTS 서버 목소리에 붙인다 (services/s3gen.py).
+    학습하는 동안과 결과가 나쁠 때도 영상은 기본 목소리(zero-shot)로 만든다."""
+    voice_id = (job.payload or {}).get("voice_id")
+    work = _train_dir(job.user_id, voice_id)
+    profile = _train_target(db, job)
+    if not profile:
+        storage.delete_tree(work)
+        return
+    if not settings.s3gen_training:  # 작업을 넣은 뒤 학습을 껐으면 기본 목소리로 둔다
+        profile.s3gen_status = None
+        db.commit()
+        return
+    reason = s3gen.unavailable_reason()
+    if reason:
+        raise s3gen.TrainingError(reason, retryable=False)
+    samples = db.scalars(select(VoiceSample).where(VoiceSample.user_id == job.user_id, VoiceSample.ok)).all()
+    ref = _pick_reference(samples, profile.sentences)  # TTS 서버에 등록한 문장과 같은 것이 골라진다
+    if not ref:
+        raise s3gen.TrainingError("참조 문장이 없습니다.", retryable=False)
+    profile.s3gen_status = "training"
+    db.commit()
+
+    def still_current() -> bool:
+        db.expire_all()
+        return _train_target(db, job) is not None
+
+    clips = [{"id": f"s{s.index:02d}", "audio": str(storage.abs_path(s.path)), "duration": round(s.duration, 2)} for s in samples]
+    try:
+        outcome = s3gen.run(clips, f"s{ref.index:02d}", storage.abs_path(ref.path), voice_id, work, still_current)
+    finally:
+        if not s3gen.delete_candidate(voice_id):
+            jobs.enqueue_voice_delete(db, job.user_id, f"{voice_id}_cand")
+            db.commit()
+    job.gpu_seconds = outcome.gpu_seconds
+    db.commit()
+
+    # 학습하는 몇 분 사이에 다시 녹음하거나 동의를 철회했으면 결과를 버린다 (예전 목소리 삭제 작업은 이미 들어가 있다)
+    db.expire_all()
+    profile = _train_target(db, job)
+    if not profile:
+        storage.delete_tree(work)
+        return
+    if outcome.applied:
+        wemeet_tts.set_s3gen_adapter(voice_id, outcome.adapter)
+        adapter = storage.user_dir(job.user_id, "voice") / "s3gen_adapter.safetensors"
+        shutil.copyfile(outcome.adapter, adapter)
+        profile.s3gen_adapter_path = storage.rel_path(adapter)
+    profile.s3gen_status = "applied" if outcome.applied else "skipped"
+    profile.s3gen_report = {**outcome.report, "result": outcome.reason, "finished_at": iso(utcnow())}
+    db.commit()
+    storage.delete_tree(work)  # 특징값·비교 음성 같은 중간 파일은 남기지 않는다
+    score = outcome.report.get("score", {})
+    log.info(
+        "S3Gen 음색 학습 %s: %s (유사도 변화 VoiceEncoder %s, WavLM %s)",
+        voice_id, outcome.reason, score.get("gain", {}).get("ve"), score.get("gain", {}).get("sv"),
+    )
+
+
+HANDLERS = {"voice": run_voice, "video": run_video, "voice_delete": run_voice_delete, "voice_train": run_voice_train}
 
 
 def _on_final_failure(db: Session, job: Job, user_message: str | None = None) -> None:
@@ -176,6 +274,15 @@ def _on_final_failure(db: Session, job: Job, user_message: str | None = None) ->
         db.add(Notification(user_id=job.user_id, kind="voice_failed", text=text))
     elif job.type == "voice_delete":
         log.error("TTS 목소리 %s를 지우지 못했습니다. TTS 서버에서 직접 지워야 합니다 (작업 #%s).", (job.payload or {}).get("voice_id"), job.id)
+    elif job.type == "voice_train":
+        # 음색 학습이 끝내 실패해도 기본 목소리로 계속 쓰므로 사용자에게 알리지 않는다
+        voice_id = (job.payload or {}).get("voice_id")
+        if voice_id:
+            storage.delete_tree(_train_dir(job.user_id, voice_id))
+        profile = _train_target(db, job)
+        if profile:
+            profile.s3gen_status = "failed"
+            profile.s3gen_report = {"result": "failed", "error": (job.last_error or "")[:500], "finished_at": iso(utcnow())}
     db.commit()
 
 
@@ -211,6 +318,12 @@ def main() -> None:
                 "powershell -ExecutionPolicy Bypass -File C:\\WE_MEET\\tts_server\\run_server.ps1",
                 settings.wemeet_tts_url,
             )
+        if settings.s3gen_training:
+            reason = s3gen.unavailable_reason()
+            if reason:
+                log.warning("S3GEN_TRAINING이 켜져 있지만 학습할 수 없습니다: %s", reason)
+            else:
+                log.info("S3Gen 음색 학습 켜짐 (%s step, 배치 %s)", settings.s3gen_steps, settings.s3gen_batch_size)
     last_check = time.monotonic()
     while True:
         try:

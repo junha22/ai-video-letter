@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, CircleCheck, Eye, PenLine } from "lucide-react";
 import { api } from "@/lib/api";
-import { formatDate, formatSeconds, STATUS_LABEL } from "@/lib/format";
+import { formatDate, formatSeconds, STATUS_LABEL, TUNING_LABEL } from "@/lib/format";
 import type { Me, Message } from "@/lib/types";
 import { useMe } from "@/lib/useMe";
 import { AppShell } from "@/components/AppShell";
@@ -119,7 +119,7 @@ function Checklist({ me }: { me: Me }) {
     none: "아직 안 했어요",
     recording: `${formatSeconds(me.voice.total_seconds)} / ${formatSeconds(me.voice.target_seconds)} 녹음함`,
     processing: "등록하는 중이에요 (끝나면 알려 드려요)",
-    ready: "등록 완료",
+    ready: me.voice.tuning ? `등록 완료 · ${TUNING_LABEL[me.voice.tuning]}` : "등록 완료",
     failed: "다시 등록이 필요해요",
   }[me.voice.status];
 

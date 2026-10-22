@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from .config import settings
 from .db import init_db
 from .routers import account, auth, messages, notifications, photo, voice, watch
-from .services import wemeet_tts
+from .services import s3gen, wemeet_tts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -35,4 +35,5 @@ def health():
     if settings.tts_provider == "wemeet":
         # GPU를 쓰지 않는 상태 확인이라 워커 큐를 거치지 않고 바로 묻는다
         status["tts_server"] = "ok" if wemeet_tts.health() else "unreachable"
+        status["s3gen_training"] = (s3gen.unavailable_reason() or "on") if settings.s3gen_training else "off"
     return status

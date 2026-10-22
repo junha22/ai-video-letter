@@ -6,7 +6,7 @@ Celery/Redis로 옮길 때는 enqueue에서 task.delay(job.id)를 부르고 워�
 
 from datetime import timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -54,10 +54,19 @@ def enqueue_voice_delete(db: Session, user_id: int, voice_id: str) -> Job:
     )
 
 
+def enqueue_voice_train(db: Session, user_id: int, voice_id: str) -> Job:
+    """S3Gen 음색 학습. 실패해도 기본 목소리로 계속 쓰므로 한 번만 다시 시도한다."""
+    return enqueue(db, "voice_train", user_id, payload={"voice_id": voice_id}, max_attempts=2)
+
+
 def claim(db: Session) -> Job | None:
     now = utcnow()
+    # 음색 학습(약 5분)은 급하지 않으므로 대기 중인 영상 생성·등록·삭제를 먼저 처리한다
     candidates = db.scalars(
-        select(Job.id).where(Job.status == "queued", Job.run_after <= now).order_by(Job.id).limit(5)
+        select(Job.id)
+        .where(Job.status == "queued", Job.run_after <= now)
+        .order_by(case((Job.type == "voice_train", 1), else_=0), Job.id)
+        .limit(5)
     ).all()
     for job_id in candidates:
         # 다른 워커가 먼저 가져갔으면 rowcount가 0
@@ -103,6 +112,11 @@ def recover_stale(db: Session, older_than: timedelta = STALE_AFTER) -> int:
     )
     db.commit()
     return result.rowcount
+
+
+def running(db: Session, type: str) -> Job | None:
+    """지금 워커가 처리 중인 그 종류의 작업 (워커가 1개라 많아야 1개)."""
+    return db.scalars(select(Job).where(Job.type == type, Job.status == "running").limit(1)).first()
 
 
 def latest(db: Session, type: str, user_id: int, message_id: int | None = None) -> Job | None:

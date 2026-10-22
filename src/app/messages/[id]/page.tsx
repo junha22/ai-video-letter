@@ -249,8 +249,14 @@ function DebugDownloads({ m }: { m: Message }) {
 
 function Generating({ m }: { m: Message }) {
   const stage = m.job?.status === "queued" ? "queued" : (m.job?.stage ?? "queued");
+  const minutes = m.wait ? Math.ceil(m.wait.seconds / 60) : 0;
+  const queuedLabel = !m.wait
+    ? "순서를 기다리고 있어요"
+    : m.wait.reason === "own_voice_train"
+      ? `목소리를 더 닮게 다듬는 중이라 조금 늦어져요 (약 ${minutes}분)`
+      : `앞선 작업이 끝나길 기다리고 있어요 (약 ${minutes}분)`;
   const steps = [
-    { key: "queued", label: "순서를 기다리고 있어요" },
+    { key: "queued", label: queuedLabel },
     { key: "tts", label: "내 목소리로 대본을 읽고 있어요" },
     { key: "video", label: "영상을 만들고 있어요" },
   ];

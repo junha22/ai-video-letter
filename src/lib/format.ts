@@ -25,6 +25,15 @@ export function formatDate(iso: string | null): string {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${time}`;
 }
 
+/** S3Gen 음색 학습 상태. 학습 결과가 나쁘거나 실패해도 기본 목소리로 계속 쓸 수 있다 */
+export const TUNING_LABEL: Record<string, string> = {
+  queued: "목소리를 더 닮게 다듬는 중이에요 (5분쯤 걸려요)",
+  training: "목소리를 더 닮게 다듬는 중이에요 (5분쯤 걸려요)",
+  applied: "내 목소리에 맞게 다듬었어요",
+  skipped: "기본 목소리를 쓰고 있어요",
+  failed: "기본 목소리를 쓰고 있어요",
+};
+
 export const STATUS_LABEL: Record<string, string> = {
   draft: "대본 작성 중",
   generating: "영상 만드는 중",

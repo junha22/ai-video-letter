@@ -108,6 +108,19 @@ def register_voice(voice_id: str, reference_wav: Path) -> dict:
     return resp.json()
 
 
+def set_s3gen_adapter(voice_id: str, adapter: Path) -> dict:
+    """등록된 목소리에 S3Gen 음색 어댑터를 붙인다. 이후 그 목소리로 만들 때 서버가 자동으로 쓴다.
+    서버에는 어댑터만 떼는 API가 없어서, 떼려면 목소리를 지우고 다시 등록해야 한다."""
+    with adapter.open("rb") as f:
+        resp = _request(
+            "PUT",
+            f"/voices/{voice_id}/s3gen-adapter",
+            read_timeout=settings.wemeet_tts_timeout,
+            files={"adapter": ("adapter.safetensors", f, "application/octet-stream")},
+        )
+    return resp.json()
+
+
 def synthesize(text: str, voice_id: str, seed: int | None = None) -> Speech:
     """seed를 주면 같은 음성이 다시 나온다. 숫자·날짜·금액은 서버가 한글 읽기로 바꾼다."""
     body = {"text": text, "voice_id": voice_id}

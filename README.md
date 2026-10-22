@@ -116,6 +116,33 @@ npm run dev:all
 
 실패한 작업은 `jobs` 테이블의 `status='failed'`, `last_error`에 남는다.
 
+### S3Gen 음색 학습 (`S3GEN_TRAINING=true`)
+
+목소리 등록이 끝나면 녹음으로 사용자별 S3Gen 음색 어댑터(LoRA rank 16)를 학습하고, **기본 목소리(zero-shot)보다 더 닮았을 때만** TTS 서버의 목소리에 붙인다.
+연구 결과(3분 녹음)로는 유사도가 조금 오르지만(VoiceEncoder 0.893 → 0.908) 효과가 없는 사람도 있어서, 학습할 때마다 비교해서 정한다.
+
+```env
+S3GEN_TRAINING=true
+WEMEET_TRAIN_PYTHON=C:\Users\swlab\miniconda3\envs\Wemeet-cb\python.exe   # torch가 있는 환경
+WEMEET_LORA_CODE_DIR=C:\WE_MEET\AI_test                                    # chatterbox_lora 연구 코드 (고치지 않고 그대로 부른다)
+```
+
+| 단계 | 하는 일 | 실행 위치 |
+|---|---|---|
+| 1. 분할 | 녹음 문장을 참조(TTS 서버에 등록한 그 문장), 평가 약 30초, 검증 약 20초, 나머지 학습으로 나눈다. 녹음 전체의 평균 목소리와 유사도 0.75 미만인 문장은 뺀다. 학습분이 60초 미만이면 학습하지 않는다 | `gpu_worker/s3gen_user.py prepare` |
+| 2. 학습 | `chatterbox_lora.s3gen_train`, 배치 4 × 1000 step, 100 step마다 검증해서 가장 좋은 지점 | Wemeet-cb |
+| 3. 비교 음성 | 임시 목소리 `<voice_id>_cand`에 어댑터를 붙이고, 기본 목소리와 같은 문장 8개·같은 seed로 만든다 (T3 출력이 같아서 어댑터 차이만 남는다) | TTS 서버 |
+| 4. 판단 | 두 음성을 평가용 실제 녹음과 비교. VoiceEncoder 유사도가 `S3GEN_MIN_VE_GAIN`(0.005) 이상 오르고 WavLM이 떨어지지 않으면 적용 | `s3gen_user.py score` |
+
+- **걸리는 시간 (RTX 4070)**: 분할·특징값 약 30초 + 학습 약 3.5분 + 비교 약 1~2분. 학습 중 GPU는 TTS 서버를 포함해 최대 약 9GB를 쓴다. 배치 8은 12GB 한계(11.8GB)에 닿아서 기본값을 4로 뒀다. 검증 손실은 배치 8 연구 결과와 거의 같았다(0.4146 vs 0.4118~0.4147).
+- **순서**: 학습도 같은 워커가 처리한다. 대기 중인 영상 생성·등록·삭제를 먼저 처리하고(`jobs.claim`), 학습이 시작되면 끝날 때까지 약 5분 동안 다른 작업이 기다린다. 등록이 끝난 순간부터 기본 목소리로 영상을 만들 수 있다.
+  학습 때문에 기다리는 영상은 진행 화면에 "목소리를 더 닮게 다듬는 중이라 조금 늦어져요 (약 N분)"(다른 사용자의 학습이면 "앞선 작업이 끝나길 기다리고 있어요")로 보인다 (`serialize.queue_wait`, 남은 시간은 `s3gen.EXPECTED_SECONDS` 기준 추정).
+- **결과 기록**: `voice_profiles.s3gen_status`(`queued` → `training` → `applied` / `skipped` / `failed`), `s3gen_report`(분할, 최적 step, 유사도 변화). `GET /api/voice`의 `tuning_report`로 볼 수 있다. 화면에는 "다듬는 중 / 다듬었어요 / 기본 목소리" 한 줄만 보인다.
+- **파일**: 적용한 어댑터(약 10MB)만 `users/<id>/voice/s3gen_adapter.safetensors`에 남기고, 특징값·비교 음성 등 중간 파일은 끝나면 지운다. TTS 서버에서 목소리가 없어져 다시 등록할 때 이 어댑터도 다시 붙인다.
+- **다시 녹음·동의 철회**: 대기 중인 학습은 취소한다. 이미 학습 중이면 끝난 뒤 목소리가 바뀐 것을 확인하고 결과를 버린다. TTS 서버는 목소리 폴더째 지우므로 어댑터도 같이 지워진다.
+- **실패**: 학습 프로세스 오류·시간 초과는 한 번 더 시도하고, 그래도 안 되면 `failed`로 두고 기본 목소리로 계속 쓴다 (사용자 알림 없음). 비교용 임시 목소리를 서버 장애로 못 지우면 `voice_delete` 작업으로 다시 지운다.
+- 학습 프로세스에는 녹음 파일 경로와 길이만 넘기고 문장 텍스트는 넘기지 않는다. 모델은 받아 둔 캐시만 쓴다(`HF_HUB_OFFLINE=1`).
+
 ## 구조
 
 ```
@@ -143,8 +170,11 @@ backend/app/
     face.py                OpenCV 얼굴 검사
     tts.py / video.py      local / wemeet / runpod 구현, 'AI로 만든 영상' 표시 입히기
     wemeet_tts.py          WE_MEET TTS 서버 클라이언트 (연결 재시도, 오류 구분)
+    s3gen.py               S3Gen 음색 학습 흐름 (분할 → 학습 → 비교 → 적용 판단)
     runpod.py              RunPod 서버리스 호출, GPU 시간·비용 기록
-backend/gpu_worker/        RunPod용 Chatterbox TTS 핸들러 초안 (GPU에서 아직 실행 안 해 봄)
+backend/gpu_worker/
+  s3gen_user.py            음색 학습의 GPU 단계 (Wemeet-cb 환경에서 실행: 분할·특징값, 유사도)
+  tts_handler.py           RunPod용 Chatterbox TTS 핸들러 초안 (GPU에서 아직 실행 안 해 봄)
 ```
 
 ## 설계 메모
@@ -157,8 +187,7 @@ backend/gpu_worker/        RunPod용 Chatterbox TTS 핸들러 초안 (GPU에서 
 ## 다음 단계
 
 - TTS 서버를 다른 머신에 둘 때: 서버를 `-HostAddr 0.0.0.0` + `WEMEET_API_KEY`로 띄우고 `WEMEET_TTS_URL`, `WEMEET_TTS_API_KEY` 설정
-- S3Gen 사용자별 음색 어댑터: 학습 후 `PUT /voices/{id}/s3gen-adapter`로 올리기 (TTS 서버는 이미 지원)
-- 영상 모델 선정 후 `{"image_b64", "audio_b64"} → {"video_b64"}` 형식의 핸들러 작성 → `VIDEO_PROVIDER=runpod`
-- S3Gen 사용자별 학습 작업 (`worker.run_voice` 뒤에 연결), 유사도 검사
+- S3Gen 음색 학습: 적용 기준값(`S3GEN_MIN_VE_GAIN` 등) 확정, 실제 사용자 폰 녹음으로 효과 확인, 청취 평가
+- 영상 모델 선정 후 `{"image_b64", "audio_b64"} → {"video_b64"}` 형식의 핸들러 작성 → `VIDEO_PROVIDER=runpod`. 립싱크 모델도 같은 GPU를 쓰면 음색 학습(최대 약 9GB)과 메모리를 나눠 써야 한다
 - 파일 저장소를 S3로 (`services/storage.py`), DB를 Postgres로 (`DATABASE_URL`)
 - PoC A/B 설문, 운영자 화면(작업 큐·GPU 비용·삭제 기록)
