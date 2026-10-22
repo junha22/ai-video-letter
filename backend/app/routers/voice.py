@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import serialize
@@ -19,7 +20,12 @@ def _profile(db: Session, user: User) -> VoiceProfile:
     if not profile:
         profile = VoiceProfile(user_id=user.id, sentences=sentences.assign())
         db.add(profile)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # 첫 요청이 동시에 두 번 들어오면(개발 모드에서 React가 effect를 두 번 실행할 때 등) 먼저 만든 쪽을 쓴다
+            db.rollback()
+            profile = db.scalar(select(VoiceProfile).where(VoiceProfile.user_id == user.id))
     return profile
 
 
