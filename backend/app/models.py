@@ -53,8 +53,11 @@ class VoiceProfile(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
     # recording -> processing -> ready (zero-shot 사용 가능) / failed
     status: Mapped[str] = mapped_column(String(20), default="recording")
-    sentences: Mapped[list] = mapped_column(JSON)  # [{"text": ..., "kind": "statement|question|exclamation"}]
+    sentences: Mapped[list] = mapped_column(JSON)  # [{"text": ..., "kind": "calm|statement|question|exclamation"}]
     reference_path: Mapped[str | None] = mapped_column(String(500))
+    # TTS_PROVIDER=wemeet: TTS 서버에 등록한 목소리. 다시 녹음할 때마다 새 id를 쓴다
+    tts_voice_id: Mapped[str | None] = mapped_column(String(64))
+    tts_registered_at: Mapped[datetime | None] = mapped_column(DateTime)
     error: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
@@ -103,6 +106,7 @@ class Message(Base):
     # draft -> generating -> ready -> approved -> sent -> viewed / failed / deleted
     status: Mapped[str] = mapped_column(String(20), default="draft")
     audio_path: Mapped[str | None] = mapped_column(String(500))
+    tts_seed: Mapped[int | None] = mapped_column(Integer)  # 같은 seed로 다시 만들면 같은 음성이 나온다
     video_path: Mapped[str | None] = mapped_column(String(500))
     poster_path: Mapped[str | None] = mapped_column(String(500))
     captions: Mapped[list | None] = mapped_column(JSON)
@@ -123,9 +127,10 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    type: Mapped[str] = mapped_column(String(20))  # video | voice
+    type: Mapped[str] = mapped_column(String(20))  # video | voice | voice_delete
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+    payload: Mapped[dict | None] = mapped_column(JSON)  # voice_delete: {"voice_id": ...}
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued | running | done | failed | canceled
     stage: Mapped[str | None] = mapped_column(String(20))  # tts | video | encode
     attempts: Mapped[int] = mapped_column(Integer, default=0)

@@ -14,6 +14,7 @@ type Phase = "intro" | "noise" | "ready" | "recording" | "checking" | "result";
 type Result = { ok: boolean; problems: string[] };
 
 const KIND_HINT: Record<Sentence["kind"], string> = {
+  calm: "차분하게 천천히",
   statement: "평소 말하듯이",
   question: "묻듯이 끝을 올려서",
   exclamation: "감정을 담아서",

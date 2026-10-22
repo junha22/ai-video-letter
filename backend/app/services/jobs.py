@@ -14,19 +14,44 @@ from ..db import utcnow
 from ..models import Job
 
 STALE_AFTER = timedelta(minutes=20)
+# TTS 서버가 꺼져 있어도 목소리 삭제는 끝까지 해야 해서 오래 재시도한다 (10초부터 두 배씩, 약 1시간 반)
+VOICE_DELETE_ATTEMPTS = 10
 
 
-def enqueue(db: Session, type: str, user_id: int, message_id: int | None = None) -> Job:
-    # 같은 대상에 대기 중인 작업이 있으면 취소하고 새로 넣는다 (다시 만들기)
-    db.execute(
-        update(Job)
-        .where(Job.type == type, Job.user_id == user_id, Job.message_id == message_id, Job.status == "queued")
-        .values(status="canceled", finished_at=utcnow())
+def enqueue(
+    db: Session,
+    type: str,
+    user_id: int,
+    message_id: int | None = None,
+    payload: dict | None = None,
+    replace: bool = True,
+    max_attempts: int | None = None,
+) -> Job:
+    # 같은 대상에 대기 중인 작업이 있으면 취소하고 새로 넣는다 (다시 만들기).
+    # 삭제 작업처럼 대상마다 따로 끝까지 실행돼야 하는 작업은 replace=False로 넣는다
+    if replace:
+        db.execute(
+            update(Job)
+            .where(Job.type == type, Job.user_id == user_id, Job.message_id == message_id, Job.status == "queued")
+            .values(status="canceled", finished_at=utcnow())
+        )
+    job = Job(
+        type=type,
+        user_id=user_id,
+        message_id=message_id,
+        payload=payload,
+        max_attempts=max_attempts or settings.job_max_attempts,
     )
-    job = Job(type=type, user_id=user_id, message_id=message_id, max_attempts=settings.job_max_attempts)
     db.add(job)
     db.flush()
     return job
+
+
+def enqueue_voice_delete(db: Session, user_id: int, voice_id: str) -> Job:
+    """TTS 서버에 등록한 목소리 삭제. 다른 TTS 요청과 겹치지 않게 워커가 순서대로 처리한다."""
+    return enqueue(
+        db, "voice_delete", user_id, payload={"voice_id": voice_id}, replace=False, max_attempts=VOICE_DELETE_ATTEMPTS
+    )
 
 
 def claim(db: Session) -> Job | None:
@@ -54,10 +79,11 @@ def finish(db: Session, job: Job) -> None:
     db.commit()
 
 
-def fail(db: Session, job: Job, error: str) -> bool:
-    """재시도할 수 있으면 다시 대기열에 넣고 True, 최종 실패면 False."""
+def fail(db: Session, job: Job, error: str, retry: bool = True) -> bool:
+    """재시도할 수 있으면 다시 대기열에 넣고 True, 최종 실패면 False.
+    retry=False는 다시 해도 결과가 같은 오류(입력 문제 등)라서 남은 시도 횟수와 상관없이 바로 실패로 둔다."""
     job.last_error = error[:2000]
-    if job.attempts < job.max_attempts:
+    if retry and job.attempts < job.max_attempts:
         job.status = "queued"
         job.run_after = utcnow() + timedelta(seconds=10 * 2 ** (job.attempts - 1))
         db.commit()

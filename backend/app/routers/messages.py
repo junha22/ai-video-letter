@@ -127,6 +127,8 @@ def render(message_id: int, user: User = Depends(current_user), db: Session = De
     m.status = "generating"
     m.error = None
     m.voice_profile_id = voice.id
+    # 사용자가 누른 생성·다시 만들기는 새 seed로 만들고, 작업 자동 재시도는 저장된 seed로 같은 음성을 만든다
+    m.tts_seed = None
     jobs.enqueue(db, "video", user.id, m.id)
     db.commit()
     return serialize.message(db, m)

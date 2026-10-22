@@ -118,6 +118,11 @@ def reset(user: User = Depends(current_user), db: Session = Depends(get_db)):
     storage.delete_tree(storage.user_dir(user.id, "voice"))
     db.execute(delete(VoiceSample).where(VoiceSample.user_id == user.id))
     profile = _profile(db, user)
+    if profile.tts_voice_id:
+        # 새로 녹음하면 새 voice_id로 등록하므로, 예전 목소리 삭제가 늦게 실행돼도 새 목소리를 지우지 않는다
+        jobs.enqueue_voice_delete(db, user.id, profile.tts_voice_id)
+    profile.tts_voice_id = None
+    profile.tts_registered_at = None
     profile.status = "recording"
     profile.error = None
     profile.reference_path = None

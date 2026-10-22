@@ -76,7 +76,7 @@ export type Message = {
 export type Sentence = {
   index: number;
   text: string;
-  kind: "statement" | "question" | "exclamation";
+  kind: "calm" | "statement" | "question" | "exclamation";
   sample: { duration: number; ok: boolean } | null;
 };
 

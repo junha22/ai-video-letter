@@ -50,6 +50,11 @@ class Settings:
     runpod_video_endpoint_id = os.getenv("RUNPOD_VIDEO_ENDPOINT_ID", "")
     runpod_cost_per_second = _float("RUNPOD_COST_PER_SECOND", 0.0)
 
+    # TTS_PROVIDER=wemeet: 우리가 학습한 한국어 TTS 서버 (C:\WE_MEET\tts_server)
+    wemeet_tts_url = os.getenv("WEMEET_TTS_URL", "http://127.0.0.1:8100").rstrip("/")
+    wemeet_tts_api_key = os.getenv("WEMEET_TTS_API_KEY", "")
+    wemeet_tts_timeout = _float("WEMEET_TTS_TIMEOUT", 300.0)
+
     voice_target_seconds = int(os.getenv("VOICE_TARGET_SECONDS", "180"))
     reference_seconds = 12
     share_link_days = int(os.getenv("SHARE_LINK_DAYS", "30"))

@@ -1,4 +1,8 @@
-"""대본 -> 음성. runpod = Chatterbox(자녀 목소리), local = Windows 내장 한국어 음성(개발용 대체)."""
+"""대본 -> 음성.
+
+wemeet = 우리가 학습한 한국어 TTS 서버(자녀 목소리), runpod = RunPod의 Chatterbox(자녀 목소리),
+local = Windows 내장 한국어 음성(개발용 대체).
+"""
 
 import base64
 import subprocess
@@ -8,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import settings
-from . import audio, runpod
+from . import audio, korean, runpod, wemeet_tts
 
 
 @dataclass
@@ -16,12 +20,28 @@ class TTSResult:
     provider: str
     gpu_seconds: float = 0.0
     cost_usd: float = 0.0
+    seed: int | None = None
 
 
-def synthesize(text: str, reference_wav: Path, out_wav: Path) -> TTSResult:
+def synthesize(text: str, reference_wav: Path, out_wav: Path, voice_id: str | None = None, seed: int | None = None) -> TTSResult:
+    """wemeet은 TTS 서버에 등록한 voice_id로, 나머지는 참조 음성 파일(reference_wav)로 만든다."""
+    if settings.tts_provider == "wemeet":
+        return _wemeet(text, voice_id, seed, out_wav)
+    text = korean.numbers_to_hangul(text)
     if settings.tts_provider == "runpod":
         return _runpod(text, reference_wav, out_wav)
     return _local(text, out_wav)
+
+
+def _wemeet(text: str, voice_id: str | None, seed: int | None, out_wav: Path) -> TTSResult:
+    if not voice_id:
+        raise wemeet_tts.VoiceNotFound("TTS 서버에 등록된 목소리가 없습니다.")
+    # 숫자 읽기는 서버가 하므로 대본을 그대로 보낸다
+    speech = wemeet_tts.synthesize(text, voice_id, seed=seed)
+    # Chatterbox 워터마크가 지워지지 않도록 서버가 준 WAV(24kHz, 16bit, 모노)를 그대로 저장한다
+    out_wav.parent.mkdir(parents=True, exist_ok=True)
+    out_wav.write_bytes(speech.wav)
+    return TTSResult("wemeet", gpu_seconds=speech.elapsed, seed=speech.seed)
 
 
 def _runpod(text: str, reference_wav: Path, out_wav: Path) -> TTSResult:

@@ -2,6 +2,18 @@
 
 import random
 
+# TTS 서버 참조 음성 후보: 차분하게 읽으면 6~10초 (공백 빼고 44~49자)
+CALM = [
+    "요즘은 퇴근하고 집에 오면 따뜻한 차를 한 잔 마시면서 오늘 하루 있었던 일을 천천히 정리하는 시간을 가지고 있어요.",
+    "지난 주말에는 오랜만에 늦잠을 푹 자고 일어나서 창문을 활짝 열어 두고 집 안 구석구석 청소를 천천히 했어요.",
+    "어릴 때 엄마가 끓여 주던 미역국 냄새가 아직도 가끔 생각나서 오늘 저녁에는 마트에 들러 직접 한번 끓여 봤어요.",
+    "회사 일은 요즘 조금 바쁘긴 하지만 같이 일하는 사람들이 다들 좋아서 큰 걱정 없이 하루하루 잘 다니고 있어요.",
+    "날씨가 많이 추워졌으니까 밖에 나가실 때는 꼭 두꺼운 옷을 따뜻하게 입으시고 장갑이랑 목도리도 잊지 말고 챙기세요.",
+    "다음 달 초에 휴가를 받으면 며칠 동안 집에 내려가서 엄마가 해 주는 맛있는 밥도 먹고 푹 쉬다가 올라올게요.",
+    "요즘 저녁마다 동네 공원을 한 바퀴씩 천천히 걷고 있는데 생각보다 기분도 좋아지고 밤에 잠도 훨씬 잘 와요.",
+    "어제는 동생이랑 오랜만에 길게 통화를 했는데 다들 별일 없이 건강하게 잘 지내고 있다고 해서 마음이 놓였어요.",
+]
+
 STATEMENTS = [
     "오늘은 회사 일이 일찍 끝나서 집에 일찍 들어왔어요.",
     "어제 먹은 된장찌개가 엄마가 끓여 준 맛이랑 비슷했어.",
@@ -55,13 +67,15 @@ EXCLAMATIONS = [
 
 
 def assign() -> list[dict]:
-    """평서 3 : 의문 2 : 감탄 2 비율로 섞어서 돌려준다."""
+    """차분 2 : 평서 3 : 의문 2 : 감탄 2 비율로 섞어서 돌려준다.
+    녹음을 일찍 끝내도 참조 음성 후보가 있도록 차분한 긴 문장을 맨 앞에 둔다."""
     pools = {
+        "calm": random.sample(CALM, len(CALM)),
         "statement": random.sample(STATEMENTS, len(STATEMENTS)),
         "question": random.sample(QUESTIONS, len(QUESTIONS)),
         "exclamation": random.sample(EXCLAMATIONS, len(EXCLAMATIONS)),
     }
-    pattern = ["statement", "question", "statement", "exclamation", "statement", "question", "exclamation"]
+    pattern = ["calm", "statement", "question", "statement", "exclamation", "calm", "statement", "question", "exclamation"]
     out: list[dict] = []
     while any(pools.values()):
         for kind in pattern:

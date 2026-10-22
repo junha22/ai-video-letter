@@ -10,22 +10,25 @@
 
 ## 실행
 
-처음 한 번:
+처음 한 번 (conda 환경에 Python과 Node.js를 같이 설치한다):
 
 ```powershell
+conda create -n ai-video-letter -c conda-forge python=3.11 nodejs=20 -y
+conda activate ai-video-letter
 npm install
-cd backend
-python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt   # macOS/Linux: .venv/bin/python
-copy .env.example .env                                     # 이미 .env가 있으면 생략
-cd ..
+python -m pip install -r backend/requirements.txt
+copy backend\.env.example backend\.env                     # 이미 .env가 있으면 생략
 ```
 
 그다음부터:
 
 ```powershell
+conda activate ai-video-letter
 npm run dev:all
 ```
+
+`dev:all`은 활성화된 conda 환경의 python을 쓰고, 없으면 `backend/.venv`, 그것도 없으면 시스템 python을 쓴다.
+다른 프로젝트가 3000/8000 포트를 쓰고 있으면 포트를 바꿔 띄운다: `$env:WEB_PORT=3001; $env:API_PORT=8001; npm run dev:all`
 
 웹(3000), API(8000), 작업 워커가 한 번에 뜬다. 브라우저에서 http://localhost:3000 을 연다.
 API 문서는 http://127.0.0.1:8000/docs 에서 볼 수 있다.
@@ -34,8 +37,8 @@ API 문서는 http://127.0.0.1:8000/docs 에서 볼 수 있다.
 
 ```powershell
 npm run dev                                                   # 웹
-cd backend; .venv\Scripts\python -m uvicorn app.main:app --reload --reload-dir app --port 8000   # API
-cd backend; .venv\Scripts\python -m app.worker                # 워커
+cd backend; python -m uvicorn app.main:app --reload --reload-dir app --port 8000   # API
+cd backend; python -m app.worker                              # 워커
 ```
 
 ## 설정 (backend/.env)
@@ -46,7 +49,7 @@ cd backend; .venv\Scripts\python -m app.worker                # 워커
 |---|---|---|
 | `KAKAO_REST_API_KEY` | 이름만 입력하는 개발용 로그인 | 카카오 로그인 |
 | `NAVER_API_KEY` | 메모를 그대로 쓰는 규칙 기반 대본 | HyperCLOVA X 대본 |
-| `TTS_PROVIDER` | `local`: Windows 내장 한국어 음성 (내 목소리 아님) | `runpod`: Chatterbox로 내 목소리 |
+| `TTS_PROVIDER` | `local`: Windows 내장 한국어 음성 (내 목소리 아님) | `wemeet`: 우리가 학습한 한국어 TTS 서버로 내 목소리 (아래 'TTS 서버 연동'), `runpod`: RunPod의 Chatterbox |
 | `VIDEO_PROVIDER` | `local`: 사진이 천천히 확대되는 영상 | `runpod`: 선정한 립싱크 모델 |
 | `PUBLIC_BASE_URL` | `http://localhost:3000` (이 PC에서만 열림) | 배포/터널 주소 → 부모님 휴대폰에서 열림 |
 | `VOICE_TARGET_SECONDS` | 180초 | 테스트할 때는 30 정도로 |
@@ -59,6 +62,59 @@ cd backend; .venv\Scripts\python -m app.worker                # 워커
 ```powershell
 npx cloudflared tunnel --url http://localhost:3000   # 나온 https 주소를 PUBLIC_BASE_URL에 넣고 dev:all 재시작
 ```
+
+## TTS 서버 연동 (`TTS_PROVIDER=wemeet`)
+
+`C:\WE_MEET\tts_server`(Chatterbox Multilingual + 한국어 대화체 LoRA)를 HTTP로 부른다. API 명세는 그 폴더의 `README.md`에 있다.
+
+```powershell
+conda activate ai-video-letter
+npm run dev:all
+```
+
+`backend/.env`가 `TTS_PROVIDER=wemeet`이면 `dev:all`이 TTS 서버(`C:\WE_MEET\tts_server\run_server.ps1`, 127.0.0.1:8100)도 같이 띄운다.
+시작에 약 15초, VRAM 약 3.2GB를 쓰고, 워커는 TTS 서버가 준비된 뒤에 뜬다. `dev:all`을 끄면 TTS 서버도 같이 꺼진다.
+
+- TTS 서버가 이미 떠 있으면 새로 띄우지 않고 그대로 쓴다. 코드를 자주 고치며 `dev:all`을 껐다 켤 때는 TTS 서버를 따로 띄워 두면 모델을 매번 다시 올리지 않는다:
+  `powershell -ExecutionPolicy Bypass -File C:\WE_MEET\tts_server\run_server.ps1`
+- `WEMEET_TTS_URL`이 다른 머신 주소면 띄우지 않는다. TTS 서버 폴더가 다른 곳에 있으면 `WEMEET_TTS_DIR`로 알려 준다.
+
+워커 로그에 `TTS 서버 연결됨`이 찍히면 된다. `/api/health`의 `tts_server` 값(`ok` / `unreachable`)으로도 확인할 수 있다.
+
+| 설정 (`backend/.env`) | 기본값 | 설명 |
+|---|---|---|
+| `WEMEET_TTS_URL` | `http://127.0.0.1:8100` | TTS 서버 주소 |
+| `WEMEET_TTS_API_KEY` | (없음) | TTS 서버를 `WEMEET_API_KEY`로 띄웠을 때 같은 값. `X-API-Key` 헤더로 보낸다 |
+| `WEMEET_TTS_TIMEOUT` | `300` | 요청 최대 대기(초). 음성 생성은 `30초 + 글자당 1초`를 기다리고 이 값을 넘지 않는다 |
+
+### 흐름
+
+| 시점 | 백엔드 | TTS 서버 |
+|---|---|---|
+| 목소리 등록 (`voice` 작업) | 녹음 중 6~10초 문장 1개를 고른다 (길이 → 차분한 긴 문장 → 평서문 → 잡음 적은 순). voice_id(`user_<내부ID>_<무작위 8자>`)와 등록 시각을 `voice_profiles`에 저장 | `PUT /voices/{id}` |
+| 영상 생성 (`video` 작업 첫 단계) | 대본을 그대로 보내고 WAV는 `messages/<id>/audio.wav`, `X-Seed`는 `messages.tts_seed`에 저장 | `POST /tts` |
+| 다시 녹음, 동의 철회 | `voice_delete` 작업을 넣는다 | `DELETE /voices/{id}` |
+
+- **순서대로 보내기**: 등록·생성·삭제 모두 워커가 작업 큐에서 하나씩 처리하므로 TTS 서버에 동시에 요청이 가지 않는다. **워커는 1개만 띄운다.**
+- **seed**: 사용자가 '영상 만들기'나 '다시 만들기'를 누르면 새 seed로, 작업이 자동으로 다시 돌 때(예: 영상 단계 실패)는 저장된 seed로 같은 음성을 만든다.
+- **숫자 읽기**: TTS 서버가 숫자·날짜·금액을 한글로 바꾸므로 백엔드는 대본을 그대로 보낸다 (`local`, `runpod`는 기존처럼 백엔드가 바꾼다).
+- **voice_id**: 다시 녹음할 때마다 새로 만든다. 예전 목소리 삭제 작업이 서버 장애로 늦게 실행돼도 새 목소리를 지우지 않게 하려는 것이다.
+- **개인정보**: 로그에는 voice_id, 상태 코드, 걸린 시간만 남고 대본·음성 내용은 남지 않는다.
+- `wemeet`로 바꾸기 전에 등록한 목소리는 첫 영상 생성 때 남아 있는 녹음으로 자동 등록된다.
+- 새로 추가된 DB 칸(`tts_voice_id`, `tts_registered_at`, `tts_seed`, `jobs.payload`)은 서버가 시작할 때 자동으로 추가된다 (`db.py`의 `_add_missing_columns`).
+
+### 실패할 때
+
+| 상황 | 백엔드 동작 | 사용자에게 보이는 문구 |
+|---|---|---|
+| 서버 꺼짐·연결 실패 | 2초, 4초 뒤 다시 연결 → 그래도 안 되면 작업 큐가 10초, 20초 뒤 재시도 (총 3번) → 실패 | 음성 서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요. |
+| 응답 시간 초과, 5xx | 작업 큐 재시도. 서버가 아직 처리 중일 수 있어서 바로 다시 보내지 않는다 | 위와 같음 |
+| 400 (참조 음성 말소리 부족 등) | 재시도 없이 바로 실패 | 녹음에서 목소리를 읽지 못했어요. 처음부터 다시 녹음해 주세요. |
+| 401 (API 키 틀림) | 재시도 없이 바로 실패 | 일반 실패 문구 |
+| 404 (서버에 목소리 없음) | 남아 있는 녹음으로 다시 등록하고 한 번 더 생성. 녹음이 없으면 실패 | (다시 등록에 성공하면 없음) |
+| 삭제할 때 서버 꺼짐 | 10초부터 두 배씩 최대 10번(약 1시간 반) 재시도. 끝내 실패하면 워커 로그에 남는다 → TTS 서버 `voices/<id>` 폴더를 직접 지운다 | — |
+
+실패한 작업은 `jobs` 테이블의 `status='failed'`, `last_error`에 남는다.
 
 ## 구조
 
@@ -85,7 +141,8 @@ backend/app/
     script_llm.py          HyperCLOVA X 대본 생성 + JSON 파싱·길이·금칙어 검증
     audio.py               녹음 변환(24kHz WAV), 음량 정규화, 품질 분석
     face.py                OpenCV 얼굴 검사
-    tts.py / video.py      local / runpod 구현, 'AI로 만든 영상' 표시 입히기
+    tts.py / video.py      local / wemeet / runpod 구현, 'AI로 만든 영상' 표시 입히기
+    wemeet_tts.py          WE_MEET TTS 서버 클라이언트 (연결 재시도, 오류 구분)
     runpod.py              RunPod 서버리스 호출, GPU 시간·비용 기록
 backend/gpu_worker/        RunPod용 Chatterbox TTS 핸들러 초안 (GPU에서 아직 실행 안 해 봄)
 ```
@@ -99,7 +156,8 @@ backend/gpu_worker/        RunPod용 Chatterbox TTS 핸들러 초안 (GPU에서 
 
 ## 다음 단계
 
-- RunPod에 TTS 핸들러 배포 → `TTS_PROVIDER=runpod`
+- TTS 서버를 다른 머신에 둘 때: 서버를 `-HostAddr 0.0.0.0` + `WEMEET_API_KEY`로 띄우고 `WEMEET_TTS_URL`, `WEMEET_TTS_API_KEY` 설정
+- S3Gen 사용자별 음색 어댑터: 학습 후 `PUT /voices/{id}/s3gen-adapter`로 올리기 (TTS 서버는 이미 지원)
 - 영상 모델 선정 후 `{"image_b64", "audio_b64"} → {"video_b64"}` 형식의 핸들러 작성 → `VIDEO_PROVIDER=runpod`
 - S3Gen 사용자별 학습 작업 (`worker.run_voice` 뒤에 연결), 유사도 검사
 - 파일 저장소를 S3로 (`services/storage.py`), DB를 Postgres로 (`DATABASE_URL`)
