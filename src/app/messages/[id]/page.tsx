@@ -94,7 +94,10 @@ export default function MessagePage() {
       <p className="mb-5 text-lg font-semibold text-stone-800">&ldquo;{m.memo}&rdquo;</p>
 
       {/* 대본 */}
-      <Card>
+      <div className="grid items-start gap-6 lg:grid-cols-[1.1fr_1fr]">
+      <div className="min-w-0">
+      <Card className="!rounded-[28px] p-6 sm:p-8">
+        <p className="mb-5 text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">01 · YOUR WORDS</p>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-bold text-stone-900">영상 대본</h2>
           <span className="text-xs font-semibold text-stone-500">{SOURCE_LABEL[m.script_source]}</span>
@@ -105,7 +108,7 @@ export default function MessagePage() {
             onChange={(e) => setDraft(e.target.value)}
             rows={5}
             maxLength={400}
-            className="w-full rounded-2xl border border-stone-300 bg-[#FFFDF9] p-3 text-[17px] leading-relaxed outline-none focus:border-ongi-600"
+            className="mt-3 w-full rounded-2xl border border-[#e3e8da] bg-[#fafbf7] p-5 text-base leading-9 text-[#3e5541] outline-none focus:border-[#9bb38b] focus:ring-4 focus:ring-[#f0f4e8]"
           />
         ) : (
           <p className="rounded-2xl bg-[#FFFDF9] p-3 text-[17px] leading-relaxed">{m.script}</p>
@@ -150,9 +153,11 @@ export default function MessagePage() {
           <Notice tone="error">{error}</Notice>
         </div>
       )}
+      </div>
 
       {/* 영상 */}
-      <div className="mt-6">
+      <div className="min-w-0 rounded-[28px] border border-[#e3e8df] bg-white p-6 shadow-[0_12px_40px_rgba(36,62,44,0.04)] sm:p-8">
+        <div className="mb-5 border-b border-[#edf0e8] pb-5"><p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">02 · A MOMENT TOGETHER</p><h2 className="mt-2 text-lg font-semibold text-[#3e5541]">얼굴과 목소리로 전하는 편지</h2></div>
         {(m.status === "draft" || m.status === "failed") &&
           (me.can_render ? (
             <>
@@ -186,7 +191,7 @@ export default function MessagePage() {
               controls
               playsInline
               preload="metadata"
-              className="aspect-[4/5] w-full rounded-2xl bg-black"
+              className="aspect-[4/5] max-h-[560px] w-full rounded-2xl bg-black object-contain"
             />
             <p className="mt-2 text-center text-sm text-stone-500">미리보기 · {formatSeconds(m.duration ?? 0)}</p>
           </Card>
@@ -212,6 +217,7 @@ export default function MessagePage() {
             </div>
           </div>
         )}
+      </div>
       </div>
 
       {process.env.NODE_ENV === "development" && m.video_url && <DebugDownloads m={m} />}
