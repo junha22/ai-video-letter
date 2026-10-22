@@ -1,0 +1,180 @@
+from datetime import datetime
+
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .db import Base, utcnow
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kakao_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    parent: Mapped["ParentProfile | None"] = relationship(back_populates="user", uselist=False)
+
+
+class ParentProfile(Base):
+    """MVP는 자녀 1명 : 부모님 1명. 가족 그룹은 확장 단계에서 별도 테이블로 분리한다."""
+
+    __tablename__ = "parent_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    nickname: Mapped[str] = mapped_column(String(20))  # 호칭: 엄마, 할머니 ...
+    relation: Mapped[str] = mapped_column(String(20))  # 어머니, 할머니 ...
+    phone: Mapped[str] = mapped_column(String(20))
+    tone_examples: Mapped[str] = mapped_column(Text, default="")  # 평소 자녀가 보내는 메시지 예시
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    user: Mapped[User] = relationship(back_populates="parent")
+
+
+class Consent(Base):
+    """동의 이력. 철회해도 행을 지우지 않고 withdrawn_at만 기록한다."""
+
+    __tablename__ = "consents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(30))  # voice | face | parent_receive
+    version: Mapped[str] = mapped_column(String(20))
+    agreed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class VoiceProfile(Base):
+    __tablename__ = "voice_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    # recording -> processing -> ready (zero-shot 사용 가능) / failed
+    status: Mapped[str] = mapped_column(String(20), default="recording")
+    sentences: Mapped[list] = mapped_column(JSON)  # [{"text": ..., "kind": "statement|question|exclamation"}]
+    reference_path: Mapped[str | None] = mapped_column(String(500))
+    error: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class VoiceSample(Base):
+    __tablename__ = "voice_samples"
+    __table_args__ = (UniqueConstraint("user_id", "index"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    index: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    path: Mapped[str] = mapped_column(String(500))
+    duration: Mapped[float] = mapped_column(Float)
+    speech_db: Mapped[float] = mapped_column(Float)
+    snr_db: Mapped[float] = mapped_column(Float)
+    ok: Mapped[bool] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Photo(Base):
+    __tablename__ = "photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    path: Mapped[str] = mapped_column(String(500))
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    face: Mapped[list] = mapped_column(JSON)  # [x, y, w, h]
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Message(Base):
+    """영상 편지 1건. 누가 어떤 목소리로 무슨 내용을 만들었는지 남는 생성 로그 역할도 한다."""
+
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    parent_id: Mapped[int] = mapped_column(ForeignKey("parent_profiles.id", ondelete="CASCADE"))
+    voice_profile_id: Mapped[int | None] = mapped_column(Integer)
+    memo: Mapped[str] = mapped_column(Text)
+    template: Mapped[str] = mapped_column(String(20))
+    script: Mapped[str] = mapped_column(Text, default="")
+    script_source: Mapped[str] = mapped_column(String(20), default="llm")  # llm | fallback | edited
+    # draft -> generating -> ready -> approved -> sent -> viewed / failed / deleted
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    audio_path: Mapped[str | None] = mapped_column(String(500))
+    video_path: Mapped[str | None] = mapped_column(String(500))
+    poster_path: Mapped[str | None] = mapped_column(String(500))
+    captions: Mapped[list | None] = mapped_column(JSON)
+    duration: Mapped[float | None] = mapped_column(Float)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    rendered_at: Mapped[datetime | None] = mapped_column(DateTime)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+    viewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    parent: Mapped[ParentProfile] = relationship()
+
+
+class Job(Base):
+    """DB 기반 작업 큐. 나중에 Celery/Redis로 옮겨도 상태·비용 기록은 이 테이블에 남긴다."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    type: Mapped[str] = mapped_column(String(20))  # video | voice
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued | running | done | failed | canceled
+    stage: Mapped[str | None] = mapped_column(String(20))  # tts | video | encode
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    run_after: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    tts_provider: Mapped[str | None] = mapped_column(String(20))
+    video_provider: Mapped[str | None] = mapped_column(String(20))
+    gpu_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class ShareLink(Base):
+    __tablename__ = "share_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), unique=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    first_viewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    message: Mapped[Message] = relationship()
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(20))  # viewed | voice_ready | voice_failed
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class DeletionLog(Base):
+    """동의 철회 시 무엇을 지웠는지 남기는 기록 (운영자 확인용)."""
+
+    __tablename__ = "deletion_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    reason: Mapped[str] = mapped_column(String(50))
+    detail: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

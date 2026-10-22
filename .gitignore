@@ -34,3 +34,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# env files (API 키가 들어 있다)
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# backend
+backend/.venv/
+backend/data/
+__pycache__/
+*.pyc

@@ -1,0 +1,155 @@
+"""API 응답 형태를 한곳에서 만든다."""
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from .config import settings
+from .db import iso
+from .models import Consent, Job, Message, ParentProfile, Photo, ShareLink, User, VoiceProfile, VoiceSample
+from .services import jobs, script_llm
+
+CONSENT_VERSION = "2026-10"
+CONSENT_ITEMS = [
+    {
+        "kind": "voice",
+        "title": "내 목소리 사용 동의",
+        "description": "녹음한 내 목소리로 음성 합성 모델을 만들고, 내가 승인한 영상 편지에만 사용합니다.",
+    },
+    {
+        "kind": "face",
+        "title": "내 얼굴 사진 사용 동의",
+        "description": "올린 얼굴 사진으로 영상을 만들고, 내가 승인한 영상 편지에만 사용합니다.",
+    },
+    {
+        "kind": "parent_receive",
+        "title": "부모님 수신 동의 확인",
+        "description": "부모님께 AI로 만든 영상 편지를 받는 것에 대해 동의를 받았습니다.",
+    },
+]
+
+
+def active_consents(db: Session, user_id: int) -> dict[str, Consent]:
+    rows = db.scalars(
+        select(Consent).where(Consent.user_id == user_id, Consent.withdrawn_at.is_(None)).order_by(Consent.id)
+    ).all()
+    return {c.kind: c for c in rows}
+
+
+def consent_ok(db: Session, user_id: int) -> bool:
+    return all(item["kind"] in active_consents(db, user_id) for item in CONSENT_ITEMS)
+
+
+def consent_state(db: Session, user_id: int) -> dict:
+    active = active_consents(db, user_id)
+    return {
+        "version": CONSENT_VERSION,
+        "ok": all(item["kind"] in active for item in CONSENT_ITEMS),
+        "items": [{**item, "agreed_at": iso(active[item["kind"]].agreed_at) if item["kind"] in active else None} for item in CONSENT_ITEMS],
+    }
+
+
+def parent(p: ParentProfile | None) -> dict | None:
+    if not p:
+        return None
+    return {"nickname": p.nickname, "relation": p.relation, "phone": p.phone, "tone_examples": p.tone_examples}
+
+
+def voice_seconds(db: Session, user_id: int) -> float:
+    total = db.scalar(select(func.sum(VoiceSample.duration)).where(VoiceSample.user_id == user_id, VoiceSample.ok))
+    return round(total or 0.0, 1)
+
+
+def job(j: Job | None) -> dict | None:
+    if not j:
+        return None
+    return {
+        "status": j.status,
+        "stage": j.stage,
+        "attempts": j.attempts,
+        "max_attempts": j.max_attempts,
+        "last_error": j.last_error,
+        "tts_provider": j.tts_provider,
+        "video_provider": j.video_provider,
+        "gpu_seconds": round(j.gpu_seconds, 2),
+        "cost_usd": j.cost_usd,
+        "created_at": iso(j.created_at),
+        "started_at": iso(j.started_at),
+        "finished_at": iso(j.finished_at),
+    }
+
+
+def voice_summary(db: Session, user_id: int) -> dict:
+    profile = db.scalar(select(VoiceProfile).where(VoiceProfile.user_id == user_id))
+    return {
+        "status": profile.status if profile else "none",
+        "total_seconds": voice_seconds(db, user_id),
+        "target_seconds": settings.voice_target_seconds,
+        "error": profile.error if profile else None,
+    }
+
+
+def photo(p: Photo | None) -> dict | None:
+    if not p:
+        return None
+    return {
+        "width": p.width,
+        "height": p.height,
+        "face": p.face,
+        "url": f"/api/photo/image?v={int(p.created_at.timestamp())}",
+    }
+
+
+def me(db: Session, user: User) -> dict:
+    voice = voice_summary(db, user.id)
+    p = db.scalar(select(Photo).where(Photo.user_id == user.id))
+    consent = consent_ok(db, user.id)
+    return {
+        "user": {"id": user.id, "name": user.name, "kakao": not (user.kakao_id or "dev:").startswith("dev:")},
+        "consent_ok": consent,
+        "parent": parent(user.parent),
+        "voice": voice,
+        "photo": photo(p),
+        "can_write": consent and user.parent is not None,
+        "can_render": consent and voice["status"] == "ready" and p is not None,
+    }
+
+
+def share_url(token: str) -> str:
+    return f"{settings.public_base_url}/w/{token}"
+
+
+def message(db: Session, m: Message) -> dict:
+    link = db.scalar(select(ShareLink).where(ShareLink.message_id == m.id))
+    version = int(m.rendered_at.timestamp()) if m.rendered_at else 0
+    has_video = bool(m.video_path) and m.status not in ("draft", "generating", "deleted")
+    return {
+        "id": m.id,
+        "memo": m.memo,
+        "template": m.template,
+        "template_label": script_llm.TEMPLATES.get(m.template, ("안부",))[0],
+        "script": m.script,
+        "script_source": m.script_source,
+        "script_problems": script_llm.validate(m.script),
+        "char_count": script_llm.char_count(m.script),
+        "est_seconds": script_llm.estimate_seconds(m.script),
+        "status": m.status,
+        "error": m.error,
+        "duration": m.duration,
+        "captions": m.captions,
+        "video_url": f"/api/messages/{m.id}/video?v={version}" if has_video else None,
+        "poster_url": f"/api/messages/{m.id}/poster?v={version}" if has_video else None,
+        "job": job(jobs.latest(db, "video", m.user_id, m.id)),
+        "share": {
+            "url": share_url(link.token),
+            "expires_at": iso(link.expires_at),
+            "view_count": link.view_count,
+            "first_viewed_at": iso(link.first_viewed_at),
+        }
+        if link and not link.revoked
+        else None,
+        "parent_nickname": m.parent.nickname if m.parent else None,
+        "created_at": iso(m.created_at),
+        "approved_at": iso(m.approved_at),
+        "sent_at": iso(m.sent_at),
+        "viewed_at": iso(m.viewed_at),
+    }

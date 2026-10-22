@@ -1,101 +1,102 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Heart, Mic, Send, Sparkles } from "lucide-react";
+import { api, errorText } from "@/lib/api";
+import { Button, Notice } from "@/components/ui";
+
+type AuthConfig = { kakao: boolean; dev_login: boolean };
+
+export default function Landing() {
+  const router = useRouter();
+  const [config, setConfig] = useState<AuthConfig | null>(null);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("login_error")) {
+      setError("카카오 로그인에 실패했어요. 다시 시도해 주세요.");
+    }
+    api("/api/me")
+      .then(() => router.replace("/home"))
+      .catch(() => api<AuthConfig>("/api/auth/config").then(setConfig).catch(() => setError("서버에 연결할 수 없어요.")));
+  }, [router]);
+
+  const devLogin = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api("/api/auth/dev-login", { json: { name: name.trim() } });
+      router.replace("/home");
+    } catch (e) {
+      setError(errorText(e));
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="mx-auto flex min-h-screen max-w-md flex-col px-6 py-12">
+      <div className="flex-1">
+        <p className="text-4xl font-black tracking-tight text-ongi-800">온기</p>
+        <h1 className="mt-6 text-[28px] font-extrabold leading-snug text-stone-900">
+          한 줄만 쓰면,
+          <br />
+          내 목소리와 얼굴로
+          <br />
+          부모님께 영상 편지가 가요
+        </h1>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
+        <ul className="mt-10 space-y-4 text-[17px] text-stone-700">
+          <li className="flex items-start gap-3">
+            <Mic className="mt-0.5 h-6 w-6 shrink-0 text-ongi-700" />
+            <span>처음 한 번, 3분 동안 문장을 읽어 목소리를 등록해요</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <Sparkles className="mt-0.5 h-6 w-6 shrink-0 text-ongi-700" />
+            <span>&ldquo;오늘 비 온대 우산 챙겨&rdquo; 한 줄이면 AI가 15초 대본으로 다듬어요</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <Send className="mt-0.5 h-6 w-6 shrink-0 text-ongi-700" />
+            <span>미리 보고 승인하면 카카오톡 링크로 보내고, 보셨는지 알려 드려요</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <Heart className="mt-0.5 h-6 w-6 shrink-0 text-ongi-700" />
+            <span>부모님은 링크를 누르고 재생 버튼 한 번만 누르면 돼요</span>
+          </li>
+        </ul>
+      </div>
+
+      <div className="mt-10 space-y-3">
+        {error && <Notice tone="error">{error}</Notice>}
+        {config?.kakao && (
           <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/api/auth/kakao/login"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FEE500] py-4 text-[17px] font-bold text-[#191919]"
           >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
+            카카오로 시작하기
           </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        )}
+        {config?.dev_login && (
+          <div className="rounded-2xl border border-dashed border-stone-300 p-4">
+            <p className="mb-2 text-sm font-semibold text-stone-600">개발용 로그인 (카카오 키 설정 전)</p>
+            <div className="flex gap-2">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && name.trim() && devLogin()}
+                placeholder="내 이름 (예: 준하)"
+                maxLength={20}
+                className="min-w-0 flex-1 rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-ongi-600"
+              />
+              <Button onClick={devLogin} disabled={!name.trim()} loading={busy} className="shrink-0">
+                시작
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

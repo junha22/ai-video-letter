@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+sqlalchemy>=2.0
+httpx
+python-dotenv
+numpy
+# 5.x에서 CascadeClassifier가 빠졌기 때문에 4.x로 고정
+opencv-python-headless>=4.10,<5
+pillow
+# ffmpeg 실행 파일을 같이 설치해 준다 (별도 설치 불필요)
+imageio-ffmpeg
