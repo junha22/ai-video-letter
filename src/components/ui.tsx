@@ -38,6 +38,11 @@ export function LinkButton({
   return <Link className={`${BASE} ${VARIANTS[variant]} ${className}`} {...props} />;
 }
 
+// 파일 내려받기처럼 Next 라우팅을 거치지 않는 링크
+export function AnchorButton({ variant = "primary", className = "", ...props }: ComponentProps<"a"> & { variant?: Variant }) {
+  return <a className={`${BASE} ${VARIANTS[variant]} ${className}`} {...props} />;
+}
+
 export function Card({ className = "", children }: { className?: string; children: ReactNode }) {
   return <section className={`rounded-3xl border border-stone-200 bg-white p-5 ${className}`}>{children}</section>;
 }
