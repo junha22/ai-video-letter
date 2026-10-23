@@ -31,6 +31,8 @@
   얼굴 검출 가중치(face_alignment)는 처음 실행할 때 자동으로 받는다. 이미지로 만들 때는 빌드 중에 한 번 실행해 둔다.
   경로는 환경변수 FLOAT_ROOT, FLOAT_CKPT_DIR, FLOAT_LORA_PATH로 바꿀 수 있다.
 
+Windows(Python 3.10)에서도 돈다. 이 PC에서 TTS 서버와 같이 띄우는 방법은 README '이 PC(Windows)에서 …' 참고.
+
 로컬 테스트 (GPU가 있는 Linux/WSL PC, RunPod 배포 없이 웹과 연결):
   python gpu_worker/video_handler.py --rp_serve_api --rp_api_host 0.0.0.0 --rp_api_port 8010
   백엔드 .env: VIDEO_PROVIDER=runpod, RUNPOD_VIDEO_ENDPOINT_ID=http://<그 PC 주소>:8010
@@ -65,6 +67,9 @@ for need in [CKPT_DIR / "float.pth", CKPT_DIR / "wav2vec2-base-960h",
         sys.exit(f"[video_handler] 파일이 없습니다: {need} (위 '준비' 참고)")
 
 sys.path.insert(0, str(FLOAT_ROOT))
+# RunPod SDK는 기본값(DEBUG)이면 결과 전체(영상 base64, 1건에 수백 KB)를 로그에 남긴다.
+# 얼굴·목소리가 담긴 영상이 로그에 쌓이지 않게 INFO(작업 시작·끝만)로 둔다. 디버깅할 때만 RUNPOD_LOG_LEVEL=DEBUG
+os.environ.setdefault("RUNPOD_LOG_LEVEL", "INFO")
 
 import av  # noqa: E402
 import cv2  # noqa: E402
@@ -203,25 +208,31 @@ def handler(job):
     crop, how = _crop(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), inp.get("face"))
 
     ADAPTER.strength = float(inp.get("lora_strength", 1.0))
-    with tempfile.TemporaryDirectory() as tmp:
-        audio_path = os.path.join(tmp, "audio.wav")
-        Path(audio_path).write_bytes(base64.b64decode(inp["audio_b64"]))
-        frames = _generate(
-            crop, audio_path,
-            seed=seed, emo=emo,
-            a_cfg_scale=float(inp.get("a_cfg_scale", 2.0)),
-            e_cfg_scale=float(inp.get("e_cfg_scale", 1.0)),
-            nfe=int(inp.get("nfe", 10)),
-        )
-        mp4_path = os.path.join(tmp, "video.mp4")
-        _to_mp4(frames, fps, mp4_path)
-        video_b64 = base64.b64encode(Path(mp4_path).read_bytes()).decode()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            audio_path = os.path.join(tmp, "audio.wav")
+            Path(audio_path).write_bytes(base64.b64decode(inp["audio_b64"]))
+            frames = _generate(
+                crop, audio_path,
+                seed=seed, emo=emo,
+                a_cfg_scale=float(inp.get("a_cfg_scale", 2.0)),
+                e_cfg_scale=float(inp.get("e_cfg_scale", 1.0)),
+                nfe=int(inp.get("nfe", 10)),
+            )
+            mp4_path = os.path.join(tmp, "video.mp4")
+            _to_mp4(frames, fps, mp4_path)
+            video_b64 = base64.b64encode(Path(mp4_path).read_bytes()).decode()
+        n_frames, height, width = int(frames.shape[0]), int(frames.shape[2]), int(frames.shape[3])
+        del frames
+    finally:
+        # 한 PC에서 TTS 서버·음색 학습과 GPU를 나눠 쓸 수 있도록, 영상마다 생성에 쓴 메모리(약 4GB)를 돌려준다
+        torch.cuda.empty_cache()
 
     return {
         "video_b64": video_b64,
-        "width": int(frames.shape[3]),
-        "height": int(frames.shape[2]),
-        "frames": int(frames.shape[0]),
+        "width": width,
+        "height": height,
+        "frames": n_frames,
         "fps": fps,
         "crop": how,
         "lora_strength": ADAPTER.strength,

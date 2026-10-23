@@ -195,7 +195,7 @@ WEMEET_LORA_CODE_DIR=C:\WE_MEET\AI_test                                    # cha
 | 3. 비교 음성 | 임시 목소리 `<voice_id>_cand`에 어댑터를 붙이고, 기본 목소리와 같은 문장 8개·같은 seed로 만든다 (T3 출력이 같아서 어댑터 차이만 남는다) | TTS 서버 |
 | 4. 판단 | 두 음성을 평가용 실제 녹음과 비교. VoiceEncoder 유사도가 `S3GEN_MIN_VE_GAIN`(0.005) 이상 오르고 WavLM이 떨어지지 않으면 적용 | `s3gen_user.py score` |
 
-- **걸리는 시간 (RTX 4070)**: 분할·특징값 약 30초 + 학습 약 3.5분 + 비교 약 1~2분. 학습 중 GPU는 TTS 서버를 포함해 최대 약 9GB를 쓴다. 배치 8은 12GB 한계(11.8GB)에 닿아서 기본값을 4로 뒀다. 검증 손실은 배치 8 연구 결과와 거의 같았다(0.4146 vs 0.4118~0.4147).
+- **걸리는 시간 (RTX 4070)**: 분할·특징값 약 30초 + 학습 약 3.5분 + 비교 약 1~2분. 학습 중 GPU는 TTS 서버를 포함해 최대 약 9GB를 쓴다 (영상 서버까지 띄우면 11.9GB, 아래 '영상 모델'). 배치 8은 12GB 한계(11.8GB)에 닿아서 기본값을 4로 뒀다. 검증 손실은 배치 8 연구 결과와 거의 같았다(0.4146 vs 0.4118~0.4147).
 - **순서**: 학습도 같은 워커가 처리한다. 대기 중인 영상 생성·등록·삭제를 먼저 처리하고(`jobs.claim`), 학습이 시작되면 끝날 때까지 약 5분 동안 다른 작업이 기다린다. 등록이 끝난 순간부터 기본 목소리로 영상을 만들 수 있다.
   학습 때문에 기다리는 영상은 진행 화면에 "목소리를 더 닮게 다듬는 중이라 조금 늦어져요 (약 N분)"(다른 사용자의 학습이면 "앞선 작업이 끝나길 기다리고 있어요")로 보인다 (`serialize.queue_wait`, 남은 시간은 `s3gen.EXPECTED_SECONDS` 기준 추정).
 - **결과 기록**: `voice_profiles.s3gen_status`(`queued` → `training` → `applied` / `skipped` / `failed`), `s3gen_report`(분할, 최적 step, 유사도 변화). `GET /api/voice`의 `tuning_report`로 볼 수 있다. 화면에는 "다듬는 중 / 다듬었어요 / 기본 목소리" 한 줄만 보인다.
@@ -251,6 +251,42 @@ backend/gpu_worker/
 - **GPU 필요**: FLOAT 코드가 `.cuda()`를 직접 불러서 CPU로는 돌지 않는다. GPU 없이 웹을 개발할 때는 `VIDEO_PROVIDER=local` 그대로 둔다.
 - **라이선스**: FLOAT는 비상업 라이선스(CC BY-NC)라 비상업 연구·PoC 용도로만 쓴다.
 
+### 이 PC(Windows)에서 TTS·음색 학습과 같이 돌리기
+
+WSL 없이 Windows에서 바로 돈다. 처음 한 번 (FLOAT 소스·체크포인트 약 2.4GB는 git에 넣지 않는다):
+
+```powershell
+conda create -n Wemeet-float python=3.10 -y
+$py = "$env:USERPROFILE\miniconda3\envs\Wemeet-float\python.exe"
+& $py -m pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
+git clone https://github.com/deepbrainai-research/float.git backend/gpu_worker/float
+git -C backend/gpu_worker/float checkout 3b5b2dfc3e65df26e7fbba17d9adb3f43747851c
+& $py -m pip install -r backend/gpu_worker/float/requirements.txt "numpy<2" runpod gdown "huggingface_hub<0.26"
+& $py -m gdown 1rvWuM12cyvNvBQNCLmG4Fr2L1rpjQBF0 -O backend/gpu_worker/float/checkpoints/float.pth
+& $py -c "from huggingface_hub import snapshot_download as d; ck='backend/gpu_worker/float/checkpoints/'; [d(repo_id=r, local_dir=ck+n, allow_patterns=['*.json','pytorch_model.bin','*.txt']) for r,n in [('facebook/wav2vec2-base-960h','wav2vec2-base-960h'),('r-f/wav2vec-english-speech-emotion-recognition','wav2vec-english-speech-emotion-recognition')]]"
+```
+
+```ini
+# backend/.env
+VIDEO_PROVIDER=runpod
+RUNPOD_VIDEO_ENDPOINT_ID=http://127.0.0.1:8010
+WEMEET_FLOAT_PYTHON=C:\Users\swlab\miniconda3\envs\Wemeet-float\python.exe
+```
+
+이러면 `npm run dev:all`이 영상 서버(127.0.0.1:8010, 이 PC에서만 접속)도 같이 띄우고, TTS·영상 서버가 준비된 뒤에 워커를 띄운다.
+처음 실행할 때는 얼굴 검출 가중치(약 90MB)를 받느라 약 1분, 그 뒤로는 약 5초 걸린다. 이미 떠 있으면 그대로 쓴다.
+
+RTX 4070(12GB)에서 잰 값:
+
+| | GPU 전체 사용량 | 비고 |
+|---|---|---|
+| TTS 서버 + 영상 서버 대기 | 7.0GB | 영상 서버만 약 2.7GB |
+| 영상 생성 중 최고 | 11.8GB | 21초 음성 → GPU 약 18초 |
+| 음색 학습(배치 4) 중 최고 | 11.9GB | 속도는 영상 서버 없을 때와 같음 (0.22초/step) |
+
+- 워커가 1개라 영상 생성과 음색 학습은 동시에 돌지 않는다. 둘 다 12.3GB 안에 들어가지만 여유는 0.5GB 정도라, 다른 GPU 프로그램(게임, 다른 모델)을 같이 띄우지 않는다.
+- 영상 서버는 영상 하나를 만들 때마다 생성에 쓴 메모리(약 4GB)를 돌려준다(`torch.cuda.empty_cache`). 돌려주지 않으면 대기 상태가 7.5GB로 남아서 음색 학습이 들어갈 자리가 없다.
+
 RunPod에 배포하지 않고 GPU PC(Linux 또는 WSL)에서 웹과 연결해 보기:
 
 ```bash
@@ -277,7 +313,7 @@ RUNPOD_VIDEO_ENDPOINT_ID=http://<GPU PC 주소>:8010
 
 - TTS 서버를 다른 머신에 둘 때: 서버를 `-HostAddr 0.0.0.0` + `WEMEET_API_KEY`로 띄우고 `WEMEET_TTS_URL`, `WEMEET_TTS_API_KEY` 설정
 - S3Gen 음색 학습: 적용 기준값(`S3GEN_MIN_VE_GAIN` 등) 확정, 실제 사용자 폰 녹음으로 효과 확인, 청취 평가
-- RunPod에 영상 핸들러(`gpu_worker/video_handler.py`, FLOAT + LoRA) 배포 → `VIDEO_PROVIDER=runpod`. FLOAT도 같은 GPU에서 돌리면 음색 학습(최대 약 9GB)과 메모리를 나눠 써야 한다
+- RunPod에 영상 핸들러(`gpu_worker/video_handler.py`, FLOAT + LoRA) 배포 → 엔드포인트 ID만 바꾸면 된다. 지금은 이 PC에서 TTS·음색 학습과 GPU를 나눠 쓴다 (위 '이 PC(Windows)에서 …')
 - 한국어 음성에서 감정 자동 추정 vs `VIDEO_EMOTION=neutral` 고정, LoRA 0/1 비교 (PoC A/B 설문에 활용)
 - 파일 저장소를 S3로 (`services/storage.py`), DB를 Postgres로 (`DATABASE_URL`)
 - PoC A/B 설문, 운영자 화면(작업 큐·GPU 비용·삭제 기록)

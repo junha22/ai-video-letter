@@ -1,5 +1,6 @@
 // 웹(Next.js) + API(FastAPI) + 작업 워커를 한 번에 실행한다: npm run dev:all
 // backend/.env가 TTS_PROVIDER=wemeet이면 TTS 서버(C:\WE_MEET\tts_server)도 같이 띄운다. 이미 떠 있으면 그대로 쓴다
+// VIDEO_PROVIDER=runpod이고 RUNPOD_VIDEO_ENDPOINT_ID가 이 PC 주소면 영상 서버(FLOAT, gpu_worker/video_handler.py)도 같이 띄운다
 // 포트 바꾸기: WEB_PORT=3001 API_PORT=8001 npm run dev:all
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -78,6 +79,32 @@ if (setting("TTS_PROVIDER", "local") === "wemeet") {
   }
 }
 
+// 영상 서버: 시작에 약 5초(처음 실행할 때는 얼굴 검출 가중치를 받느라 약 1분), VRAM 약 2.7GB. 이미 떠 있으면 그대로 쓴다.
+// RunPod 로컬 테스트 서버에는 상태 확인 경로가 없어서 /openapi.json 응답으로 확인한다
+const videoEndpoint = setting("RUNPOD_VIDEO_ENDPOINT_ID", "");
+const videoUrl =
+  setting("VIDEO_PROVIDER", "local") === "runpod" && /^https?:\/\//.test(videoEndpoint) ? new URL(videoEndpoint) : null;
+const videoPort = videoUrl ? videoUrl.port || "80" : "";
+const floatPython = setting("WEMEET_FLOAT_PYTHON", "");
+const videoHealthy = () =>
+  fetch(`${videoUrl.origin}/openapi.json`, { signal: AbortSignal.timeout(2000) })
+    .then((r) => r.ok)
+    .catch(() => false);
+let startVideo = false;
+if (videoUrl) {
+  if (!["127.0.0.1", "localhost"].includes(videoUrl.hostname)) {
+    console.log(`[dev] 영상 서버(${videoUrl.origin})가 다른 머신에 있어서 여기서 띄우지 않습니다.`);
+  } else if (await videoHealthy()) {
+    console.log(`[dev] 영상 서버가 이미 떠 있어서 그대로 씁니다 (${videoUrl.origin}).`);
+  } else if (!floatPython || !existsSync(floatPython)) {
+    console.warn("[dev] WEMEET_FLOAT_PYTHON(FLOAT 환경의 python)이 없어서 영상 서버를 띄우지 않습니다. README의 '영상 모델' 준비를 먼저 하세요.");
+  } else if (!(await portFree(videoPort, "127.0.0.1"))) {
+    busy.push(`영상 ${videoPort} (응답 없는 다른 프로그램)`);
+  } else {
+    startVideo = true;
+  }
+}
+
 if (busy.length) {
   console.error(`[dev] 포트가 이미 사용 중입니다: ${busy.join(", ")}`);
   console.error("[dev] 그 포트를 쓰는 프로그램을 끄거나 다른 포트로 띄우세요: $env:WEB_PORT=3001; $env:API_PORT=8001; npm run dev:all");
@@ -92,8 +119,8 @@ const env = {
   PYTHONUNBUFFERED: "1",
 };
 
-// TTS 서버는 자기 conda 환경(Wemeet-cb)의 python을 쓴다. 이 conda 환경의 DLL을 먼저 찾지 않도록 PATH에서 뺀다
-function ttsEnv() {
+// TTS 서버(Wemeet-cb)와 영상 서버(Wemeet-float)는 자기 conda 환경의 python을 쓴다. 이 conda 환경의 DLL을 먼저 찾지 않도록 PATH에서 뺀다
+function serverEnv() {
   const out = { ...env };
   delete out.CONDA_PREFIX;
   delete out.CONDA_DEFAULT_ENV;
@@ -107,7 +134,7 @@ function ttsEnv() {
 
 const procs = [
   { name: "api", color: 36, cmd: python, args: ["-m", "uvicorn", "app.main:app", "--reload", "--reload-dir", "app", "--port", apiPort], cwd: backend },
-  { name: "worker", color: 35, cmd: python, args: ["-m", "app.worker"], cwd: backend, afterTts: startTts },
+  { name: "worker", color: 35, cmd: python, args: ["-m", "app.worker"], cwd: backend, afterServers: startTts || startVideo },
   { name: "web", color: 33, cmd: process.execPath, args: [join(root, "node_modules", "next", "dist", "bin", "next"), "dev", "-p", webPort], cwd: root },
 ];
 if (startTts) {
@@ -117,7 +144,17 @@ if (startTts) {
     cmd: "powershell",
     args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ttsScript, "-Port", ttsPort],
     cwd: ttsDir,
-    env: ttsEnv(),
+    env: serverEnv(),
+  });
+}
+if (startVideo) {
+  procs.unshift({
+    name: "video",
+    color: 34,
+    cmd: floatPython,
+    args: [join(backend, "gpu_worker", "video_handler.py"), "--rp_serve_api", "--rp_api_host", "127.0.0.1", "--rp_api_port", videoPort],
+    cwd: backend,
+    env: { ...serverEnv(), NO_ALBUMENTATIONS_UPDATE: "1" },
   });
 }
 
@@ -145,20 +182,23 @@ function start({ name, color, cmd, args, cwd, env: procEnv }) {
   children.push(child);
 }
 
-// 워커는 시작하자마자 TTS 서버 연결을 확인하므로, 같이 띄울 때는 TTS 서버가 준비된 뒤에 띄운다
-async function startAfterTts(proc) {
+// 워커는 시작하자마자 TTS 서버 연결을 확인하고 곧바로 영상을 만들 수 있으므로, 같이 띄운 서버가 준비된 뒤에 띄운다
+const waitFor = [startTts && ["TTS 서버", ttsHealthy], startVideo && ["영상 서버", videoHealthy]].filter(Boolean);
+const serversReady = async () => (await Promise.all(waitFor.map(([, healthy]) => healthy()))).every(Boolean);
+async function startAfterServers(proc) {
   const deadline = Date.now() + 180_000; // 처음 실행하는 PC는 원본 모델(약 3GB)을 내려받느라 오래 걸린다
-  while (!stopping && Date.now() < deadline && !(await ttsHealthy())) {
+  while (!stopping && Date.now() < deadline && !(await serversReady())) {
     await new Promise((r) => setTimeout(r, 1000));
   }
   if (stopping) return;
-  if (await ttsHealthy()) console.log("[dev] TTS 서버 준비 완료, 워커를 띄웁니다.");
-  else console.warn("[dev] TTS 서버가 3분 안에 뜨지 않았습니다. 워커는 먼저 띄우고, 영상 만들 때 다시 연결합니다.");
+  const names = waitFor.map(([name]) => name).join("·");
+  if (await serversReady()) console.log(`[dev] ${names} 준비 완료, 워커를 띄웁니다.`);
+  else console.warn(`[dev] ${names}가 3분 안에 뜨지 않았습니다. 워커는 먼저 띄우고, 영상 만들 때 다시 연결합니다.`);
   start(proc);
 }
 
 for (const proc of procs) {
-  if (proc.afterTts) startAfterTts(proc);
+  if (proc.afterServers) startAfterServers(proc);
   else start(proc);
 }
 
@@ -178,3 +218,4 @@ process.on("SIGTERM", shutdown);
 
 console.log(`[dev] 웹 http://localhost:${webPort}  ·  API http://127.0.0.1:${apiPort}/docs`);
 if (startTts) console.log(`[dev] TTS 서버 ${ttsUrl.origin} 띄우는 중 (약 15초). 준비되면 워커가 뜹니다.`);
+if (startVideo) console.log(`[dev] 영상 서버 ${videoUrl.origin} 띄우는 중 (약 5초). 준비되면 워커가 뜹니다.`);
