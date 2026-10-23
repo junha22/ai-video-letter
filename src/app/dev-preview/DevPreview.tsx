@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Camera, Check, Heart, House, Leaf, Mic, MonitorP
 import { Button, Card } from "@/components/ui";
 import { FamilyIllustration } from "../home/FamilyIllustration";
 import { LoginPreview } from "./LoginPreview";
+import { LetterCompanion, PhotoGuide, VoiceWorkspace } from "@/components/StudioPanels";
 
 // 이 모듈은 프리뷰 전용이다. 실제 화면, 인증 훅, 알림, API 모듈을 불러오지 않는다.
 const SCREENS = [
@@ -151,31 +152,33 @@ export function DevPreview() {
 
           {screen === "register" && <>
             {heading("VOICE & FACE", "목소리와 사진을 준비해 주세요", "녹음과 사진 등록 화면의 샘플입니다. 마이크·카메라·파일에 접근하지 않습니다.")}
-            <PreviewCard>
-              <h2 className="text-2xl font-bold">당신의 목소리를 들려주세요 🎙️</h2><p className="mb-6 mt-2 text-sm text-[#737d74]">조용한 곳에서 편안하게 읽는 과정을 미리 살펴보세요.</p>
-              <div className="grid gap-5 md:grid-cols-[1.25fr_0.75fr]">
-                <div className="rounded-2xl border border-[#e7ebe3] bg-[#fbfcf9] p-6"><p className="text-xs font-bold text-[#737d74]">읽기 연습 · 샘플 문장 1 / 6</p><blockquote className="my-6 text-xl font-bold leading-loose">“엄마, 오늘 하늘이 참 맑아.<br />좋은 하루 보내고, 맛있는 밥도 꼭 챙겨 먹어!”</blockquote><div role="progressbar" aria-label="샘플 녹음 진행률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={voiceReady ? 100 : 0} className="h-2 overflow-hidden rounded-full bg-[#e7ebe4]"><div className={`h-full rounded-full bg-[#315d4b] ${voiceReady ? "w-full" : "w-0"}`} /></div><p className="mt-3 text-xs text-[#737d74]">샘플 상태: {voiceReady ? "등록 완료 · 100%" : "등록 전 · 0%"}</p></div>
-                <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-[#edf3eb] p-6"><span className="rounded-full bg-[#315d4b] p-5 text-white"><Mic size={28} /></span><strong>{voiceReady ? "샘플 등록 완료" : "목소리 등록 프리뷰"}</strong><PreviewButton onClick={() => setVoiceReady(!voiceReady)}>{voiceReady ? "등록 전 상태 보기" : "완료 상태 보기"}</PreviewButton><p className="text-xs text-[#647b67]">실제 녹음·학습 없음</p></div>
-              </div>
-              <h3 className="mb-3 mt-8 text-lg font-bold">얼굴 사진 등록</h3>
-              <button type="button" onClick={() => setPhotoReady(!photoReady)} className="flex w-full flex-wrap items-center justify-center gap-5 rounded-2xl border-2 border-dashed border-[#cbd9ce] bg-[#f9fbf7] p-6 text-left">
+            <VoiceWorkspace
+              reading={<><p className="mb-5 text-xs font-semibold text-[#73906d]">읽기 연습 · 샘플 문장 1 / 6</p><blockquote className="text-[25px] font-semibold leading-[1.8] tracking-tight text-[#344a38] sm:text-[30px]">“엄마, 오늘 하늘이 참 맑아.<br />좋은 하루 보내고, 맛있는 밥도 꼭 챙겨 먹어!”</blockquote><div role="progressbar" aria-label="샘플 녹음 진행률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={voiceReady ? 100 : 0} className="mt-7 h-1.5 overflow-hidden rounded-full bg-[#e7ebe4]"><div className={`h-full rounded-full bg-[#315d4b] ${voiceReady ? "w-full" : "w-0"}`} /></div><p className="mt-3 text-[11px] text-[#98a18e]">샘플 상태: {voiceReady ? "등록 완료 · 100%" : "등록 전 · 0%"}</p></>}
+              controls={<><span className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-[#f0ecd9] text-[#284f3e] shadow-[0_0_0_10px_rgba(255,255,255,0.05)]"><Mic size={34} strokeWidth={1.5} /></span><strong className="mb-5 text-sm font-medium text-[#e5ecdc]">{voiceReady ? "샘플 등록 완료" : "목소리 등록 프리뷰"}</strong><button type="button" onClick={() => setVoiceReady(!voiceReady)} className="min-h-12 w-full rounded-2xl border border-white/25 px-5 py-3 text-sm font-medium text-[#e9eddb] transition-colors hover:bg-white/10">{voiceReady ? "등록 전 상태 보기" : "완료 상태 보기"}</button><p className="mt-4 text-[11px] text-[#9bb398]">실제 녹음·학습 없음</p></>}
+            />
+            <div className="mb-5 mt-9"><p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">ONE FAMILIAR FACE</p><h3 className="mt-2 text-xl font-bold">마음에 담을 나의 얼굴</h3></div>
+            <div className="grid items-start gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+              <PhotoGuide />
+              <div className="rounded-[28px] border border-[#e3e8df] bg-white p-6 sm:p-8">
+              <button type="button" onClick={() => setPhotoReady(!photoReady)} className="flex min-h-[320px] w-full flex-col items-center justify-center gap-5 rounded-[22px] border border-dashed border-[#bdcdb9] bg-[#f7f8f1] p-6 text-center">
                 <span className="h-20 w-20 overflow-hidden rounded-2xl bg-[#e8f0e5]">{photoReady ? <Portrait /> : <Camera size={32} className="m-6 text-[#578161]" />}</span><span><strong className="block text-sm">{photoReady ? "샘플 사진 등록 완료" : "샘플 사진 표시하기"}</strong><small className="mt-2 block text-[#737d74]">정면 · 밝은 조명 · 클릭하면 샘플 상태 전환</small></span>
               </button>
               <div className="mt-7 flex justify-end"><PreviewButton onClick={() => navigate("compose")}>메시지 작성 화면 <ArrowRight size={16} /></PreviewButton></div>
-            </PreviewCard>
+              </div>
+            </div>
           </>}
 
           {screen === "compose" && <>
             {heading("WRITE YOUR HEART", "어떤 이야기를 전할까요?", "샘플 문구를 선택하거나 자유롭게 입력해 보세요. 입력은 현재 화면의 메모리에서만 유지됩니다.")}
             <PreviewCard>
-              <div className="grid gap-6 xl:grid-cols-[1fr_260px]">
+              <div className="grid items-start gap-6 lg:grid-cols-[1.5fr_1fr]">
                 <div><h2 className="text-2xl font-bold">오늘의 마음을 적어 보세요</h2><p className="mt-2 text-sm text-[#737d74]">받는 분: 어머니 · 샘플</p>
-                  <div className="my-5 flex flex-wrap gap-2">{(Object.keys(TOPICS) as (keyof typeof TOPICS)[]).map((key) => <button type="button" key={key} aria-pressed={topic === key} onClick={() => { setTopic(key); setMessage(TOPICS[key]); }} className={`rounded-full border px-4 py-2 text-sm ${topic === key ? "border-[#bdd3c1] bg-[#e5f0e8] font-bold text-[#32664b]" : "border-[#e9eae3] text-[#737d74]"}`}>{key === "안부" ? "💌" : key === "건강" ? "🍀" : "🎂"} {key}</button>)}</div>
+                  <div className="my-5 flex flex-wrap gap-2">{(Object.keys(TOPICS) as (keyof typeof TOPICS)[]).map((key) => <button type="button" key={key} aria-pressed={topic === key} onClick={() => { setTopic(key); setMessage(TOPICS[key]); }} className={`rounded-full border px-4 py-2 text-sm ${topic === key ? "border-[#315d4b] bg-[#315d4b] font-semibold text-white" : "border-[#e5eadf] bg-[#fafbf7] text-[#809074]"}`}>{key === "안부" ? "💌" : key === "건강" ? "🍀" : "🎂"} {key}</button>)}</div>
                   <label htmlFor="preview-message" className="mb-3 block text-sm font-bold">영상 편지 내용 · 샘플 입력</label>
-                  <div className="overflow-hidden rounded-2xl border border-[#e5e8e1]"><textarea id="preview-message" value={message} onChange={(event) => { setMessage(event.target.value); setReviewReady(false); }} maxLength={220} rows={6} className="block w-full resize-y bg-white p-5 text-base leading-8 focus:outline focus:outline-2 focus:outline-[#6c957c]" /><p className="border-t border-[#e5e8e1] bg-[#fafbf8] px-4 py-3 text-right text-xs text-[#737d74]">{message.length} / 220</p></div>
+                  <div className="overflow-hidden rounded-2xl border border-[#e3e8da]"><textarea id="preview-message" value={message} onChange={(event) => { setMessage(event.target.value); setReviewReady(false); }} maxLength={220} rows={6} className="block w-full resize-y bg-[#fafbf7] p-5 text-base leading-9 text-[#3e5541] focus:outline focus:outline-2 focus:outline-[#6c957c]" /><p className="border-t border-[#e5e8e1] bg-[#fafbf8] px-4 py-3 text-right text-xs text-[#737d74]">{message.length} / 220</p></div>
                   <p className="mt-4 rounded-xl bg-[#f7f9f4] p-4 text-xs leading-6 text-[#647b67]">대본 생성 API는 연결하지 않았습니다. 아래 버튼은 입력한 문구를 프리뷰 화면에 표시합니다.</p>
                 </div>
-                <aside className="flex flex-col items-center rounded-2xl bg-[#f8f1e6] p-6"><span className="rounded-full bg-white px-3 py-1 text-xs text-[#81786a]">어머니에게 · 샘플</span><div className="my-5 h-28 w-28 overflow-hidden rounded-full"><Portrait /></div><h3 className="text-sm font-bold">미리 읽어 보는 편지 💌</h3><blockquote className="mt-4 whitespace-pre-wrap break-words text-center text-sm leading-8 text-[#756c60]">“{message}”</blockquote></aside>
+                <LetterCompanion recipient="어머니" example={message} />
               </div>
               <div className="mt-7 flex flex-wrap justify-between gap-3"><PreviewButton secondary onClick={() => navigate("register")}><ArrowLeft size={16} /> 이전</PreviewButton><PreviewButton disabled={!message.trim()} onClick={() => { setReviewReady(false); navigate("review"); }}>영상 화면 미리보기 <ArrowRight size={16} /></PreviewButton></div>
             </PreviewCard>

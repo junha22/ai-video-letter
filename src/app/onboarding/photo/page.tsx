@@ -6,6 +6,7 @@ import { Camera, CircleAlert, CircleCheck } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import type { PhotoInfo } from "@/lib/types";
 import { AppShell } from "@/components/AppShell";
+import { PhotoGuide, PhotoPlaceholder } from "@/components/StudioPanels";
 import { Button, Card, LinkButton, Notice, Spinner, StepHeader } from "@/components/ui";
 
 type UploadResult = { ok: boolean; problems: string[]; photo: PhotoInfo | null };
@@ -52,17 +53,11 @@ export default function PhotoPage() {
       {photo === undefined ? (
         <Spinner />
       ) : (
-        <>
-          <Card>
-            <p className="mb-2 font-bold text-stone-900">이런 사진이 좋아요</p>
-            <ul className="list-disc space-y-1 pl-5 text-[15px] text-stone-700">
-              <li>정면을 바라보고 혼자 나온 사진</li>
-              <li>얼굴이 화면의 3분의 1 이상으로 크게 나온 사진</li>
-              <li>밝은 곳에서 찍은 선명한 사진 (모자·선글라스·마스크 없이)</li>
-            </ul>
-          </Card>
-
-          <div className="mt-5">
+        <div className="grid items-start gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+          <PhotoGuide />
+          <Card className="min-w-0 !rounded-[28px] p-6 sm:p-8">
+          <div className="mb-6 flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">MY PORTRAIT</p><h2 className="mt-2 text-xl font-bold text-[#293d31]">마음에 담을 나의 얼굴</h2></div><span className="rounded-full bg-[#f0f4ea] px-3 py-1.5 text-[10px] text-[#75896d]">사진 1장</span></div>
+          <div>
             {preview || photo ? (
               <div className="relative mx-auto aspect-[4/5] w-full max-w-xs overflow-hidden rounded-3xl bg-stone-200">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -73,7 +68,7 @@ export default function PhotoPage() {
                   </div>
                 )}
               </div>
-            ) : null}
+            ) : <PhotoPlaceholder />}
           </div>
 
           {problems.length > 0 && (
@@ -120,7 +115,9 @@ export default function PhotoPage() {
               완료
             </LinkButton>
           )}
-        </>
+          <p className="mt-4 text-center text-[11px] leading-6 text-[#909b86]">사진을 고르면 얼굴과 화질을 확인해 드려요.</p>
+          </Card>
+        </div>
       )}
     </AppShell>
   );

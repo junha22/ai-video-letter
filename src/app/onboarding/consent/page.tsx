@@ -51,13 +51,14 @@ export default function ConsentPage() {
       {!state ? (
         <Spinner />
       ) : (
-        <>
+        <div className="grid items-start gap-6 lg:grid-cols-[1.3fr_1fr]">
+          <div>
           <button
             onClick={() => {
               const next = !all;
               setChecked({ voice: next, face: next, parent_receive: next });
             }}
-            className="mb-3 flex w-full items-center gap-3 rounded-2xl border-2 border-ongi-700 bg-white px-4 py-4 text-left text-[17px] font-bold"
+            className="mb-4 flex w-full items-center gap-3 rounded-[22px] border border-[#a1b794] bg-[#f0f5e9] px-5 py-5 text-left text-base font-semibold text-[#3d593f]"
           >
             <Box on={all} />
             모두 동의해요
@@ -68,7 +69,7 @@ export default function ConsentPage() {
               <button
                 key={item.kind}
                 onClick={() => setChecked({ ...checked, [item.kind]: !checked[item.kind] })}
-                className="flex w-full items-start gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-4 text-left"
+                className="flex w-full items-start gap-4 rounded-[22px] border border-[#e3e8df] bg-white px-5 py-5 text-left transition-colors hover:border-[#bdcdb4]"
               >
                 <Box on={checked[item.kind]} />
                 <span>
@@ -79,9 +80,11 @@ export default function ConsentPage() {
             ))}
           </div>
 
-          <div className="mt-5 rounded-2xl bg-stone-100 p-4 text-sm leading-relaxed text-stone-700">
-            <p className="mb-1 flex items-center gap-1.5 font-bold text-stone-900">
-              <ShieldCheck className="h-4 w-4" /> 이렇게 지켜요
+          </div>
+          <div className="rounded-[28px] border border-[#ece4d5] bg-[#f5efe2] p-6 sm:p-8">
+          <div className="text-sm leading-7 text-stone-700">
+            <p className="mb-5 flex items-center gap-3 text-lg font-semibold text-[#5c654b]">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/60"><ShieldCheck className="h-5 w-5 text-[#7a8967]" /></span> 이렇게 지켜요
             </p>
             <ul className="list-disc space-y-1 pl-5">
               <li>영상은 내가 미리 보고 승인한 것만 보내져요.</li>
@@ -99,7 +102,8 @@ export default function ConsentPage() {
           <Button onClick={submit} disabled={!all} loading={busy} className="mt-6 w-full">
             동의하고 계속하기
           </Button>
-        </>
+          </div>
+        </div>
       )}
     </AppShell>
   );
@@ -109,7 +113,7 @@ function Box({ on }: { on: boolean }) {
   return (
     <span
       className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 ${
-        on ? "border-ongi-700 bg-ongi-700 text-white" : "border-stone-300 bg-white"
+        on ? "border-[#315d4b] bg-[#315d4b] text-white" : "border-[#d9e1cf] bg-[#fafbf7]"
       }`}
     >
       {on && <Check className="h-4 w-4" strokeWidth={3} />}

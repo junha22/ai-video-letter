@@ -18,7 +18,7 @@ const PRESETS = [
 const RELATIONS = ["어머니", "아버지", "할머니", "할아버지", "기타"];
 
 const input =
-  "w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base outline-none focus:border-ongi-600";
+  "w-full rounded-2xl border border-[#e3e8da] bg-[#fafbf7] px-4 py-3.5 text-base text-[#3e5541] outline-none placeholder:text-[#a1ab95] focus:border-[#9bb38b] focus:ring-4 focus:ring-[#f0f4e8]";
 
 export default function ParentPage() {
   const router = useRouter();
@@ -58,7 +58,8 @@ export default function ParentPage() {
       {!loaded ? (
         <Spinner />
       ) : (
-        <div className="space-y-6">
+        <div className="grid gap-x-8 gap-y-7 rounded-[28px] border border-[#e3e8df] bg-white p-6 shadow-[0_12px_40px_rgba(36,62,44,0.04)] sm:p-8 lg:grid-cols-2">
+          <div className="border-b border-[#edf0e8] pb-5 lg:col-span-2"><p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">SOMEONE SPECIAL</p><h2 className="mt-2 text-xl font-bold text-[#3e5541]">가장 다정한 이름으로 불러 주세요</h2><p className="mt-2 text-xs leading-6 text-[#8a9681]">익숙한 호칭과 말투가 편지에 자연스럽게 담겨요.</p></div>
           <div>
             <label className="mb-2 block font-bold text-stone-800">평소에 뭐라고 부르세요?</label>
             <div className="mb-2 flex flex-wrap gap-2">
@@ -68,8 +69,8 @@ export default function ParentPage() {
                   onClick={() => setForm({ ...form, ...p })}
                   className={`rounded-full border px-4 py-2 text-[15px] font-semibold ${
                     form.nickname === p.nickname
-                      ? "border-ongi-700 bg-ongi-700 text-white"
-                      : "border-stone-300 bg-white text-stone-700"
+                      ? "border-[#315d4b] bg-[#315d4b] text-white"
+                      : "border-[#e5eadf] bg-[#fafbf7] text-[#809074] hover:border-[#bdcdb4]"
                   }`}
                 >
                   {p.nickname}
@@ -122,8 +123,8 @@ export default function ParentPage() {
             />
           </div>
 
-          {error && <Notice tone="error">{error}</Notice>}
-          <Button onClick={submit} disabled={!form.nickname.trim() || !form.phone.trim()} loading={busy} className="w-full">
+          {error && <div className="lg:col-span-2"><Notice tone="error">{error}</Notice></div>}
+          <Button onClick={submit} disabled={!form.nickname.trim() || !form.phone.trim()} loading={busy} className="w-full lg:col-span-2 lg:w-auto lg:min-w-48 lg:justify-self-end">
             {editing ? "저장" : "다음"}
           </Button>
         </div>

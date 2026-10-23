@@ -54,8 +54,11 @@ export default function SettingsPage() {
 
   return (
     <AppShell back="/home">
-      <h1 className="mb-5 text-2xl font-extrabold text-stone-900">설정</h1>
-      <Card className="p-2">
+      <p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">MY LITTLE SPACE</p>
+      <h1 className="mt-3 text-[27px] font-bold tracking-tighter text-[#2b3d30] sm:text-[34px]">나의 설정</h1>
+      <p className="mb-8 mt-3 text-sm leading-7 text-[#7c8775]">나와 가족의 연결을 관리해요.</p>
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+      <Card className="!rounded-[28px] p-5 sm:p-7">
         <p className="px-3 pb-1 pt-2 text-sm text-stone-500">
           {me.user.name} · {me.user.kakao ? "카카오 로그인" : "개발용 로그인"}
         </p>
@@ -72,7 +75,7 @@ export default function SettingsPage() {
       </Card>
 
       {me.consent_ok && (
-        <Card className="mt-6 border-red-200">
+        <Card className="border-red-200">
           <p className="font-bold text-stone-900">동의 철회</p>
           <p className="mt-1 text-sm leading-relaxed text-stone-600">
             녹음, 목소리 모델, 사진, 만든 영상을 모두 지우고 보낸 링크를 막아요. 다시 쓰려면 처음부터 등록해야 해요.
@@ -87,6 +90,7 @@ export default function SettingsPage() {
           </Button>
         </Card>
       )}
+      </div>
     </AppShell>
   );
 }
