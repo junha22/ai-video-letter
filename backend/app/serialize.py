@@ -51,7 +51,15 @@ def consent_state(db: Session, user_id: int) -> dict:
 def parent(p: ParentProfile | None) -> dict | None:
     if not p:
         return None
-    return {"nickname": p.nickname, "relation": p.relation, "phone": p.phone, "tone_examples": p.tone_examples}
+    return {
+        "nickname": p.nickname,
+        "relation": p.relation,
+        "phone": p.phone,
+        "child_call_name": p.child_call_name,
+        "child_name": p.child_name,
+        "speech_level": p.speech_level,
+        "tone_examples": p.tone_examples,
+    }
 
 
 def voice_seconds(db: Session, user_id: int) -> float:
@@ -145,9 +153,24 @@ def message(db: Session, m: Message) -> dict:
         "memo": m.memo,
         "template": m.template,
         "template_label": script_llm.TEMPLATES.get(m.template, ("안부",))[0],
+        "candidates": [
+            {
+                **c,
+                "char_count": script_llm.char_count(c["script"]),
+                "est_seconds": script_llm.estimate_seconds(c["script"]),
+                "warnings": script_llm.fact_warnings(c["script"], m.memo) if c["source"] == "llm" else [],
+                # 3번 다 고쳐 쓰지 못한 대본도 후보로 나오므로, 고르기 전에 그대로는 영상을 못 만든다는 걸 보여 준다
+                "problems": script_llm.validate(c["script"]),
+            }
+            for c in m.candidates or []
+        ],
+        "chosen_style": m.chosen_style,
+        "speech_level": m.speech_level,
         "script": m.script,
         "script_source": m.script_source,
-        "script_problems": script_llm.validate(m.script),
+        "script_problems": script_llm.validate(m.script) if m.script else [],
+        # 직접 고친 대본은 자녀가 일부러 넣은 것일 수 있어서 AI 대본에만 경고한다
+        "script_warnings": script_llm.fact_warnings(m.script, m.memo) if m.script_source == "llm" else [],
         "char_count": script_llm.char_count(m.script),
         "est_seconds": script_llm.estimate_seconds(m.script),
         "status": m.status,

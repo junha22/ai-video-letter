@@ -1,5 +1,6 @@
 import secrets
 from datetime import timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -56,18 +57,33 @@ def create_message(body: MessageIn, user: User = Depends(current_user), db: Sess
     if not parent:
         raise HTTPException(400, "먼저 부모님 정보를 등록해 주세요.")
     template = body.template if body.template in script_llm.TEMPLATES else "greeting"
-    result = script_llm.generate(body.memo.strip(), template, parent.nickname, parent.relation, user.name, parent.tone_examples)
-    m = Message(
-        user_id=user.id,
-        parent_id=parent.id,
-        memo=body.memo.strip(),
-        template=template,
-        script=result.script,
-        script_source=result.source,
-    )
+    m = Message(user_id=user.id, parent_id=parent.id, memo=body.memo.strip(), template=template)
+    m.parent = parent
+    _fill_candidates(m)
     db.add(m)
     db.commit()
     return serialize.message(db, m)
+
+
+def _fill_candidates(m: Message, level: str | None = None) -> None:
+    """후보 대본을 새로 만든다. 후보가 하나뿐이면(AI 연결 실패 등) 고를 필요 없이 바로 쓴다.
+    말투는 이번에 바꾼 값 > 이 메시지에 쓰던 값 > 부모님 정보·메모로 판단한 값 순서."""
+    p = m.parent
+    m.speech_level = level or m.speech_level or script_llm.speech_level(p.tone_examples, m.memo, p.speech_level)
+    m.candidates = script_llm.generate_candidates(
+        m.memo, m.template, p.nickname, p.relation, p.child_name, p.tone_examples, m.speech_level
+    )
+    m.chosen_style = None
+    m.script = ""
+    m.script_source = "llm"
+    if len(m.candidates) == 1:
+        _choose(m, m.candidates[0])
+
+
+def _choose(m: Message, candidate: dict) -> None:
+    m.chosen_style = candidate["style"]
+    m.script = candidate["script"]
+    m.script_source = candidate["source"]
 
 
 @router.get("/{message_id}")
@@ -94,15 +110,39 @@ def edit_script(message_id: int, body: ScriptIn, user: User = Depends(current_us
     return serialize.message(db, m)
 
 
-@router.post("/{message_id}/rewrite")
-def rewrite_script(message_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+class ChooseIn(BaseModel):
+    style: str = Field(max_length=20)
+
+
+@router.post("/{message_id}/choose")
+def choose_candidate(message_id: int, body: ChooseIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     m = _get(db, user, message_id)
     if m.status not in EDITABLE:
         raise HTTPException(409, "이미 승인한 메시지는 고칠 수 없어요.")
-    p = m.parent
-    result = script_llm.generate(m.memo, m.template, p.nickname, p.relation, user.name, p.tone_examples)
-    m.script = result.script
-    m.script_source = result.source
+    candidate = next((c for c in m.candidates or [] if c["style"] == body.style), None)
+    if not candidate:
+        raise HTTPException(404, "대본 후보를 찾을 수 없어요.")
+    if candidate["script"] != m.script:
+        _clear_render(m)
+    _choose(m, candidate)
+    m.status = "draft"
+    db.commit()
+    return serialize.message(db, m)
+
+
+class RewriteIn(BaseModel):
+    # 후보 화면의 "존댓말로 바꾸기" 버튼. 없으면 쓰던 말투 그대로 새로 쓴다
+    speech_level: Literal["반말", "존댓말"] | None = None
+
+
+@router.post("/{message_id}/rewrite")
+def rewrite_script(
+    message_id: int, body: RewriteIn | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
+    m = _get(db, user, message_id)
+    if m.status not in EDITABLE:
+        raise HTTPException(409, "이미 승인한 메시지는 고칠 수 없어요.")
+    _fill_candidates(m, body.speech_level if body else None)
     m.status = "draft"
     _clear_render(m)
     db.commit()
@@ -114,6 +154,8 @@ def render(message_id: int, user: User = Depends(current_user), db: Session = De
     m = _get(db, user, message_id)
     if m.status not in EDITABLE:
         raise HTTPException(409, "이미 승인한 메시지예요.")
+    if not m.script:
+        raise HTTPException(400, "대본 후보 중 하나를 먼저 골라 주세요.")
     problems = script_llm.validate(m.script)
     if problems:
         raise HTTPException(400, " ".join(problems))

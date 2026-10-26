@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -92,6 +93,8 @@ class ParentIn(BaseModel):
     nickname: str = Field(min_length=1, max_length=20)
     relation: str = Field(min_length=1, max_length=20)
     phone: str = Field(min_length=9, max_length=20)
+    child_call_name: str = Field(default="", max_length=20)
+    speech_level: Literal["", "반말", "존댓말"] = ""
     tone_examples: str = Field(default="", max_length=500)
 
 
@@ -105,6 +108,8 @@ def put_parent(body: ParentIn, user: User = Depends(current_user), db: Session =
     profile.nickname = body.nickname.strip()
     profile.relation = body.relation.strip()
     profile.phone = phone
+    profile.child_call_name = body.child_call_name.strip()
+    profile.speech_level = body.speech_level
     profile.tone_examples = body.tone_examples.strip()
     db.add(profile)
     db.commit()

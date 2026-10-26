@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db, iso, utcnow
-from ..models import Message, Notification, ShareLink, User
+from ..models import Message, Notification, ShareLink
 from ..services import script_llm, storage
 
 router = APIRouter(prefix="/api/watch", tags=["watch"])
@@ -29,7 +29,6 @@ def _link(db: Session, token: str) -> ShareLink:
 def watch_info(token: str, db: Session = Depends(get_db)):
     link = _link(db, token)
     m = link.message
-    child = db.get(User, m.user_id)
     others = db.execute(
         select(ShareLink.token, Message.created_at, Message.script)
         .join(Message, Message.id == ShareLink.message_id)
@@ -44,7 +43,7 @@ def watch_info(token: str, db: Session = Depends(get_db)):
         .limit(10)
     ).all()
     return {
-        "child_name": child.name if child else "",
+        "child_name": m.parent.child_name,
         "nickname": m.parent.nickname,
         "created_at": iso(m.created_at),
         "duration": m.duration,

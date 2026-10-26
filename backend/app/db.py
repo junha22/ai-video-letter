@@ -59,15 +59,21 @@ def init_db() -> None:
 
 
 def _add_missing_columns() -> None:
-    """create_all은 이미 있는 테이블에 새 칸을 넣지 않는다. 비워 둬도 되는(nullable) 새 칸만 ALTER TABLE로 추가한다.
-    칸 이름 변경·삭제나 NOT NULL 칸 추가가 필요해지면 Alembic으로 옮긴다."""
+    """create_all은 이미 있는 테이블에 새 칸을 넣지 않는다. 모델에 새로 생긴 칸을 ALTER TABLE로 추가한다 (개발용 간이 마이그레이션).
+    기본값이 고정값이면 DEFAULT로 같이 넣어서 기존 행도 그 값을 갖는다.
+    칸 이름 변경·삭제는 처리하지 않으므로 운영 DB로 옮길 때는 Alembic을 쓴다."""
     quote = engine.dialect.identifier_preparer.quote
     for table in Base.metadata.sorted_tables:
         existing = {c["name"] for c in inspect(engine).get_columns(table.name)}
         for col in table.columns:
-            if col.name in existing or not col.nullable:
+            if col.name in existing:
                 continue
+            default = col.default.arg if col.default is not None and col.default.is_scalar else None
             ddl = f"ALTER TABLE {quote(table.name)} ADD COLUMN {quote(col.name)} {col.type.compile(engine.dialect)}"
+            if isinstance(default, str):
+                ddl += " DEFAULT '" + default.replace("'", "''") + "'"
+            elif isinstance(default, (bool, int, float)):
+                ddl += f" DEFAULT {int(default) if isinstance(default, bool) else default}"
             try:
                 with engine.begin() as conn:
                     conn.execute(text(ddl))
