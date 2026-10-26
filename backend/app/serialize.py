@@ -181,6 +181,7 @@ def message(db: Session, m: Message) -> dict:
         "poster_url": f"/api/messages/{m.id}/poster?v={version}" if has_video else None,
         "audio_url": f"/api/messages/{m.id}/audio?v={version}" if has_video and m.audio_path else None,
         "tts_seed": m.tts_seed,
+        "emotion": m.emotion,
         "job": job(render_job),
         "wait": queue_wait(db, render_job, m.user_id) if m.status == "generating" else None,
         "share": {

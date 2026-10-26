@@ -14,9 +14,16 @@
   a_cfg_scale    float          선택. 음성 반영 강도 (기본 2)
   e_cfg_scale    float          선택. 감정 반영 강도 (기본 1)
   nfe            int            선택. ODE 단계 수 (기본 10)
+  -- 생성 조정 (float_tuning.py, Kaggle 노트북 float_infer.ipynb에서 옮김). 주지 않으면 FLOAT 원래 동작 --
+  r_cfg_scale    float          선택. 사진 충실도. 올리면 시선·기본 표정이 사진에서 덜 벗어난다 (기본 1 = 끔, 노트북 추천 3)
+  ref_mode       str            선택. 사진 충실도 적용 범위 free|eye|all (기본 free = 입·감정은 살림)
+  eye_stable     float          선택. 0~1. 시선 떨림을 줄이고 사진 속 시선 쪽으로 당김 (기본 0 = 끔, 노트북 추천 0.4)
+  blink_gap      float          선택. 초. 이보다 가깝게 붙은 깜빡임을 지움 (기본 0 = 끔, 노트북 추천 3)
+  dejump         bool           선택. 고개·표정이 갑자기 튀는 프레임의 앞뒤만 부드럽게 (기본 false, 노트북 추천 true)
 출력:
-  {"video_b64": str(mp4), "width", "height", "frames", "fps", "crop", "seconds"}
+  {"video_b64": str(mp4), "width", "height", "frames", "fps", "crop", "notes", "seconds"}
   crop: 얼굴을 어떻게 잘랐는지 (float = FLOAT 검출기, face_box = 입력 face, center = 가운데)
+  notes: 생성 조정 기록 (예: "깜빡임 6회 중 3회 남김")
 
 준비 (GPU 서버/이미지에서 한 번, Linux + CUDA):
   git clone https://github.com/deepbrainai-research/float.git gpu_worker/float
@@ -78,6 +85,8 @@ import runpod  # noqa: E402
 import torch  # noqa: E402
 from generate import InferenceAgent, InferenceOptions  # noqa: E402  (FLOAT 원본 generate.py)
 
+import float_tuning as tuning  # noqa: E402  (같은 폴더)
+
 EMOTIONS = ("angry", "disgust", "fear", "happy", "neutral", "sad", "surprise")
 
 
@@ -129,6 +138,7 @@ _started = time.monotonic()
 OPT = _options()
 AGENT = InferenceAgent(OPT)
 ADAPTER = LoRA(AGENT.G.fmt, LORA_PATH)
+REF_GUIDANCE = tuning.RefGuidance(AGENT.G.fmt)
 print(f"[video_handler] FLOAT + LoRA({LORA_PATH.name}, {ADAPTER.layers}층) 준비 {time.monotonic() - _started:.1f}초", flush=True)
 
 
@@ -157,8 +167,9 @@ def _crop(img: np.ndarray, face) -> tuple[np.ndarray, str]:
 
 
 @torch.no_grad()
-def _generate(crop: np.ndarray, audio_path: str, *, seed, emo, a_cfg_scale, e_cfg_scale, nfe) -> torch.Tensor:
-    dp = AGENT.data_processor
+def _generate(crop: np.ndarray, audio_path: str, *, seed, emo, a_cfg_scale, e_cfg_scale, nfe,
+              r_cfg_scale, ref_mode, eye_stable, blink_gap, dejump) -> tuple[torch.Tensor, list[str]]:
+    G, dp = AGENT.G, AGENT.data_processor
     s = dp.transform(image=crop)["image"].unsqueeze(0)
     a = dp.default_aud_loader(audio_path).unsqueeze(0)
     # FLOAT.sample은 인자 대신 opt.nfe / opt.fix_noise_seed / opt.seed를 읽는다
@@ -166,12 +177,35 @@ def _generate(crop: np.ndarray, audio_path: str, *, seed, emo, a_cfg_scale, e_cf
     OPT.fix_noise_seed = seed is not None
     if seed is not None:
         OPT.seed = seed
-    d_hat = AGENT.G.inference(
-        data={"s": s, "a": a, "p": None, "e": None},
-        a_cfg_scale=a_cfg_scale, r_cfg_scale=1.0, e_cfg_scale=e_cfg_scale,
-        emo=emo, nfe=nfe, seed=seed,
-    )["d_hat"]
-    return d_hat.unsqueeze(0) if d_hat.dim() == 3 else d_hat  # (T, 3, H, W), -1~1
+
+    # FLOAT.inference와 같은 순서(사진 인코딩 → 움직임 생성 → 프레임 복원)를 직접 밟는다.
+    # 중간에 나오는 움직임을 눈 후처리로 손질하고, 사진 인코딩 결과를 눈·입 방향 분석에 같이 쓰기 위해서다
+    s_r, lam, feats = G.encode_image_into_latent(s.to(DEVICE))
+    r_s = G.motion_autoencoder.dec.direction(lam)
+
+    notes, dirs = [], None
+    post = eye_stable > 0 or blink_gap > 0 or dejump
+    if post or (r_cfg_scale != 1.0 and ref_mode == "eye"):
+        landmarks = dp.fa.get_landmarks(crop)
+        if landmarks:
+            dirs = tuning.motion_directions(G, landmarks[0], s_r, lam, feats)
+            notes.append(f"눈 방향 {dirs.eye_idx}, 입 방향 {dirs.mouth_idx}")
+        else:
+            notes.append("눈 위치를 못 찾아 눈 관련 처리를 건너뜀")
+    if ref_mode == "eye" and dirs is None and r_cfg_scale != 1.0:
+        ref_mode = "free"  # 눈 방향을 모르면 'all'처럼 표정까지 당기지 않도록 추천 범위로 대신한다
+        notes.append("사진 충실도 범위를 free로 대신함")
+    REF_GUIDANCE.scale, REF_GUIDANCE.mode = r_cfg_scale, ref_mode
+    REF_GUIDANCE.eye_q = dirs.eye if dirs is not None else None
+
+    sample = G.sample({"r_s": r_s, "a": a}, a_cfg_scale=a_cfg_scale, r_cfg_scale=1.0, e_cfg_scale=e_cfg_scale,
+                      emo=emo, nfe=nfe, seed=seed)
+    if post and dirs is not None:
+        sample, post_notes = tuning.eye_postprocess(sample, r_s, dirs, OPT.fps,
+                                                    stable=eye_stable, blink_gap=blink_gap, dejump=dejump)
+        notes += post_notes
+    d_hat = G.decode_latent_into_image(s_r=s_r, s_r_feats=feats, r_d=sample)["d_hat"]
+    return (d_hat.unsqueeze(0) if d_hat.dim() == 3 else d_hat), notes  # (T, 3, H, W), -1~1
 
 
 def _to_mp4(frames: torch.Tensor, fps: int, path: str) -> None:
@@ -201,6 +235,16 @@ def handler(job):
     if emo and emo not in EMOTIONS:
         raise ValueError(f"emo는 {', '.join(EMOTIONS)} 중 하나여야 합니다 (요청 {emo})")
     seed = int(inp["seed"]) if inp.get("seed") is not None else None
+    ref_mode = (inp.get("ref_mode") or "free").strip().lower()
+    if ref_mode not in tuning.REF_MODES:
+        raise ValueError(f"ref_mode는 {', '.join(tuning.REF_MODES)} 중 하나여야 합니다 (요청 {ref_mode})")
+    eye_stable = float(inp.get("eye_stable") or 0.0)
+    if not 0.0 <= eye_stable <= 1.0:
+        raise ValueError(f"eye_stable은 0~1이어야 합니다 (요청 {eye_stable})")
+    blink_gap = float(inp.get("blink_gap") or 0.0)
+    if blink_gap < 0:
+        raise ValueError(f"blink_gap은 0 이상이어야 합니다 (요청 {blink_gap})")
+    dejump = str(inp.get("dejump", False)).strip().lower() in ("1", "true", "yes", "on")
 
     img = cv2.imdecode(np.frombuffer(base64.b64decode(inp["image_b64"]), np.uint8), cv2.IMREAD_COLOR)
     if img is None:
@@ -212,13 +256,17 @@ def handler(job):
         with tempfile.TemporaryDirectory() as tmp:
             audio_path = os.path.join(tmp, "audio.wav")
             Path(audio_path).write_bytes(base64.b64decode(inp["audio_b64"]))
-            frames = _generate(
+            frames, notes = _generate(
                 crop, audio_path,
                 seed=seed, emo=emo,
                 a_cfg_scale=float(inp.get("a_cfg_scale", 2.0)),
                 e_cfg_scale=float(inp.get("e_cfg_scale", 1.0)),
                 nfe=int(inp.get("nfe", 10)),
+                r_cfg_scale=float(inp.get("r_cfg_scale", 1.0)),
+                ref_mode=ref_mode, eye_stable=eye_stable, blink_gap=blink_gap, dejump=dejump,
             )
+            if notes:
+                print(f"[video_handler] {' | '.join(notes)}", flush=True)
             mp4_path = os.path.join(tmp, "video.mp4")
             _to_mp4(frames, fps, mp4_path)
             video_b64 = base64.b64encode(Path(mp4_path).read_bytes()).decode()
@@ -236,6 +284,7 @@ def handler(job):
         "fps": fps,
         "crop": how,
         "lora_strength": ADAPTER.strength,
+        "notes": notes,
         "seconds": round(time.monotonic() - started, 2),
     }
 

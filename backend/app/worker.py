@@ -149,7 +149,7 @@ def run_video(db: Session, job: Job) -> None:
     job.video_provider = settings.video_provider
     db.commit()
     mp4, poster = out_dir / "video.mp4", out_dir / "poster.jpg"
-    v = video.render(storage.abs_path(photo.path), photo.face, wav, mp4, poster)
+    v = video.render(storage.abs_path(photo.path), photo.face, wav, mp4, poster, emotion=m.emotion or video.DEFAULT_EMOTION)
 
     job.gpu_seconds = t.gpu_seconds + v.gpu_seconds
     job.cost_usd = round(t.cost_usd + v.cost_usd, 6)

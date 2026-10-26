@@ -65,10 +65,15 @@ class Settings:
     # VIDEO_PROVIDER=runpod일 때 FLOAT 영상 핸들러에 넘기는 옵션 (backend/gpu_worker/video_handler.py).
     # 비워 두면 핸들러 기본값을 쓴다
     video_lora_strength = _optional("VIDEO_LORA_STRENGTH", float)
-    video_emotion = os.getenv("VIDEO_EMOTION", "").strip().lower()
     video_a_cfg_scale = _optional("VIDEO_A_CFG_SCALE", float)
     video_e_cfg_scale = _optional("VIDEO_E_CFG_SCALE", float)
     video_seed = _optional("VIDEO_SEED", int)
+    # 사진 충실도와 눈 후처리 (backend/gpu_worker/float_tuning.py)
+    video_r_cfg_scale = _optional("VIDEO_R_CFG_SCALE", float)
+    video_ref_mode = os.getenv("VIDEO_REF_MODE", "").strip().lower()
+    video_eye_stable = _optional("VIDEO_EYE_STABLE", float)
+    video_blink_gap = _optional("VIDEO_BLINK_GAP", float)
+    video_dejump = _bool("VIDEO_DEJUMP", default=False) if os.getenv("VIDEO_DEJUMP", "").strip() else None
 
     # TTS_PROVIDER=wemeet: 우리가 학습한 한국어 TTS 서버 (C:\WE_MEET\tts_server)
     wemeet_tts_url = os.getenv("WEMEET_TTS_URL", "http://127.0.0.1:8100").rstrip("/")

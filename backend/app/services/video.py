@@ -19,6 +19,10 @@ WIDTH, HEIGHT = 720, 900  # 4:5 세로 화면
 FPS = 25
 TAIL_SECONDS = 0.6
 LABEL = "AI로 만든 영상"
+# 영상 속 표정. 사용자가 영상 만들기 화면에서 고른다 (음성에서 추정하지 않는다).
+# FLOAT 감정 7개(angry, disgust, fear, happy, neutral, sad, surprise) 중 영상 편지에 맞는 것만 쓴다
+EMOTIONS = {"neutral": "평온", "happy": "기쁨", "sad": "슬픔", "surprise": "놀람"}
+DEFAULT_EMOTION = "neutral"
 
 _FONT_CANDIDATES = [
     "C:/Windows/Fonts/malgunbd.ttf",
@@ -85,7 +89,9 @@ def _encode(inputs: list[str], video_filter: str, audio_input: int, duration: fl
     )
 
 
-def render(photo_path: Path, face: list[int], audio_wav: Path, out_mp4: Path, poster_jpg: Path) -> VideoResult:
+def render(
+    photo_path: Path, face: list[int], audio_wav: Path, out_mp4: Path, poster_jpg: Path, emotion: str = DEFAULT_EMOTION
+) -> VideoResult:
     duration = audio.wav_duration(audio_wav) + TAIL_SECONDS
     portrait = _crop_portrait(Image.open(photo_path).convert("RGB"), face)
     badge = _badge()
@@ -99,7 +105,7 @@ def render(photo_path: Path, face: list[int], audio_wav: Path, out_mp4: Path, po
         badge.save(badge_png)
 
         if settings.video_provider == "runpod":
-            return _render_runpod(photo_path, face, audio_wav, badge_png, duration, out_mp4, poster_jpg, Path(tmp))
+            return _render_runpod(photo_path, face, audio_wav, emotion, badge_png, duration, out_mp4, poster_jpg, Path(tmp))
 
         # 확대 효과가 부드럽도록 2배 크기로 넣는다
         frame_png = Path(tmp) / "frame.png"
@@ -122,10 +128,14 @@ def _model_options() -> dict:
     """.env의 VIDEO_* 값 중 채워진 것만 핸들러에 넘긴다 (비어 있으면 핸들러 기본값)."""
     options = {
         "lora_strength": settings.video_lora_strength,
-        "emo": settings.video_emotion or None,
         "a_cfg_scale": settings.video_a_cfg_scale,
         "e_cfg_scale": settings.video_e_cfg_scale,
         "seed": settings.video_seed,
+        "r_cfg_scale": settings.video_r_cfg_scale,
+        "ref_mode": settings.video_ref_mode or None,
+        "eye_stable": settings.video_eye_stable,
+        "blink_gap": settings.video_blink_gap,
+        "dejump": settings.video_dejump,
     }
     return {k: v for k, v in options.items() if v is not None}
 
@@ -134,6 +144,7 @@ def _render_runpod(
     photo_path: Path,
     face: list[int],
     audio_wav: Path,
+    emotion: str,
     badge_png: Path,
     duration: float,
     out_mp4: Path,
@@ -150,6 +161,8 @@ def _render_runpod(
             "face": face,
             "audio_b64": base64.b64encode(audio_wav.read_bytes()).decode(),
             "fps": FPS,
+            # 핸들러는 emo를 비우면 음성에서 감정을 추정하는데, 한국어에서 부정확해서 항상 고른 값을 보낸다
+            "emo": emotion if emotion in EMOTIONS else DEFAULT_EMOTION,
             **_model_options(),
         },
     )
