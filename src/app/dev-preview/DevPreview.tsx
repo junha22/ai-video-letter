@@ -7,6 +7,7 @@ import { FamilyIllustration } from "../home/FamilyIllustration";
 import { LoginPreview } from "./LoginPreview";
 import { LetterCompanion, PhotoGuide, VoiceWorkspace } from "@/components/StudioPanels";
 import { SamplePortrait } from "@/components/SamplePortrait";
+import voiceSentences from "../../../shared/voice-sentences.json";
 
 // 이 모듈은 프리뷰 전용이다. 실제 화면, 인증 훅, 알림, API 모듈을 불러오지 않는다.
 const SCREENS = [
@@ -44,6 +45,7 @@ export function DevPreview() {
   const [topic, setTopic] = useState<keyof typeof TOPICS>("안부");
   const [message, setMessage] = useState<string>(TOPICS.안부);
   const [voiceReady, setVoiceReady] = useState(false);
+  const [sentenceIndex, setSentenceIndex] = useState(0);
   const [photoReady, setPhotoReady] = useState(false);
   const [reviewReady, setReviewReady] = useState(false);
   const [watching, setWatching] = useState(false);
@@ -145,7 +147,7 @@ export function DevPreview() {
           {screen === "register" && <>
             {heading("VOICE & FACE", "목소리와 사진을 준비해 주세요", "녹음과 사진 등록 화면의 샘플입니다. 마이크·카메라·파일에 접근하지 않습니다.")}
             <VoiceWorkspace
-              reading={<><p className="mb-5 text-xs font-semibold text-[#73906d]">읽기 연습 · 샘플 문장 1 / 6</p><blockquote className="text-[25px] font-semibold leading-[1.8] tracking-tight text-[#344a38] sm:text-[30px]">“엄마, 오늘 하늘이 참 맑아.<br />좋은 하루 보내고, 맛있는 밥도 꼭 챙겨 먹어!”</blockquote><div role="progressbar" aria-label="샘플 녹음 진행률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={voiceReady ? 100 : 0} className="mt-7 h-1.5 overflow-hidden rounded-full bg-[#e7ebe4]"><div className={`h-full rounded-full bg-[#315d4b] ${voiceReady ? "w-full" : "w-0"}`} /></div><p className="mt-3 text-[11px] text-[#98a18e]">샘플 상태: {voiceReady ? "등록 완료 · 100%" : "등록 전 · 0%"}</p></>}
+              reading={<><p className="mb-5 text-xs font-semibold text-[#73906d]">읽기 연습 · 샘플 대본 {sentenceIndex + 1} / {voiceSentences.length} · 약 10초</p><blockquote className="text-[25px] font-semibold leading-[1.8] tracking-tight text-[#344a38] sm:text-[30px]">“{voiceSentences[sentenceIndex].text}”</blockquote><div className="mt-5 flex justify-between gap-3"><button type="button" disabled={sentenceIndex === 0} onClick={() => setSentenceIndex(sentenceIndex - 1)} className="min-h-11 text-xs font-semibold text-[#52705c] disabled:opacity-30">이전 대본</button><button type="button" disabled={sentenceIndex === voiceSentences.length - 1} onClick={() => setSentenceIndex(sentenceIndex + 1)} className="min-h-11 text-xs font-semibold text-[#52705c] disabled:opacity-30">다음 대본</button></div><div role="progressbar" aria-label="샘플 녹음 진행률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={voiceReady ? 100 : 0} className="mt-7 h-1.5 overflow-hidden rounded-full bg-[#e7ebe4]"><div className={`h-full rounded-full bg-[#315d4b] ${voiceReady ? "w-full" : "w-0"}`} /></div><p className="mt-3 text-[11px] text-[#98a18e]">샘플 상태: {voiceReady ? "등록 완료 · 100%" : "등록 전 · 0%"}</p></>}
               controls={<><span className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-[#f0ecd9] text-[#284f3e] shadow-[0_0_0_10px_rgba(255,255,255,0.05)]"><Mic size={34} strokeWidth={1.5} /></span><strong className="mb-5 text-sm font-medium text-[#e5ecdc]">{voiceReady ? "샘플 등록 완료" : "목소리 등록 프리뷰"}</strong><button type="button" onClick={() => setVoiceReady(!voiceReady)} className="min-h-12 w-full rounded-2xl border border-white/25 px-5 py-3 text-sm font-medium text-[#e9eddb] transition-colors hover:bg-white/10">{voiceReady ? "등록 전 상태 보기" : "완료 상태 보기"}</button><p className="mt-4 text-[11px] text-[#9bb398]">실제 녹음·학습 없음</p></>}
             />
             <div className="mb-5 mt-9"><p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">ONE FAMILIAR FACE</p><h3 className="mt-2 text-xl font-bold">마음에 담을 나의 얼굴</h3></div>
