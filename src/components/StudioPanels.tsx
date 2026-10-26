@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Camera, Check, Heart, Quote, Sun, User } from "lucide-react";
+import { SamplePortrait } from "./SamplePortrait";
 
 /** 실제 화면과 디자인 프리뷰에서 공유하는 표시 전용 컴포넌트. */
 export function VoiceWorkspace({ reading, controls }: { reading: ReactNode; controls: ReactNode }) {
@@ -20,22 +21,16 @@ export function VoiceWorkspace({ reading, controls }: { reading: ReactNode; cont
   );
 }
 
-export function PhotoGuide() {
+export function PhotoGuide({ variant = "daughter" }: { variant?: "son" | "daughter" }) {
   return (
     <section className="overflow-hidden rounded-[28px] border border-[#e3e8df] bg-white shadow-[0_12px_40px_rgba(36,62,44,0.04)]">
       <div className="relative flex items-center justify-center overflow-hidden bg-[#eef2e8] px-6 py-7">
-        <span className="absolute right-4 top-4 rounded-full border border-white bg-white/75 px-3 py-1.5 text-[10px] font-semibold tracking-wide text-[#607564]">PHOTO GUIDE</span>
-        <svg viewBox="0 0 240 220" role="img" aria-label="밝은 곳에서 정면을 바라보는 사진 가이드" className="h-48 w-56">
-          <circle cx="120" cy="104" r="93" fill="#e2e9d9" />
-          <rect x="52" y="22" width="136" height="174" rx="30" fill="#fffdf6" />
-          <path d="M66 196c1-53 20-73 54-73s53 20 54 73" fill="#8da58a" />
-          <ellipse cx="120" cy="87" rx="35" ry="43" fill="#eabea6" />
-          <path d="M85 86c-7-39 15-54 37-53 30 1 40 22 32 55-11-8-20-20-24-31-8 16-24 24-45 29" fill="#66554b" />
-          <path d="M104 87h6m20 0h6m-25 20q9 7 18 0" fill="none" stroke="#8f6853" strokeLinecap="round" strokeWidth="2.5" />
-          <path d="M45 55V29h26m98 0h26v26M45 163v26h26m98 0h26v-26" fill="none" stroke="#648269" strokeWidth="2" strokeLinecap="round" />
-          <circle cx="188" cy="167" r="19" fill="#315d4b" />
-          <path d="m180 167 6 6 10-12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <span className="absolute right-4 top-4 z-10 rounded-full border border-white bg-white/75 px-3 py-1.5 text-[10px] font-semibold tracking-wide text-[#607564]">PHOTO GUIDE</span>
+        <div className="relative h-48 w-48 rounded-[24px] border-[6px] border-white bg-[#e2e9d9] shadow-[0_8px_24px_rgba(36,62,44,0.08)]">
+          <div className="h-full overflow-hidden rounded-[18px]"><SamplePortrait variant={variant} sizes="192px" /></div>
+          <span className="pointer-events-none absolute inset-4 rounded-[44%] border border-dashed border-white/80" aria-hidden="true" />
+          <span className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full border-[3px] border-[#eef2e8] bg-[#315d4b] text-white" aria-hidden="true"><Check size={18} /></span>
+        </div>
       </div>
       <div className="p-6 sm:p-8">
         <p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">A FACE THEY KNOW</p>

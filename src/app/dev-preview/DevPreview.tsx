@@ -6,6 +6,7 @@ import { Button, Card } from "@/components/ui";
 import { FamilyIllustration } from "../home/FamilyIllustration";
 import { LoginPreview } from "./LoginPreview";
 import { LetterCompanion, PhotoGuide, VoiceWorkspace } from "@/components/StudioPanels";
+import { SamplePortrait } from "@/components/SamplePortrait";
 
 // 이 모듈은 프리뷰 전용이다. 실제 화면, 인증 훅, 알림, API 모듈을 불러오지 않는다.
 const SCREENS = [
@@ -37,23 +38,9 @@ function PreviewCard({ children, className = "" }: { children: ReactNode; classN
   return <Card className={`!rounded-[22px] !border-[#e8e9e2] sm:p-7 ${className}`}>{children}</Card>;
 }
 
-function Portrait() {
-  return (
-    <svg viewBox="0 0 300 300" role="img" aria-label="샘플 인물 일러스트" className="h-full w-full">
-      <rect width="300" height="300" fill="#eadbc8" />
-      <circle cx="245" cy="55" r="70" fill="#fff3dd" />
-      <path d="M45 300Q50 192 150 204Q251 190 260 300" fill="#789e80" />
-      <ellipse cx="150" cy="128" rx="67" ry="83" fill="#66534a" />
-      <ellipse cx="150" cy="145" rx="52" ry="63" fill="#f2b69b" />
-      <path d="M96 128Q83 47 155 49Q223 53 208 130L186 99Q145 106 136 78Q126 110 96 128" fill="#66534a" />
-      <path d="M120 145q8-5 16 0m28 0q8-5 16 0" fill="none" stroke="#775d4c" strokeWidth="3" strokeLinecap="round" />
-      <path d="M136 176q14 14 28 0" fill="none" stroke="#ab705b" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 export function DevPreview() {
   const [screen, setScreen] = useState<Screen>("main");
+  const [sampleCharacter, setSampleCharacter] = useState<"son" | "daughter">("son");
   const [topic, setTopic] = useState<keyof typeof TOPICS>("안부");
   const [message, setMessage] = useState<string>(TOPICS.안부);
   const [voiceReady, setVoiceReady] = useState(false);
@@ -117,7 +104,12 @@ export function DevPreview() {
         </div>
         <header className="mx-auto flex max-w-[1348px] flex-wrap items-center justify-between gap-3 px-5 py-5 sm:px-10">
           <span className="text-sm text-[#737d74]"><strong className="mr-3 text-xl text-[#315d4b] lg:hidden">온기</strong>PREVIEW / {current.label}</span>
-          <span className="rounded-full border border-[#e0e8db] bg-[#eff3ec] px-3 py-1.5 text-[11px] font-bold text-[#52705c]">샘플 데이터 · DEVELOPMENT ONLY</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <div role="group" aria-label="미리보기 캐릭터 선택" className="flex items-center gap-1 rounded-full border border-[#e0e8db] bg-white p-1">
+              {([{ id: "son", label: "아들 예시" }, { id: "daughter", label: "딸 예시" }] as const).map(({ id, label }) => <button key={id} type="button" aria-pressed={sampleCharacter === id} onClick={() => setSampleCharacter(id)} className={`min-h-9 rounded-full px-3 text-xs font-semibold transition-colors ${sampleCharacter === id ? "bg-[#315d4b] text-white" : "text-[#68736b] hover:bg-[#f1f4ee]"}`}>{label}</button>)}
+            </div>
+            <span className="rounded-full border border-[#e0e8db] bg-[#eff3ec] px-3 py-1.5 text-[11px] font-bold text-[#52705c]">샘플 데이터 · DEVELOPMENT ONLY</span>
+          </div>
         </header>
         <nav aria-label="모바일 개발 프리뷰 화면" className="sticky top-0 z-30 flex gap-2 overflow-x-auto border-y border-[#e8e9e2] bg-[#fdfcf8]/95 px-5 py-3 backdrop-blur lg:hidden">{navigation}</nav>
         <main id="preview-content" className="mx-auto max-w-[1348px] px-5 pb-14 pt-5 sm:px-10 sm:pt-7">
@@ -158,10 +150,10 @@ export function DevPreview() {
             />
             <div className="mb-5 mt-9"><p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">ONE FAMILIAR FACE</p><h3 className="mt-2 text-xl font-bold">마음에 담을 나의 얼굴</h3></div>
             <div className="grid items-start gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-              <PhotoGuide />
+              <PhotoGuide variant={sampleCharacter === "son" ? "daughter" : "son"} />
               <div className="rounded-[28px] border border-[#e3e8df] bg-white p-6 sm:p-8">
               <button type="button" onClick={() => setPhotoReady(!photoReady)} className="flex min-h-[320px] w-full flex-col items-center justify-center gap-5 rounded-[22px] border border-dashed border-[#bdcdb9] bg-[#f7f8f1] p-6 text-center">
-                <span className="h-20 w-20 overflow-hidden rounded-2xl bg-[#e8f0e5]">{photoReady ? <Portrait /> : <Camera size={32} className="m-6 text-[#578161]" />}</span><span><strong className="block text-sm">{photoReady ? "샘플 사진 등록 완료" : "샘플 사진 표시하기"}</strong><small className="mt-2 block text-[#737d74]">정면 · 밝은 조명 · 클릭하면 샘플 상태 전환</small></span>
+                <span className="block h-20 w-20 overflow-hidden rounded-2xl bg-[#e8f0e5]">{photoReady ? <SamplePortrait variant={sampleCharacter} sizes="80px" /> : <Camera size={32} className="m-6 text-[#578161]" />}</span><span><strong className="block text-sm">{photoReady ? "샘플 사진 등록 완료" : "샘플 사진 표시하기"}</strong><small className="mt-2 block text-[#737d74]">정면 · 밝은 조명 · 클릭하면 샘플 상태 전환</small></span>
               </button>
               <div className="mt-7 flex justify-end"><PreviewButton onClick={() => navigate("compose")}>메시지 작성 화면 <ArrowRight size={16} /></PreviewButton></div>
               </div>
@@ -185,10 +177,10 @@ export function DevPreview() {
           </>}
 
           {screen === "review" && <>
-            {heading("PREVIEW & APPROVE", "영상을 확인하고 마음을 전해요", "실제 영상 대신 샘플 일러스트와 입력한 문구를 표시합니다. AI 생성·재생·발송은 하지 않습니다.")}
+            {heading("PREVIEW & APPROVE", "영상을 확인하고 마음을 전해요", "실제 영상 대신 샘플 캐릭터와 입력한 문구를 표시합니다. AI 생성·재생·발송은 하지 않습니다.")}
             <PreviewCard>
               <div className="grid gap-7 md:grid-cols-2">
-                <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#eadbc8]"><Portrait /><span className="absolute left-4 top-4 rounded-md bg-[#283e30] px-3 py-1 text-xs text-white">정적 샘플 · 실제 영상 아님</span><span className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/90 text-[#315d4b]" aria-hidden="true"><Play size={28} /></span></div>
+                <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#eadbc8]"><SamplePortrait variant={sampleCharacter} /><span className="absolute left-4 top-4 rounded-md bg-[#283e30] px-3 py-1 text-xs text-white">정적 샘플 · 실제 영상 아님</span><span className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/90 text-[#315d4b]" aria-hidden="true"><Play size={28} /></span></div>
                 <div className="flex flex-col justify-center"><h2 className="text-2xl font-bold">{reviewReady ? "샘플 미리보기 준비 완료 💚" : "영상 편지 미리보기"}</h2><p className="my-3 text-sm text-[#737d74]">받는 분: 어머니 · 샘플 데이터</p><div className="rounded-2xl border border-[#e5e9e2] bg-[#f9fbf8] p-5"><p className="mb-3 text-xs font-bold text-[#60896c]">{reviewReady ? "준비 완료 상태 · 샘플" : "생성 대기 상태 · 샘플"}</p><blockquote className="whitespace-pre-wrap break-words text-sm leading-8">{message}</blockquote></div><ul className="my-5 space-y-3 text-sm text-[#647568]"><li className="flex gap-2"><Check size={18} /> 대본 확인 화면</li><li className="flex gap-2"><ShieldCheck size={18} /> 전송 전 최종 승인 화면</li></ul><PreviewButton onClick={() => setReviewReady(!reviewReady)}><Sparkles size={16} />{reviewReady ? "대기 상태 보기" : "준비 완료 상태 보기"}</PreviewButton><div className="mt-3"><PreviewButton secondary className="w-full" onClick={() => navigate("watch")}>부모님 시청 화면 보기 <ArrowRight size={16} /></PreviewButton></div><button type="button" onClick={() => navigate("compose")} className="mt-4 text-sm font-bold text-[#60896c]">대본 수정 화면으로</button></div>
               </div>
             </PreviewCard>
@@ -198,7 +190,7 @@ export function DevPreview() {
             {heading("PARENT EXPERIENCE", "부모님 시청 화면", "부모님이 링크를 열었을 때의 화면 구성입니다. 실제 공유 링크나 시청 기록은 생성하지 않습니다.")}
             <div className="grid items-center gap-8 xl:grid-cols-[1fr_370px]">
               <div><p className="text-xs font-bold tracking-widest text-[#b77560]">FOR FAMILY 💌</p><h2 className="my-4 text-4xl font-extrabold leading-snug tracking-tighter">받는 순간부터<br />쉽고, 따뜻하게.</h2><p className="max-w-md text-sm leading-8 text-[#737d74]">큰 버튼과 읽기 편한 자막으로 마음을 전합니다. 반응을 눌러도 현재 프리뷰에만 표시됩니다.</p><p className="mt-6 flex items-center gap-3 text-sm font-bold text-[#60896c]"><MonitorPlay size={22} /> 큰 화면과 선명한 한국어 자막</p><p className="mt-4 flex items-center gap-3 text-sm font-bold text-[#60896c]"><Heart size={22} /> 한 번의 터치로 전하는 마음</p></div>
-              <div className="mx-auto w-full max-w-[370px] rounded-[35px] bg-[#282d2a] p-2.5 shadow-xl"><div className="overflow-hidden rounded-[27px] bg-[#fff8ef]"><div className="flex items-center justify-between border-b border-[#e9e4d9] px-5 py-4"><strong className="text-xl text-[#315d4b]">♥ 온기</strong><span className="text-xs text-[#81786a]">샘플 시청 화면</span></div><div className="p-5"><p className="text-center text-xs text-[#81786a]">💌 지민이가 보낸 특별한 선물 · 샘플</p><h3 className="my-4 text-center text-2xl font-extrabold">엄마, 오늘도 사랑해요</h3><div className="relative aspect-[4/4.2] overflow-hidden rounded-2xl"><Portrait /><span className="absolute left-3 top-3 rounded bg-[#283e30] px-2 py-1 text-[11px] text-white">샘플 일러스트</span><p className="absolute inset-x-3 bottom-3 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-[#1c322a]/90 p-3 text-center text-base font-bold leading-7 text-white">{watching ? message : "영상 편지가 도착했어요. · 샘플"}</p></div><PreviewButton className="mt-4 w-full !text-base" onClick={() => setWatching(!watching)}><Play size={20} />{watching ? "시작 화면 보기" : "샘플 자막 보기"}</PreviewButton><p className="mb-3 mt-5 text-center text-sm text-[#81786a]">마음을 전해 보세요 · 샘플 반응</p><div className="flex gap-2">{["❤️", "🥰", "👍"].map((emoji) => <button key={emoji} type="button" aria-label={`${emoji} 샘플 반응`} aria-pressed={reaction === emoji} onClick={() => { setReaction(emoji); setNotice(`샘플 반응 ${emoji} 선택 · 전송하거나 저장하지 않았습니다.`); }} className={`min-h-14 flex-1 rounded-xl border text-2xl ${reaction === emoji ? "border-[#efb39b] bg-[#fff0e7]" : "border-[#e7e5dd] bg-white"}`}>{emoji}</button>)}</div></div></div></div>
+              <div className="mx-auto w-full max-w-[370px] rounded-[35px] bg-[#282d2a] p-2.5 shadow-xl"><div className="overflow-hidden rounded-[27px] bg-[#fff8ef]"><div className="flex items-center justify-between border-b border-[#e9e4d9] px-5 py-4"><strong className="text-xl text-[#315d4b]">♥ 온기</strong><span className="text-xs text-[#81786a]">샘플 시청 화면</span></div><div className="p-5"><p className="text-center text-xs text-[#81786a]">💌 지민이가 보낸 특별한 선물 · 샘플</p><h3 className="my-4 text-center text-2xl font-extrabold">엄마, 오늘도 사랑해요</h3><div className="relative aspect-[4/4.2] overflow-hidden rounded-2xl"><SamplePortrait variant={sampleCharacter} /><span className="absolute left-3 top-3 rounded bg-[#283e30] px-2 py-1 text-[11px] text-white">샘플 캐릭터</span><p className="absolute inset-x-3 bottom-3 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-[#1c322a]/90 p-3 text-center text-base font-bold leading-7 text-white">{watching ? message : "영상 편지가 도착했어요. · 샘플"}</p></div><PreviewButton className="mt-4 w-full !text-base" onClick={() => setWatching(!watching)}><Play size={20} />{watching ? "시작 화면 보기" : "샘플 자막 보기"}</PreviewButton><p className="mb-3 mt-5 text-center text-sm text-[#81786a]">마음을 전해 보세요 · 샘플 반응</p><div className="flex gap-2">{["❤️", "🥰", "👍"].map((emoji) => <button key={emoji} type="button" aria-label={`${emoji} 샘플 반응`} aria-pressed={reaction === emoji} onClick={() => { setReaction(emoji); setNotice(`샘플 반응 ${emoji} 선택 · 전송하거나 저장하지 않았습니다.`); }} className={`min-h-14 flex-1 rounded-xl border text-2xl ${reaction === emoji ? "border-[#efb39b] bg-[#fff0e7]" : "border-[#e7e5dd] bg-white"}`}>{emoji}</button>)}</div></div></div></div>
             </div>
           </>}
           <p role="status" aria-live="polite" className="mt-6 text-center text-sm text-[#315d4b]">{notice}</p>
