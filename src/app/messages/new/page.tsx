@@ -83,8 +83,9 @@ export default function NewMessagePage() {
 
       {error && <Notice tone="error">{error}</Notice>}
       <Button onClick={submit} disabled={!memo.trim()} loading={busy} className="mt-4 w-full py-4 text-lg">
-        <Sparkles className="h-5 w-5" /> {busy ? "대본을 쓰고 있어요…" : "대본 만들기"}
+        {!busy && <Sparkles className="h-5 w-5" />} {busy ? "분위기가 다른 대본 3개를 쓰고 있어요…" : "대본 만들기"}
       </Button>
+      {busy && <p className="mt-2 text-center text-sm text-stone-500">10초 정도 걸릴 수 있어요</p>}
     </AppShell>
   );
 }

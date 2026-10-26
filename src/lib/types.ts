@@ -2,6 +2,11 @@ export type Parent = {
   nickname: string;
   relation: string;
   phone: string;
+  child_call_name: string;
+  /** child_call_name이 비어 있으면 가입 이름 */
+  child_name?: string;
+  /** 비어 있으면 메모 말투로 판단 */
+  speech_level: "" | "반말" | "존댓말";
   tone_examples: string;
 };
 
@@ -48,14 +53,30 @@ export type Caption = { start: number; end: number; text: string };
 
 export type MessageStatus = "draft" | "generating" | "ready" | "failed" | "approved" | "sent" | "viewed";
 
+export type Candidate = {
+  style: string;
+  label: string;
+  script: string;
+  source: "llm" | "fallback";
+  char_count: number;
+  est_seconds: number;
+  warnings: string[];
+  problems: string[];
+};
+
 export type Message = {
   id: number;
   memo: string;
   template: string;
   template_label: string;
+  candidates: Candidate[];
+  chosen_style: string | null;
+  speech_level: "반말" | "존댓말" | null;
   script: string;
   script_source: "llm" | "fallback" | "edited";
   script_problems: string[];
+  /** AI가 메모에 없는 날씨·요일·시각을 넣거나, 메모의 날짜·요일·시각·분·오전/오후를 빼거나 바꾼 것 (영상 만들기는 막지 않음) */
+  script_warnings: string[];
   char_count: number;
   est_seconds: number;
   status: MessageStatus;

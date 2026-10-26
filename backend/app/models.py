@@ -27,10 +27,18 @@ class ParentProfile(Base):
     nickname: Mapped[str] = mapped_column(String(20))  # 호칭: 엄마, 할머니 ...
     relation: Mapped[str] = mapped_column(String(20))  # 어머니, 할머니 ...
     phone: Mapped[str] = mapped_column(String(20))
+    # 부모님이 자녀를 부르는 이름. 카카오 닉네임 대신 대본과 시청 페이지에 쓴다
+    child_call_name: Mapped[str] = mapped_column(String(20), default="")
+    # 평소 부모님께 쓰는 말투: 반말 | 존댓말 | ""(정하지 않음 → 메모 어미로 판단)
+    speech_level: Mapped[str] = mapped_column(String(10), default="")
     tone_examples: Mapped[str] = mapped_column(Text, default="")  # 평소 자녀가 보내는 메시지 예시
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     user: Mapped[User] = relationship(back_populates="parent")
+
+    @property
+    def child_name(self) -> str:
+        return self.child_call_name or self.user.name
 
 
 class Consent(Base):
@@ -98,6 +106,10 @@ class Message(Base):
     voice_profile_id: Mapped[int | None] = mapped_column(Integer)
     memo: Mapped[str] = mapped_column(Text)
     template: Mapped[str] = mapped_column(String(20))
+    # AI가 만든 후보 [{"style", "label", "script", "source"}]와 자녀가 고른 분위기 (선호 데이터)
+    candidates: Mapped[list | None] = mapped_column(JSON)
+    chosen_style: Mapped[str | None] = mapped_column(String(20))
+    speech_level: Mapped[str | None] = mapped_column(String(10))  # 이 메시지 후보를 쓴 말투
     script: Mapped[str] = mapped_column(Text, default="")
     script_source: Mapped[str] = mapped_column(String(20), default="llm")  # llm | fallback | edited
     # draft -> generating -> ready -> approved -> sent -> viewed / failed / deleted
