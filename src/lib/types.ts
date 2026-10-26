@@ -52,6 +52,9 @@ export type Caption = { start: number; end: number; text: string };
 
 export type MessageStatus = "draft" | "generating" | "ready" | "failed" | "approved" | "sent" | "viewed";
 
+// 영상 속 표정. 백엔드 services/video.py의 EMOTIONS와 같게 유지한다
+export type Emotion = "neutral" | "happy" | "sad" | "surprise";
+
 export type Message = {
   id: number;
   memo: string;
@@ -70,6 +73,7 @@ export type Message = {
   poster_url: string | null;
   audio_url: string | null;
   tts_seed: number | null;
+  emotion: Emotion | null;
   job: Job | null;
   // 대기 중인 이유: 워커가 음색 학습(약 5분)을 처리하는 중. own_voice_train이면 내 목소리 학습
   wait: { reason: "own_voice_train" | "voice_train"; seconds: number } | null;

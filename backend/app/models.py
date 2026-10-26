@@ -111,6 +111,7 @@ class Message(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft")
     audio_path: Mapped[str | None] = mapped_column(String(500))
     tts_seed: Mapped[int | None] = mapped_column(Integer)  # 같은 seed로 다시 만들면 같은 음성이 나온다
+    emotion: Mapped[str | None] = mapped_column(String(20))  # 영상 만들 때 사용자가 고른 표정 (video.EMOTIONS)
     video_path: Mapped[str | None] = mapped_column(String(500))
     poster_path: Mapped[str | None] = mapped_column(String(500))
     captions: Mapped[list | None] = mapped_column(JSON)

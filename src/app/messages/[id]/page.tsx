@@ -6,7 +6,7 @@ import Link from "next/link";
 import { CircleCheck, Download, Eye, LoaderCircle, RefreshCw, Send, Sparkles, Video } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import { formatDate, formatSeconds } from "@/lib/format";
-import type { Message } from "@/lib/types";
+import type { Emotion, Message } from "@/lib/types";
 import { useMe } from "@/lib/useMe";
 import { AppShell } from "@/components/AppShell";
 import { SharePanel } from "@/components/SharePanel";
@@ -14,6 +14,12 @@ import { AnchorButton, Button, Card, Notice, Spinner } from "@/components/ui";
 
 const EDITABLE = ["draft", "ready", "failed"];
 const SOURCE_LABEL = { llm: "AI가 다듬은 대본", fallback: "기본 문장 (AI 연결 안 됨)", edited: "직접 고친 대본" };
+const EMOTIONS: { key: Emotion; label: string }[] = [
+  { key: "neutral", label: "평온" },
+  { key: "happy", label: "기쁨" },
+  { key: "sad", label: "슬픔" },
+  { key: "surprise", label: "놀람" },
+];
 
 function charCount(s: string) {
   return s.replace(/\s/g, "").length;
@@ -26,11 +32,17 @@ export default function MessagePage() {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [emotion, setEmotion] = useState<Emotion>("neutral");
 
   const apply = useCallback((next: Message) => {
     setM(next);
     setDraft(next.script);
   }, []);
+
+  // 다시 만들 때는 지난번에 고른 표정을 기본으로 둔다
+  useEffect(() => {
+    if (m?.emotion) setEmotion(m.emotion);
+  }, [m?.emotion]);
 
   const load = useCallback(async () => {
     try {
@@ -81,7 +93,7 @@ export default function MessagePage() {
   const save = () => api<Message>(`/api/messages/${m.id}`, { method: "PATCH", json: { script: draft.trim() } });
   const render = async () => {
     if (dirty) await save();
-    return api<Message>(`/api/messages/${m.id}/render`, { method: "POST" });
+    return api<Message>(`/api/messages/${m.id}/render`, { json: { emotion } });
   };
 
   return (
@@ -162,6 +174,7 @@ export default function MessagePage() {
           (me.can_render ? (
             <>
               {m.status === "failed" && <Notice tone="error">{m.error ?? "영상을 만들지 못했어요."}</Notice>}
+              <EmotionPicker value={emotion} onChange={setEmotion} disabled={!!busy} />
               <Button
                 onClick={() => run("render", render)}
                 loading={busy === "render"}
@@ -193,7 +206,10 @@ export default function MessagePage() {
               preload="metadata"
               className="aspect-[4/5] max-h-[560px] w-full rounded-2xl bg-black object-contain"
             />
-            <p className="mt-2 text-center text-sm text-stone-500">미리보기 · {formatSeconds(m.duration ?? 0)}</p>
+            <p className="mt-2 text-center text-sm text-stone-500">
+              미리보기 · {formatSeconds(m.duration ?? 0)}
+              {m.emotion && ` · 표정 ${EMOTIONS.find((e) => e.key === m.emotion)?.label ?? m.emotion}`}
+            </p>
           </Card>
         )}
 
@@ -203,8 +219,10 @@ export default function MessagePage() {
             <Button onClick={() => run("approve", () => api<Message>(`/api/messages/${m.id}/approve`, { method: "POST" }))} loading={busy === "approve"} disabled={!!busy || dirty} className="w-full py-4 text-lg">
               <Send className="h-5 w-5" /> 승인하고 보내기
             </Button>
+            <EmotionPicker value={emotion} onChange={setEmotion} disabled={!!busy} />
             <Button variant="secondary" onClick={() => run("render", render)} loading={busy === "render"} disabled={!!busy} className="w-full">
-              <RefreshCw className="h-5 w-5" /> {dirty ? "고친 대본으로 다시 만들기" : "다시 만들기"}
+              <RefreshCw className="h-5 w-5" />{" "}
+              {dirty ? "고친 대본으로 다시 만들기" : emotion !== m.emotion ? "이 표정으로 다시 만들기" : "다시 만들기"}
             </Button>
           </div>
         )}
@@ -232,6 +250,30 @@ export default function MessagePage() {
 }
 
 // 개발 모드(npm run dev)에서만 보인다. 만든 영상과 영상에 들어가기 전 TTS 음성을 그대로 내려받아 확인할 때 쓴다
+function EmotionPicker({ value, onChange, disabled }: { value: Emotion; onChange: (e: Emotion) => void; disabled: boolean }) {
+  return (
+    <div className="mt-3">
+      <p className="mb-2 text-[11px] text-[#8a9681]">영상 속 표정</p>
+      <div className="grid grid-cols-4 gap-2" role="group" aria-label="영상 속 표정">
+        {EMOTIONS.map((e) => (
+          <button
+            key={e.key}
+            type="button"
+            aria-pressed={value === e.key}
+            disabled={disabled}
+            onClick={() => onChange(e.key)}
+            className={`rounded-full border px-2 py-2 text-[15px] font-semibold disabled:opacity-60 ${
+              value === e.key ? "border-[#315d4b] bg-[#315d4b] text-white" : "border-[#e5eadf] bg-[#fafbf7] text-[#809074] hover:border-[#bdcdb4]"
+            }`}
+          >
+            {e.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DebugDownloads({ m }: { m: Message }) {
   return (
     <Card className="mt-6 border-dashed">

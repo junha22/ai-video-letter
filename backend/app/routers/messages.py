@@ -13,6 +13,7 @@ from ..config import settings
 from ..db import get_db, utcnow
 from ..models import Message, Photo, ShareLink, User, VoiceProfile
 from ..services import jobs, script_llm, storage
+from ..services import video as video_service  # 아래 video() 엔드포인트와 이름이 겹친다
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
 
@@ -109,11 +110,20 @@ def rewrite_script(message_id: int, user: User = Depends(current_user), db: Sess
     return serialize.message(db, m)
 
 
+class RenderIn(BaseModel):
+    emotion: str = video_service.DEFAULT_EMOTION
+
+
 @router.post("/{message_id}/render")
-def render(message_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def render(
+    message_id: int, body: RenderIn | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
     m = _get(db, user, message_id)
     if m.status not in EDITABLE:
         raise HTTPException(409, "이미 승인한 메시지예요.")
+    emotion = body.emotion if body else video_service.DEFAULT_EMOTION
+    if emotion not in video_service.EMOTIONS:
+        raise HTTPException(400, "영상 표정을 다시 골라 주세요.")
     problems = script_llm.validate(m.script)
     if problems:
         raise HTTPException(400, " ".join(problems))
@@ -127,6 +137,7 @@ def render(message_id: int, user: User = Depends(current_user), db: Session = De
     m.status = "generating"
     m.error = None
     m.voice_profile_id = voice.id
+    m.emotion = emotion
     # 사용자가 누른 생성·다시 만들기는 새 seed로 만들고, 작업 자동 재시도는 저장된 seed로 같은 음성을 만든다
     m.tts_seed = None
     jobs.enqueue(db, "video", user.id, m.id)
