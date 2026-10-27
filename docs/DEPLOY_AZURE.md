@@ -1,7 +1,7 @@
 # Azure 배포 (시연용 PoC)
 
 Azure for Students 구독으로 웹·API·워커·DB·파일은 Azure에, GPU 작업(TTS·영상)은 연구실 GPU PC에 둔다.
-시연·테스트 때만 켜서 크레딧을 아낀다. 음색 학습(S3Gen)은 클라우드에서 끈다 (워커가 같은 기계의 GPU로 돌리는 구조라서).
+시연·테스트 때만 켜서 크레딧을 아낀다. 음색 학습(S3Gen)은 Azure 워커가 GPU PC의 학습 서버에 녹음을 보내 맡긴다 (워커에 GPU가 없어서).
 
 ```
 [휴대폰·PC 브라우저] ──HTTPS──> Azure Container Apps
@@ -16,7 +16,8 @@ Azure for Students 구독으로 웹·API·워커·DB·파일은 Azure에, GPU �
                                      │
                       [GPU PC]  gpu_worker/gateway.py :8200
                                   ├ /tts   → TTS 서버 :8100
-                                  └ /video → 영상 서버(FLOAT) :8010
+                                  ├ /video → 영상 서버(FLOAT) :8010
+                                  └ /train → 음색 학습 서버 :8300 (gpu_worker/trainer.py)
 ```
 
 GPU PC가 꺼져 있으면 로그인·대화방·답글·이미 만든 영상 보기는 되고, 목소리 등록과 영상 생성만 실패한다.
@@ -30,7 +31,8 @@ GPU PC가 꺼져 있으면 로그인·대화방·답글·이미 만든 영상 �
 | `infra/ops.ps1` | 시연 때 켜고 끄기 |
 | `infra/params.example.json` | 비밀값 양식 → `infra/params.local.json`으로 복사 (git 제외) |
 | `.github/workflows/deploy.yml` | main 푸시 → 테스트 → 이미지 빌드 → Azure 이미지 교체 |
-| `backend/gpu_worker/gateway.py` | GPU PC의 TTS·영상 서버를 주소 하나로 묶고 토큰으로 막는다 (`npm run gpu`) |
+| `backend/gpu_worker/gateway.py` | GPU PC의 TTS·영상·학습 서버를 주소 하나로 묶고 토큰으로 막는다 (`npm run gpu`) |
+| `backend/gpu_worker/trainer.py` | GPU PC 음색 학습 서버. Azure 워커가 보낸 녹음으로 S3Gen 학습 → 비교 → 더 닮았을 때만 어댑터를 돌려준다 (녹음은 끝나면 지운다) |
 
 ## 1. 사전 확인 (로그인 필요)
 
@@ -60,7 +62,7 @@ az postgres flexible-server list-skus -l koreacentral --query "[].supportedServe
 4. GPU 서버와 게이트웨이를 띄우고 tailnet 안에만 연다.
    ```powershell
    conda activate ai-video-letter
-   npm run gpu                      # TTS·영상 서버 + 게이트웨이 :8200 (창을 닫으면 같이 꺼진다)
+   npm run gpu                      # TTS·영상 서버 + 음색 학습 서버 :8300 + 게이트웨이 :8200 (창을 닫으면 같이 꺼진다)
    tailscale serve --bg 8200        # 다른 창에서. tailnet 안에서만 https://<PC>.<tailnet>.ts.net
    ```
 5. 전원 옵션에서 절전·최대 절전을 끈다.

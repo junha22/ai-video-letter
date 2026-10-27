@@ -97,6 +97,10 @@ class Settings:
     # 적용 기준: 어댑터 쪽 화자 유사도가 VoiceEncoder로 이만큼 오르고, WavLM으로 이만큼 이상일 때 (임시값, 연구 쪽 결정 대기)
     s3gen_min_ve_gain = _float("S3GEN_MIN_VE_GAIN", 0.005)
     s3gen_min_sv_gain = _float("S3GEN_MIN_SV_GAIN", 0.0)
+    # GPU가 없는 곳(Azure)의 워커: 학습을 GPU PC의 학습 서버(gpu_worker/trainer.py)에 맡긴다. 게이트웨이 주소 + /train
+    # 이때 학습 설정(step·적용 기준)은 GPU PC의 backend/.env를 따른다
+    s3gen_remote_url = os.getenv("S3GEN_REMOTE_URL", "").rstrip("/")
+    s3gen_remote_key = os.getenv("S3GEN_REMOTE_KEY", "")
 
     voice_target_seconds = int(os.getenv("VOICE_TARGET_SECONDS", "135"))
     reference_seconds = 12

@@ -67,7 +67,9 @@ class Outcome:
 
 
 def unavailable_reason() -> str | None:
-    """학습을 돌릴 수 없으면 이유를, 돌릴 수 있으면 None."""
+    """학습을 돌릴 수 없으면 이유를, 돌릴 수 있으면 None. GPU PC에 맡기면(S3GEN_REMOTE_URL) 그쪽이 확인한다."""
+    if settings.s3gen_remote_url:
+        return None
     if not settings.wemeet_train_python or not Path(settings.wemeet_train_python).is_file():
         return f"WEMEET_TRAIN_PYTHON이 없습니다 ({settings.wemeet_train_python or '설정 안 됨'})"
     if not (Path(settings.wemeet_lora_code_dir) / "chatterbox_lora" / "s3gen_train.py").is_file():
