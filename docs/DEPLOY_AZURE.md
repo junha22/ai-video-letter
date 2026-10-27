@@ -72,7 +72,9 @@ main에 푸시하면 GitHub Actions가 테스트(SQLite·PostgreSQL) 후 이미�
 - `ghcr.io/<저장소 주인>/ongi-backend:<커밋>` / `:latest`
 - `ghcr.io/<저장소 주인>/ongi-web:<커밋>` / `:latest` (`BACKEND_URL=http://ongi-api`)
 
-Container Apps가 비공개 이미지를 받을 수 있도록 GitHub에서 **classic 토큰(read:packages)**을 만들어 `registryPassword`에 넣는다.
+저장소가 공개라 이미지도 공개로 올라간다 (로그인 없이 받을 수 있음). 그래서 `registryUsername`·`registryPassword`는 비워 둔다.
+이미지에는 저장소에 이미 공개된 코드만 들어간다 (`.dockerignore`가 `.env`·데이터·모델을 뺀다).
+저장소를 비공개로 바꾸면 GitHub **classic 토큰(read:packages)**을 만들어 두 값을 채운다.
 
 ## 4. Azure 리소스 만들기
 

@@ -20,10 +20,11 @@ param webImage string
 
 @description('이미지 저장소 (GHCR)')
 param registryServer string = 'ghcr.io'
-param registryUsername string
+@description('비공개 이미지일 때만. 공개 저장소의 이미지는 로그인 없이 받으므로 비워 둔다')
+param registryUsername string = ''
 @secure()
-@description('GHCR 읽기 권한(read:packages) 토큰')
-param registryPassword string
+@description('비공개 이미지일 때만: GHCR 읽기 권한(read:packages) 토큰')
+param registryPassword string = ''
 
 param postgresAdminUser string = 'ongiadmin'
 @secure()
@@ -150,8 +151,13 @@ var databaseUrl = 'postgresql+psycopg://${postgresAdminUser}:${uriComponent(post
 var naverSecret = empty(naverApiKey) ? [] : [ { name: 'naver-api-key', value: naverApiKey } ]
 var naverEnv = empty(naverApiKey) ? [] : [ { name: 'NAVER_API_KEY', secretRef: 'naver-api-key' } ]
 
-var backendSecrets = concat([
-  { name: 'registry-password', value: registryPassword }
+// 공개 이미지면 저장소 로그인 정보 없이 받는다 (비공개로 바꾸면 registryUsername·registryPassword를 채운다)
+var registrySecret = empty(registryPassword) ? [] : [ { name: 'registry-password', value: registryPassword } ]
+var registries = empty(registryPassword) ? [] : [
+  { server: registryServer, username: registryUsername, passwordSecretRef: 'registry-password' }
+]
+
+var backendSecrets = concat(registrySecret, [
   { name: 'database-url', value: databaseUrl }
   { name: 'session-secret', value: sessionSecret }
   { name: 'gpu-token', value: gpuGatewayToken }
@@ -176,10 +182,6 @@ var backendEnv = concat(naverEnv, [
   { name: 'DATA_PROCESSING_NOTICE', value: dataProcessingNotice }
 ])
 
-var registries = [
-  { server: registryServer, username: registryUsername, passwordSecretRef: 'registry-password' }
-]
-
 // 이미지의 사용자(uid 10001)가 Azure Files에 쓸 수 있게 한다
 var dataVolume = {
   name: 'data'
@@ -196,7 +198,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       ingress: { external: true, targetPort: 3000, transport: 'auto', allowInsecure: false }
       registries: registries
-      secrets: [ { name: 'registry-password', value: registryPassword } ]
+      secrets: registrySecret
     }
     template: {
       containers: [
