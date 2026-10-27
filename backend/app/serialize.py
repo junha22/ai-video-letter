@@ -150,6 +150,7 @@ def message(db: Session, m: Message) -> dict:
     version = int(m.rendered_at.timestamp()) if m.rendered_at else 0
     has_video = bool(m.video_path) and m.status not in ("draft", "generating", "deleted")
     recipient = m.recipient or m.parent
+    replies = (m.script_context or {}).get("replies", [])  # 대본을 만들 때 반영한 부모님 답글
     return {
         "id": m.id,
         "recipient_id": m.recipient_id,
@@ -165,7 +166,7 @@ def message(db: Session, m: Message) -> dict:
                 **c,
                 "char_count": script_llm.char_count(c["script"]),
                 "est_seconds": script_llm.estimate_seconds(c["script"]),
-                "warnings": script_llm.fact_warnings(c["script"], m.memo) if c["source"] == "llm" else [],
+                "warnings": script_llm.fact_warnings(c["script"], m.memo, replies) if c["source"] == "llm" else [],
                 # 3번 다 고쳐 쓰지 못한 대본도 후보로 나오므로, 고르기 전에 그대로는 영상을 못 만든다는 걸 보여 준다
                 "problems": script_llm.validate(c["script"]),
             }
@@ -173,11 +174,12 @@ def message(db: Session, m: Message) -> dict:
         ],
         "chosen_style": m.chosen_style,
         "speech_level": m.speech_level,
+        "script_context": m.script_context,
         "script": m.script,
         "script_source": m.script_source,
         "script_problems": script_llm.validate(m.script) if m.script else [],
         # 직접 고친 대본은 자녀가 일부러 넣은 것일 수 있어서 AI 대본에만 경고한다
-        "script_warnings": script_llm.fact_warnings(m.script, m.memo) if m.script_source == "llm" else [],
+        "script_warnings": script_llm.fact_warnings(m.script, m.memo, replies) if m.script_source == "llm" else [],
         "char_count": script_llm.char_count(m.script),
         "est_seconds": script_llm.estimate_seconds(m.script),
         "status": m.status,

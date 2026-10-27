@@ -3,6 +3,8 @@
 import json
 import re
 import time
+import unicodedata
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
@@ -244,11 +246,11 @@ def missing_facts(script: str, memo: str) -> list[str]:
     return found
 
 
-def fact_warnings(script: str, memo: str) -> list[str]:
-    """화면에 보여 줄 경고 문구"""
+def fact_warnings(script: str, memo: str, replies: Sequence[str] = ()) -> list[str]:
+    """화면에 보여 줄 경고 문구. 대본을 만들 때 넣은 부모님 답글에 나온 내용은 지어낸 것으로 보지 않는다"""
     warnings = []
-    if added := unsupported_facts(script, memo):
-        warnings.append(f"메모에 없던 내용이 들어갔어요: {', '.join(added)}")
+    if added := unsupported_facts(script, " ".join((memo, *replies))):
+        warnings.append(f"메모{'나 답글' if replies else ''}에 없던 내용이 들어갔어요: {', '.join(added)}")
     if missing := missing_facts(script, memo):
         warnings.append(f"메모에 있던 내용이 빠졌어요: {', '.join(missing)}")
     return warnings
@@ -295,6 +297,11 @@ def speech_mismatch(script: str, level: str) -> bool:
     return other in _sentence_levels(script)
 
 
+# ㅋㅋ·ㅠㅠ 같은 자모. 'ᄒᄒ', 'ᅲ'는 ㅎ·ㅠ와 모양만 같은 조합용 자모(U+1100~)라서 따로 넣었다 (실험 응답에서 5번 나왔다).
+# 조합용 자모로 쪼개진(NFD) 글자까지 지우지 않도록 지우기 전에 NFC로 합친다
+_JAMO = r"[ㄱ-ㅎㅏ-ㅣᄀ-ᇿꥠ-꥿ힰ-퟿]+"
+
+
 def _extract_script(raw: str) -> str | None:
     """모델이 JSON 앞뒤에 설명을 붙여도 {...} 부분만 꺼내서 읽는다."""
     match = re.search(r"\{.*\}", raw, re.DOTALL)
@@ -309,9 +316,10 @@ def _extract_script(raw: str) -> str | None:
         script = loose.group(1) if loose else None
     if not isinstance(script, str):
         return None
-    # 규칙으로 막아도 이모티콘(😊)이 나와서 지운다. TTS가 읽거나 이상하게 끊는다
-    script = re.sub(r"[\U0001F000-\U0001FAFF☀-➿️‍]|[ㄱ-ㅎㅏ-ㅣ]+", "", script)
-    script = re.sub(r"\s{2,}", " ", script).strip()
+    # 규칙으로 막아도 이모티콘(😊)과 자모가 나와서 지운다. TTS가 읽거나 이상하게 끊는다
+    script = re.sub(r"[\U0001F000-\U0001FAFF☀-➿️‍]|" + _JAMO, "", unicodedata.normalize("NFC", script))
+    # 줄바꿈이 있는 말투 예시를 따라 여러 줄로 쓰는 경우가 있어서 한 줄로 만든다
+    script = re.sub(r"\s+", " ", script).strip()
     return script or None
 
 
@@ -325,8 +333,37 @@ def _length_feedback(script: str, target: tuple[int, int]) -> list[str]:
     return []
 
 
+def _one_line(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _conversation_block(replies: Sequence[str], previous_script: str) -> str:
+    """부모님 답글이 있을 때만 붙이는 '최근 대화'. 답글이 없으면 프롬프트가 예전과 똑같다.
+    줄바꿈이 섞이면 다른 항목처럼 보여서(말투 예시에서 대본이 여러 줄로 나왔다) 한 줄씩 따옴표로 넣는다."""
+    if not replies:
+        return ""
+    lines = [f'- 직전 편지(자녀): "{_one_line(previous_script)}"'] if previous_script else []
+    lines += [f'- 부모님 답글: "{_one_line(r)}"' for r in replies]
+    return (
+        "최근 대화 (오래된 순):\n" + "\n".join(lines) + "\n"
+        "대화 규칙: 호칭 다음에 부모님 답글에 한 문장으로 짧게 반응하고 나서 메모를 전하세요. "
+        "답글에 있는 내용에만 반응하고 답글을 길게 되풀이하거나 답글에 없는 내용을 지어내지 마세요. "
+        "직전 편지는 무엇에 대한 답글인지 알려 주는 것이니 그 내용을 다시 쓰지 마세요. "
+        "분위기가 '메모 내용만' 전하라고 하면 답글에 반응하지 마세요.\n"
+    )
+
+
 def _user_prompt(
-    memo: str, template: str, nickname: str, relation: str, child_name: str, tone: str, style: str, level: str
+    memo: str,
+    template: str,
+    nickname: str,
+    relation: str,
+    child_name: str,
+    tone: str,
+    style: str,
+    level: str,
+    replies: Sequence[str] = (),
+    previous_script: str = "",
 ) -> str:
     # 오늘 날짜는 넣지 않는다. 넣었더니 오늘이 목요일일 때 메모의 '목요일'을 '오늘'로 바꾸고(6/6),
     # 생일 메모에 '오늘 생신'처럼 날짜를 넘겨짚었다
@@ -342,7 +379,8 @@ def _user_prompt(
         f"분위기: {style_desc}\n"
         f"모양 예시 (메모 '주말에 갈게'일 때): {examples[level]}\n"
         f"분량: 공백 빼고 {lo}~{hi}자\n"
-        f"메모: {memo}"
+        + _conversation_block(replies, previous_script)
+        + f"메모: {memo}"
     )
 
 
@@ -394,20 +432,32 @@ def fallback(memo: str, template: str, nickname: str, level: str = "존댓말") 
     closing = casual if level == "반말" else polite
     if template == "birthday" and "축하" not in memo:
         closing = ("생일 정말 축하해. " if level == "반말" else "생신 정말 축하드려요. ") + closing
-    body = re.sub(r"[ㄱ-ㅎㅏ-ㅣ]+", "", memo).strip().rstrip(".~")
+    body = re.sub(_JAMO, "", unicodedata.normalize("NFC", memo)).strip().rstrip(".~")
     if body and body[-1] not in "?!":
         body += "."
     return " ".join(p for p in (f"{nickname},", body, closing) if p)
 
 
 def generate_candidates(
-    memo: str, template: str, nickname: str, relation: str, child_name: str, tone: str = "", level: str | None = None
+    memo: str,
+    template: str,
+    nickname: str,
+    relation: str,
+    child_name: str,
+    tone: str = "",
+    level: str | None = None,
+    replies: Sequence[str] = (),
+    previous_script: str = "",
 ) -> list[dict]:
-    """분위기가 다른 후보를 동시에 만든다. 같은 문장(규칙 기반 대체 등)은 하나로 합친다."""
+    """분위기가 다른 후보를 동시에 만든다. 같은 문장(규칙 기반 대체 등)은 하나로 합친다.
+    replies: 직전 편지 이후 부모님 답글(오래된 순). 있으면 대본이 답글에 짧게 반응한다."""
     level = level or speech_level(tone, memo)
     with ThreadPoolExecutor(max_workers=len(STYLES)) as pool:
         futures = {
-            style: pool.submit(generate, memo, template, nickname, relation, child_name, tone, style, level)
+            style: pool.submit(
+                generate, memo, template, nickname, relation, child_name, tone, style, level,
+                replies=replies, previous_script=previous_script,
+            )
             for style in STYLES
         }
     candidates, seen = [], set()
@@ -432,6 +482,8 @@ def generate(
     tone: str = "",
     style: str = DEFAULT_STYLE,
     level: str | None = None,
+    replies: Sequence[str] = (),
+    previous_script: str = "",
 ) -> ScriptResult:
     level = level or speech_level(tone, memo)
     if not settings.naver_api_key:
@@ -439,10 +491,11 @@ def generate(
         return ScriptResult(script, "fallback", validate(script))
 
     target = STYLES[style][2]
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": _user_prompt(memo, template, nickname, relation, child_name, tone, style, level)},
-    ]
+    prompt = _user_prompt(memo, template, nickname, relation, child_name, tone, style, level, replies, previous_script)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+    # 답글에 나온 날씨·요일·시각에 반응한 건 지어낸 게 아니다. 빠짐 검사는 그대로 메모만 본다
+    source = " ".join((memo, *replies))
+    where = "메모나 답글" if replies else "메모"
     # (문제 수, 대본) 중 문제가 가장 적은 것을 남긴다
     best: tuple[int, str] | None = None
     deadline = time.monotonic() + TIME_LIMIT_SECONDS
@@ -458,10 +511,10 @@ def generate(
             feedback = ['반드시 {"script": "..."} 형식의 JSON 한 줄만 출력하세요.']
         else:
             feedback = validate(script) + _length_feedback(script, target)
-            facts = unsupported_facts(script, memo)
+            facts = unsupported_facts(script, source)
             if facts:
                 feedback.append(
-                    f"메모에 없는 내용({', '.join(facts)})을 넣었어요. 메모에 없는 날씨·요일·시간은 빼고, 메모에 있는 것만 전해 주세요."
+                    f"{where}에 없는 내용({', '.join(facts)})을 넣었어요. {where}에 없는 날씨·요일·시간은 빼고, {where}에 있는 것만 전해 주세요."
                 )
             missing = missing_facts(script, memo)
             if missing:

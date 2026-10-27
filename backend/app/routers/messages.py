@@ -5,14 +5,14 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import serialize
 from ..auth import current_user
 from ..config import settings
 from ..db import get_db, utcnow
-from ..models import Message, Photo, ShareLink, User, VoiceProfile
+from ..models import Message, Photo, SeniorReply, ShareLink, User, VoiceProfile
 from ..services import conversations, jobs, script_llm, storage
 from ..services import video as video_service  # 아래 video() 엔드포인트와 이름이 겹친다
 
@@ -66,19 +66,56 @@ def create_message(body: MessageIn, user: User = Depends(current_user), db: Sess
     m = Message(user_id=user.id, parent_id=parent.id, recipient_id=recipient.id, memo=body.memo.strip(), template=template)
     m.parent = parent
     m.recipient = recipient
-    _fill_candidates(m)
+    _fill_candidates(db, m)
     db.add(m)
     db.commit()
     return serialize.message(db, m)
 
 
-def _fill_candidates(m: Message, level: str | None = None) -> None:
+# 대본에 넣는 최근 대화: 직전에 보낸 편지 이후 부모님 답글. 오래된 답글에 뒤늦게 반응하면 어색해서 7일 안쪽만,
+# 프롬프트가 길어지면 호출 한도(분당 토큰)를 빨리 쓰므로 최근 3개를 150자까지만 넣는다
+CONTEXT_DAYS = 7
+CONTEXT_REPLIES = 3
+CONTEXT_CHARS = 150
+
+
+def _conversation_context(db: Session, m: Message) -> dict | None:
+    """직전에 보낸 편지와 그 뒤 부모님 답글(오래된 순). 답글이 없으면 None."""
+    if not m.recipient_id:
+        return None
+    sent = func.coalesce(Message.approved_at, Message.created_at)
+    q = select(Message).where(Message.recipient_id == m.recipient_id, Message.status.in_(("approved", "sent", "viewed")))
+    if m.id is not None:  # 저장 전인 새 메시지는 id가 없다
+        q = q.where(Message.id != m.id)
+    prev = db.scalar(q.order_by(sent.desc(), Message.id.desc()).limit(1))
+    since = utcnow() - timedelta(days=CONTEXT_DAYS)
+    if prev:
+        since = max(since, prev.approved_at or prev.created_at)
+    replies = db.scalars(
+        select(SeniorReply)
+        .where(SeniorReply.recipient_id == m.recipient_id, SeniorReply.created_at > since)
+        .order_by(SeniorReply.created_at.desc(), SeniorReply.id.desc())
+        .limit(CONTEXT_REPLIES)
+    ).all()
+    if not replies:
+        return None
+    return {
+        "previous_script": prev.script if prev else "",
+        "replies": [r.text.strip()[:CONTEXT_CHARS] for r in reversed(replies)],
+    }
+
+
+def _fill_candidates(db: Session, m: Message, level: str | None = None) -> None:
     """후보 대본을 새로 만든다. 후보가 하나뿐이면(AI 연결 실패 등) 고를 필요 없이 바로 쓴다.
-    말투는 이번에 바꾼 값 > 이 메시지에 쓰던 값 > 부모님 정보·메모로 판단한 값 순서."""
+    말투는 이번에 바꾼 값 > 이 메시지에 쓰던 값 > 부모님 정보·메모로 판단한 값 순서.
+    직전 편지에 부모님이 답글을 남겼으면 대본이 그 답글에 짧게 반응하도록 함께 넘긴다."""
     p = m.recipient or m.parent
     m.speech_level = level or m.speech_level or script_llm.speech_level(p.tone_examples, m.memo, p.speech_level)
+    m.script_context = _conversation_context(db, m)
+    context = m.script_context or {}
     m.candidates = script_llm.generate_candidates(
-        m.memo, m.template, p.nickname, p.relation, p.child_name, p.tone_examples, m.speech_level
+        m.memo, m.template, p.nickname, p.relation, p.child_name, p.tone_examples, m.speech_level,
+        replies=context.get("replies", []), previous_script=context.get("previous_script", ""),
     )
     m.chosen_style = None
     m.script = ""
@@ -149,7 +186,7 @@ def rewrite_script(
     m = _get(db, user, message_id)
     if m.status not in EDITABLE:
         raise HTTPException(409, "이미 승인한 메시지는 고칠 수 없어요.")
-    _fill_candidates(m, body.speech_level if body else None)
+    _fill_candidates(db, m, body.speech_level if body else None)
     m.status = "draft"
     _clear_render(m)
     db.commit()

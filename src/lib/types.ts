@@ -88,6 +88,8 @@ export type Message = {
   candidates: Candidate[];
   chosen_style: string | null;
   speech_level: "반말" | "존댓말" | null;
+  /** 대본을 만들 때 반영한 최근 대화 (직전 편지와 그 뒤 부모님 답글). 답글이 없었으면 null */
+  script_context: { previous_script: string; replies: string[] } | null;
   script: string;
   script_source: "llm" | "fallback" | "edited";
   script_problems: string[];

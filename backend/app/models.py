@@ -181,6 +181,9 @@ class Message(Base):
     candidates: Mapped[list | None] = mapped_column(JSON)
     chosen_style: Mapped[str | None] = mapped_column(String(20))
     speech_level: Mapped[str | None] = mapped_column(String(10))  # 이 메시지 후보를 쓴 말투
+    # 후보를 만들 때 넣은 최근 대화 {"previous_script", "replies": [...]}. 부모님 답글이 없었으면 None.
+    # 화면의 사실 경고도 같은 답글을 기준으로 계산하려고 남긴다
+    script_context: Mapped[dict | None] = mapped_column(JSON)
     script: Mapped[str] = mapped_column(Text, default="")
     script_source: Mapped[str] = mapped_column(String(20), default="llm")  # llm | fallback | edited
     # draft -> generating -> ready -> approved -> sent -> viewed / failed / deleted
