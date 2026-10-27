@@ -9,11 +9,10 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 import threading
-from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from _test_support import TEST_ROOT, app, db, settings
+from _test_support import TEST_ROOT, app, db, settings, using_isolated_database
 from fastapi.testclient import TestClient
 from sqlalchemy import MetaData, func, inspect, select, update
 
@@ -32,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 class AuthenticationIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.assertEqual(settings.data_dir, TEST_ROOT)
-        self.assertEqual(Path(db.engine.url.database).resolve(), (TEST_ROOT / "test.sqlite").resolve())
+        self.assertTrue(using_isolated_database(), str(db.engine.url))
         db.Base.metadata.drop_all(db.engine)
         db.init_db()
         self.client = self.new_client()

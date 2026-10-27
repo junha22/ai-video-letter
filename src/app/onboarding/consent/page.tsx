@@ -91,6 +91,7 @@ export default function ConsentPage() {
               <li>모든 영상에 &lsquo;AI로 만든 영상&rsquo; 표시가 들어가요.</li>
               <li>돈·계좌·인증번호를 요구하는 내용은 영상으로 만들 수 없어요.</li>
               <li>설정에서 동의를 철회하면 녹음, 목소리 모델, 사진, 영상이 모두 지워져요.</li>
+              {state.processing_notice && <li>{state.processing_notice}</li>}
             </ul>
           </div>
 

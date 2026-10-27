@@ -1,4 +1,5 @@
 import logging
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,6 +14,21 @@ from .routers import account, auth, conversations, messages, notifications, phot
 from .services import s3gen, wemeet_tts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+
+class _HideShareTokens(logging.Filter):
+    """공유 링크 토큰은 로그인 없이 대화방에 들어가는 열쇠라서 접속 로그(클라우드 로그 저장소)에 남기지 않는다."""
+
+    pattern = re.compile(r"(/api/watch/)[^/?\s]+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn 접속 로그의 args: (클라이언트, 메서드, 경로, HTTP 버전, 상태)
+        if isinstance(record.args, tuple) and len(record.args) > 2 and isinstance(record.args[2], str):
+            record.args = (*record.args[:2], self.pattern.sub(r"\1***", record.args[2]), *record.args[3:])
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_HideShareTokens())
 
 
 @asynccontextmanager

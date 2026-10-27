@@ -8,7 +8,7 @@ from .db import iso, utcnow
 from .models import Consent, Job, Message, ParentProfile, Photo, ShareLink, User, VoiceProfile, VoiceSample
 from .services import jobs, s3gen, script_llm
 
-CONSENT_VERSION = "2026-10"
+CONSENT_VERSION = settings.consent_version
 CONSENT_ITEMS = [
     {
         "kind": "voice",
@@ -43,6 +43,7 @@ def consent_state(db: Session, user_id: int) -> dict:
     active = active_consents(db, user_id)
     return {
         "version": CONSENT_VERSION,
+        "processing_notice": settings.data_processing_notice or None,
         "ok": all(item["kind"] in active for item in CONSENT_ITEMS),
         "items": [{**item, "agreed_at": iso(active[item["kind"]].agreed_at) if item["kind"] in active else None} for item in CONSENT_ITEMS],
     }

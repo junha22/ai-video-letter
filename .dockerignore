@@ -1,0 +1,19 @@
+# backend/Dockerfile과 Dockerfile.web 모두 저장소 루트를 빌드 컨텍스트로 쓴다.
+# 개인정보(녹음·사진·영상·DB)와 비밀값, 큰 모델 파일이 이미지에 들어가지 않게 뺀다
+.git
+node_modules
+.next
+.next-dev
+**/__pycache__
+**/*.pyc
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/data
+backend/tests
+backend/.venv
+backend/gpu_worker
+BACKEND_HANDOFF_PROMPT.md
+design-reference
+docs
+*.log

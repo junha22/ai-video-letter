@@ -366,7 +366,21 @@ RUNPOD_VIDEO_ENDPOINT_ID=http://<GPU PC 주소>:8010
 python -m unittest discover -s backend/tests -v
 ```
 
+배포용 PostgreSQL에서도 같은 테스트를 돌릴 수 있습니다 (DB 이름에 `test`가 들어가야 하며, 테스트마다 테이블을 지우고 다시 만듭니다). GitHub Actions(`.github/workflows/deploy.yml`)는 두 DB 모두에서 돌립니다.
+
+```powershell
+$env:TEST_DATABASE_URL = "postgresql+psycopg://user:pass@127.0.0.1:5432/ongi_test"; python -m unittest discover -s backend/tests
+```
+
 현재 통합 테스트 23개는 기존 SQLite 스키마 이관, 계정·대상자 분리, 토큰 만료·철회, 답글 재시도·동시 요청, KST 자정·월 경계와 마이크로초 정렬, 포트폴리오 갱신, 자동 월별 작성, 동의 철회와 저장 요청의 경합을 검증합니다. 테스트는 별도 DB·임시 미디어·고정 시계를 사용하며 실제 `backend/data`와 외부 AI 서비스를 사용하지 않습니다. 프론트엔드는 `npx.cmd --no-install tsc --noEmit`, `npm.cmd run lint`, `npm.cmd run build`로 검사합니다.
+
+## Azure 배포 (시연용)
+
+웹·API·워커·PostgreSQL·파일은 Azure Container Apps에, GPU 작업(TTS·영상)은 GPU PC에 두고 Tailscale Funnel + 토큰으로 연결한다. 순서·명령·비용은 [Azure 배포 문서](docs/DEPLOY_AZURE.md).
+
+- GPU PC: `npm run gpu` (TTS·영상 서버 + 게이트웨이 `backend/gpu_worker/gateway.py` :8200) → `tailscale funnel --bg 8200`
+- 리소스: `infra/main.bicep`, `infra/deploy.ps1`, 시연 때 켜고 끄기 `infra/ops.ps1 start|stop`
+- main 푸시 → 테스트(SQLite·PostgreSQL) → 이미지(GHCR) → Container Apps 이미지 교체
 
 ## 다음 단계
 
@@ -374,5 +388,5 @@ python -m unittest discover -s backend/tests -v
 - S3Gen 음색 학습: 적용 기준값(`S3GEN_MIN_VE_GAIN` 등) 확정, 실제 사용자 폰 녹음으로 효과 확인, 청취 평가
 - RunPod에 영상 핸들러(`gpu_worker/video_handler.py`, FLOAT + LoRA) 배포 → 엔드포인트 ID만 바꾸면 된다. 지금은 이 PC에서 TTS·음색 학습과 GPU를 나눠 쓴다 (위 '이 PC(Windows)에서 …')
 - 표정별(평온·기쁨·슬픔·놀람) 자연스러움, LoRA 0/1 비교 (PoC A/B 설문에 활용)
-- 파일 저장소를 S3로 (`services/storage.py`), DB를 Postgres로 (`DATABASE_URL`)
+- 파일 저장소를 Blob 같은 객체 저장소로 (`services/storage.py`, 지금 배포는 Azure Files를 `/data`에 연결)
 - PoC A/B 설문, 운영자 화면(작업 큐·GPU 비용·삭제 기록)

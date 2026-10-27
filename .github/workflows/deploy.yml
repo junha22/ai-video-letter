@@ -1,0 +1,117 @@
+# main에 푸시하면: 테스트 → 이미지 빌드(GHCR) → Azure Container Apps 이미지 교체. docs/DEPLOY_AZURE.md '5. GitHub Actions'
+# 배포 단계는 저장소 변수 AZURE_RESOURCE_GROUP과 비밀값 AZURE_CLIENT_ID·AZURE_TENANT_ID·AZURE_SUBSCRIPTION_ID가 있을 때만 돈다.
+# 앱이 꺼져 있어도(ops.ps1 stop) 이미지만 바뀌고 켜지지는 않는다.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  PREFIX: ${{ vars.ONGI_PREFIX || 'ongi' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ongi
+          POSTGRES_PASSWORD: ongi
+          POSTGRES_DB: ongi_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ongi" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - name: 백엔드 테스트 (SQLite)
+        run: python -m unittest discover -s backend/tests
+      - name: 백엔드 테스트 (PostgreSQL)
+        run: python -m unittest discover -s backend/tests
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://ongi:ongi@127.0.0.1:5432/ongi_test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
+      - run: npx next lint
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.names.outputs.backend }}
+      web: ${{ steps.names.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: names
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "backend=ghcr.io/${owner}/${PREFIX}-backend" >> "$GITHUB_OUTPUT"
+          echo "web=ghcr.io/${owner}/${PREFIX}-web" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 백엔드 이미지 (API·워커)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.names.outputs.backend }}:${{ github.sha }},${{ steps.names.outputs.backend }}:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: 웹 이미지 (/api는 같은 환경의 api 앱으로)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.web
+          push: true
+          build-args: BACKEND_URL=http://${{ env.PREFIX }}-api
+          tags: ${{ steps.names.outputs.web }}:${{ github.sha }},${{ steps.names.outputs.web }}:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    needs: build
+    if: vars.AZURE_RESOURCE_GROUP != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Container Apps 이미지 교체
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          BACKEND: ${{ needs.build.outputs.backend }}:${{ github.sha }}
+          WEB: ${{ needs.build.outputs.web }}:${{ github.sha }}
+        run: |
+          az extension add --name containerapp --upgrade --yes --only-show-errors
+          az containerapp update -g "$RG" -n "$PREFIX-api" --image "$BACKEND" --output none
+          az containerapp update -g "$RG" -n "$PREFIX-worker" --image "$BACKEND" --output none
+          az containerapp update -g "$RG" -n "$PREFIX-web" --image "$WEB" --output none
+          echo "웹: https://$(az containerapp show -g "$RG" -n "$PREFIX-web" --query properties.configuration.ingress.fqdn -o tsv)"

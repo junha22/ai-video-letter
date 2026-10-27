@@ -2,6 +2,8 @@
 // backend/.env가 TTS_PROVIDER=wemeet이면 TTS 서버(C:\WE_MEET\tts_server)도 같이 띄운다. 이미 떠 있으면 그대로 쓴다
 // VIDEO_PROVIDER=runpod이고 RUNPOD_VIDEO_ENDPOINT_ID가 이 PC 주소면 영상 서버(FLOAT, gpu_worker/video_handler.py)도 같이 띄운다
 // 포트 바꾸기: WEB_PORT=3001 API_PORT=8001 npm run dev:all
+// npm run gpu (--gpu-only): 웹·API·워커 없이 TTS·영상 서버와 게이트웨이(gpu_worker/gateway.py)만 띄운다.
+//   Azure에 배포한 백엔드가 Tailscale Funnel로 이 PC의 GPU를 쓸 때 (docs/DEPLOY_AZURE.md)
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -12,6 +14,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const backend = join(root, "backend");
 const webPort = process.env.WEB_PORT || "3000";
 const apiPort = process.env.API_PORT || "8000";
+const gpuOnly = process.argv.includes("--gpu-only");
 
 // 활성화된 conda 환경(conda activate ai-video-letter) → backend/.venv → 시스템 python 순서로 찾는다
 const condaEnv = process.env.CONDA_DEFAULT_ENV;
@@ -51,7 +54,8 @@ function portFree(port, host) {
   });
 }
 const busy = [];
-for (const [name, port] of [["웹", webPort], ["API", apiPort]]) {
+const gatewayPort = setting("GPU_GATEWAY_PORT", "8200");
+for (const [name, port] of gpuOnly ? [["게이트웨이", gatewayPort]] : [["웹", webPort], ["API", apiPort]]) {
   if (!(await portFree(port, "127.0.0.1")) || !(await portFree(port, "::"))) busy.push(`${name} ${port}`);
 }
 
@@ -105,6 +109,19 @@ if (videoUrl) {
   }
 }
 
+const gatewayToken = setting("GPU_GATEWAY_TOKEN", "");
+if (gpuOnly) {
+  const missing = [
+    !startTts && !(setting("TTS_PROVIDER", "local") === "wemeet" && (await ttsHealthy())) && "TTS 서버 (TTS_PROVIDER=wemeet, WEMEET_TTS_URL=이 PC 주소)",
+    !startVideo && !(videoUrl && (await videoHealthy())) && "영상 서버 (VIDEO_PROVIDER=runpod, RUNPOD_VIDEO_ENDPOINT_ID=http://127.0.0.1:8010)",
+    gatewayToken.length < 24 && "GPU_GATEWAY_TOKEN (24자 이상 임의 문자열)",
+  ].filter(Boolean);
+  if (missing.length) {
+    console.error(`[dev] GPU 모드에 필요한 설정이 없습니다 (backend/.env): ${missing.join(", ")}`);
+    process.exit(1);
+  }
+}
+
 if (busy.length) {
   console.error(`[dev] 포트가 이미 사용 중입니다: ${busy.join(", ")}`);
   console.error("[dev] 그 포트를 쓰는 프로그램을 끄거나 다른 포트로 띄우세요: $env:WEB_PORT=3001; $env:API_PORT=8001; npm run dev:all");
@@ -132,11 +149,29 @@ function serverEnv() {
   return out;
 }
 
-const procs = [
-  { name: "api", color: 36, cmd: python, args: ["-m", "uvicorn", "app.main:app", "--reload", "--reload-dir", "app", "--port", apiPort], cwd: backend },
-  { name: "worker", color: 35, cmd: python, args: ["-m", "app.worker"], cwd: backend, afterServers: startTts || startVideo },
-  { name: "web", color: 33, cmd: process.execPath, args: [join(root, "node_modules", "next", "dist", "bin", "next"), "dev", "-p", webPort], cwd: root },
-];
+const procs = gpuOnly
+  ? [
+      {
+        name: "gateway",
+        color: 37,
+        cmd: python,
+        args: [join(backend, "gpu_worker", "gateway.py"), "--port", gatewayPort],
+        cwd: backend,
+        env: { ...env, GPU_GATEWAY_TOKEN: gatewayToken, GATEWAY_TTS_URL: ttsUrl.origin, GATEWAY_VIDEO_URL: videoUrl.origin },
+      },
+    ]
+  : [
+      // 코드를 고치면 다시 뜨는데, 웹(next dev)이 API 연결을 계속 열어 두어서 종료를 무한정 기다리지 않게 3초로 끊는다
+      {
+        name: "api",
+        color: 36,
+        cmd: python,
+        args: ["-m", "uvicorn", "app.main:app", "--reload", "--reload-dir", "app", "--timeout-graceful-shutdown", "3", "--port", apiPort],
+        cwd: backend,
+      },
+      { name: "worker", color: 35, cmd: python, args: ["-m", "app.worker"], cwd: backend, afterServers: startTts || startVideo },
+      { name: "web", color: 33, cmd: process.execPath, args: [join(root, "node_modules", "next", "dist", "bin", "next"), "dev", "-p", webPort], cwd: root },
+    ];
 if (startTts) {
   procs.unshift({
     name: "tts",
@@ -216,6 +251,12 @@ function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-console.log(`[dev] 웹 http://localhost:${webPort}  ·  API http://127.0.0.1:${apiPort}/docs`);
-if (startTts) console.log(`[dev] TTS 서버 ${ttsUrl.origin} 띄우는 중 (약 15초). 준비되면 워커가 뜹니다.`);
-if (startVideo) console.log(`[dev] 영상 서버 ${videoUrl.origin} 띄우는 중 (약 5초). 준비되면 워커가 뜹니다.`);
+if (gpuOnly) {
+  console.log(`[dev] GPU 모드: 게이트웨이 http://127.0.0.1:${gatewayPort} (/tts → ${ttsUrl.origin}, /video → ${videoUrl.origin})`);
+  console.log(`[dev] 밖에서 쓰려면 다른 창에서: tailscale funnel --bg ${gatewayPort}  (상태 확인: https://<PC>.<tailnet>.ts.net/health)`);
+} else {
+  console.log(`[dev] 웹 http://localhost:${webPort}  ·  API http://127.0.0.1:${apiPort}/docs`);
+}
+const after = gpuOnly ? "" : " 준비되면 워커가 뜹니다.";
+if (startTts) console.log(`[dev] TTS 서버 ${ttsUrl.origin} 띄우는 중 (약 15초).${after}`);
+if (startVideo) console.log(`[dev] 영상 서버 ${videoUrl.origin} 띄우는 중 (약 5초).${after}`);

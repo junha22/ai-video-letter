@@ -49,3 +49,6 @@ backend/data/
 backend/gpu_worker/float/
 __pycache__/
 *.pyc
+
+# Azure 배포 비밀값 (infra/params.example.json을 복사해서 쓴다)
+infra/*.local.json

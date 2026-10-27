@@ -137,6 +137,8 @@ export type VoiceState = {
 
 export type ConsentState = {
   version: string;
+  // 목소리·사진을 저장·처리하는 곳 (배포 환경에서만 들어 있음)
+  processing_notice: string | null;
   ok: boolean;
   items: { kind: "voice" | "face" | "parent_receive"; title: string; description: string; agreed_at: string | null }[];
 };

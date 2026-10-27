@@ -5,7 +5,6 @@ Run from the repository root:
 """
 
 import logging
-from pathlib import Path
 import threading
 import unittest
 from contextlib import ExitStack, contextmanager
@@ -14,7 +13,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 
-from _test_support import TEST_ROOT as _TEST_ROOT, app, db, settings
+from _test_support import TEST_ROOT as _TEST_ROOT, app, db, settings, using_isolated_database
 from fastapi.testclient import TestClient
 from sqlalchemy import MetaData, func, inspect, select
 from app.models import (
@@ -34,7 +33,7 @@ class ConversationIntegrationTests(unittest.TestCase):
         self.dev_login.start()
         self.addCleanup(self.dev_login.stop)
         self.assertEqual(settings.data_dir, _TEST_ROOT)
-        self.assertEqual(Path(db.engine.url.database).resolve(), (_TEST_ROOT / "test.sqlite").resolve())
+        self.assertTrue(using_isolated_database(), str(db.engine.url))
         db.Base.metadata.drop_all(db.engine)
         db.init_db()
         self.client = TestClient(app)

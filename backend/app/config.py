@@ -51,6 +51,11 @@ class Settings:
     # Name-only access must be explicitly enabled on an isolated development server.
     dev_login = _bool("DEV_LOGIN", default=False)
 
+    # 동의 화면: 목소리·사진의 저장·처리 장소는 배포 환경마다 달라서 환경 변수로 넣는다 (비우면 표시하지 않음).
+    # 문구를 바꾸면 CONSENT_VERSION도 바꿔서 누가 어느 문구에 동의했는지 남긴다
+    consent_version = os.getenv("CONSENT_VERSION", "2026-10")
+    data_processing_notice = os.getenv("DATA_PROCESSING_NOTICE", "").strip()
+
     naver_api_key = os.getenv("NAVER_API_KEY", "")
     hcx_endpoint = os.getenv(
         "HCX_ENDPOINT", "https://clovastudio.stream.ntruss.com/v1/chat-completions/HCX-003"

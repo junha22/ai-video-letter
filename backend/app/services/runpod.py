@@ -42,11 +42,13 @@ def run(endpoint_id: str, payload: dict, timeout: float = 900) -> tuple[dict, fl
 
 
 def _run_local(base_url: str, payload: dict, timeout: float) -> tuple[dict, float]:
-    """RunPod SDK의 로컬 테스트 서버. /runsync 한 번으로 끝까지 기다리고, 걸린 시간을 GPU 시간으로 기록한다."""
+    """RunPod SDK의 로컬 테스트 서버. /runsync 한 번으로 끝까지 기다리고, 걸린 시간을 GPU 시간으로 기록한다.
+    GPU PC를 터널로 열어 둔 경우(gpu_worker/gateway.py) RUNPOD_API_KEY를 그 게이트웨이 토큰으로 보낸다."""
     started = time.monotonic()
+    headers = {"Authorization": f"Bearer {settings.runpod_api_key}"} if settings.runpod_api_key else {}
     try:
         with httpx.Client(timeout=timeout) as client:
-            resp = client.post(f"{base_url}/runsync", json={"input": payload})
+            resp = client.post(f"{base_url}/runsync", headers=headers, json={"input": payload})
             resp.raise_for_status()
             data = resp.json()
     except httpx.HTTPError as e:

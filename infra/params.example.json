@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "backendImage": { "value": "ghcr.io/junha22/ongi-backend:latest" },
+    "webImage": { "value": "ghcr.io/junha22/ongi-web:latest" },
+    "registryUsername": { "value": "<GitHub 사용자 이름>" },
+    "registryPassword": { "value": "<GHCR 읽기 토큰 (read:packages)>" },
+    "postgresAdminPassword": { "value": "<긴 임의 비밀번호 (영문 대소문자·숫자 포함)>" },
+    "sessionSecret": { "value": "<긴 임의 문자열>" },
+    "naverApiKey": { "value": "" },
+    "gpuGatewayUrl": { "value": "https://<PC 이름>.<tailnet>.ts.net" },
+    "gpuGatewayToken": { "value": "<GPU PC backend/.env의 GPU_GATEWAY_TOKEN과 같은 값>" }
+  }
+}

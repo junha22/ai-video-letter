@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:all": "node scripts/dev.mjs",
+    "gpu": "node scripts/dev.mjs --gpu-only",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
