@@ -212,6 +212,10 @@ func tailscaleSidecar(hostname string) object => {
     { name: 'TS_HOSTNAME', value: hostname }
     { name: 'TS_USERSPACE', value: 'true' }
     { name: 'TS_OUTBOUND_HTTP_PROXY_LISTEN', value: '127.0.0.1:1055' }
+    // Container Apps는 안에서 Kubernetes로 돌아서, 그대로 두면 상태를 Kubernetes Secret에 쓰려다 실패하고 계속 다시 뜬다.
+    // Kubernetes 모드를 끄고 상태는 메모리에 둔다 (임시 노드라 다시 뜨면 키로 새로 들어온다)
+    { name: 'TS_KUBE_SECRET', value: '' }
+    { name: 'KUBERNETES_SERVICE_HOST', value: '' }
   ]
   resources: { cpu: json('0.25'), memory: '0.5Gi' }
 }
