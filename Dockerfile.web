@@ -1,6 +1,6 @@
 # 온기 웹(Next.js) 이미지. 저장소 루트에서:
 #   docker build -f Dockerfile.web --build-arg BACKEND_URL=http://ongi-api -t ongi-web .
-# /api/* 요청은 next.config.mjs의 rewrites가 BACKEND_URL로 넘긴다. 이 값은 빌드할 때 정해진다
+# /api/* 요청은 src/app/api/[...path]/route.ts가 BACKEND_URL로 넘긴다. 실행할 때 읽으므로 컨테이너 환경 변수로 바꿀 수 있다
 # (Azure: 같은 Container Apps 환경의 api 앱 이름. 브라우저는 웹 주소 하나만 보므로 세션 쿠키가 그대로 동작한다)
 FROM node:20-alpine AS build
 WORKDIR /app
@@ -8,14 +8,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-ARG BACKEND_URL
-RUN test -n "$BACKEND_URL" || (echo "BACKEND_URL build-arg가 필요합니다" && exit 1)
-ENV BACKEND_URL=$BACKEND_URL
 RUN npm run build
 
 FROM node:20-alpine
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+ARG BACKEND_URL=http://ongi-api
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 BACKEND_URL=$BACKEND_URL
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public

@@ -1,5 +1,5 @@
 // 온기 시연용(PoC) Azure 구성. 자세한 순서는 docs/DEPLOY_AZURE.md
-//   web    : Next.js (외부 공개). /api/*는 같은 환경의 api 앱으로 넘긴다 (BACKEND_URL은 이미지 빌드 때 http://<apiName>)
+//   web    : Next.js (외부 공개). /api/*는 같은 환경의 api 앱으로 넘긴다 (src/app/api/[...path]/route.ts, BACKEND_URL=http://<apiName>)
 //   api    : FastAPI (내부 전용)
 //   worker : 작업 워커 (항상 1개). TTS·영상 생성은 GPU PC 게이트웨이를 tailnet 안에서 부른다 (옆의 Tailscale 컨테이너)
 //   Postgres(B1ms) + Azure Files(녹음·사진·영상, /data)
@@ -236,6 +236,8 @@ resource web 'Microsoft.App/containerApps@2026-07-01' = {
         {
           name: 'web'
           image: webImage
+          // /api/* 프록시(src/app/api/[...path]/route.ts)가 넘길 곳. 같은 환경 안에서는 앱 이름으로 부른다
+          env: [ { name: 'BACKEND_URL', value: 'http://${apiName}' } ]
           resources: { cpu: json('0.5'), memory: '1Gi' }
         }
       ]
