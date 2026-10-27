@@ -1,7 +1,7 @@
 """FLOAT 생성 조정: 사진 충실도(참조 가이던스)와 눈 후처리.
 
 Kaggle 노트북 float_infer.ipynb에서 써 보고 고른 기능을 핸들러(video_handler.py)로 옮겼다.
-모두 학습 없이 추론할 때만 적용하고, 값을 주지 않으면 FLOAT 원래 동작과 같다.
+모두 학습 없이 추론할 때만 적용한다. 요청에 값이 없으면 DEFAULTS를 쓰고, 끄려면 아래 '끔' 값을 보낸다.
 
   RefGuidance        사진 충실도. FMT의 가이던스에 '사진 있음 - 사진 없음' 차이를 더한다
   motion_directions  사진마다 움직임 방향 20개 중 눈·입을 움직이는 방향을 찾는다
@@ -17,6 +17,32 @@ import torch
 from scipy.ndimage import gaussian_filter1d
 
 REF_MODES = ("free", "eye", "all")
+
+# 기본값. 생성 영상에서 시선이 튀어서 시선 안정·사진 충실도를 노트북 추천값(0.4, 3)보다 올렸다 (2026-10-27).
+# 끔: r_cfg_scale 1, eye_stable 0, blink_gap 0, dejump false
+DEFAULTS = {"r_cfg_scale": 4.0, "ref_mode": "free", "eye_stable": 0.7, "blink_gap": 0.0, "dejump": True}
+
+
+def options(inp: dict) -> dict:
+    """요청 입력에서 생성 조정 값을 읽는다. 없거나 비어 있으면 DEFAULTS, 0·false처럼 끄는 값은 그대로 쓴다."""
+    def get(key):
+        value = inp.get(key)
+        return DEFAULTS[key] if value is None or value == "" else value
+
+    out = {
+        "r_cfg_scale": float(get("r_cfg_scale")),
+        "ref_mode": str(get("ref_mode")).strip().lower(),
+        "eye_stable": float(get("eye_stable")),
+        "blink_gap": float(get("blink_gap")),
+        "dejump": str(get("dejump")).strip().lower() in ("1", "true", "yes", "on"),
+    }
+    if out["ref_mode"] not in REF_MODES:
+        raise ValueError(f"ref_mode는 {', '.join(REF_MODES)} 중 하나여야 합니다 (요청 {out['ref_mode']})")
+    if not 0.0 <= out["eye_stable"] <= 1.0:
+        raise ValueError(f"eye_stable은 0~1이어야 합니다 (요청 {out['eye_stable']})")
+    if out["blink_gap"] < 0:
+        raise ValueError(f"blink_gap은 0 이상이어야 합니다 (요청 {out['blink_gap']})")
+    return out
 
 
 class RefGuidance:

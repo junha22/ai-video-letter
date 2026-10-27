@@ -309,7 +309,7 @@ backend/gpu_worker/
 - **입출력 형식**: `backend/gpu_worker/video_handler.py` 맨 위 설명 참고. 기존 `{"image_b64", "audio_b64", "fps"} → {"video_b64"}`에 `face`와 선택 옵션(`seed`, `lora_strength`, `emo` …)이 더해졌다.
 - **표정(감정)**: 사용자가 영상 만들기 화면에서 평온·기쁨·슬픔·놀람 중에 고른다(기본 평온). FLOAT의 음성 감정 추정은 영어 음성으로 학습돼 한국어에서 부정확해서 쓰지 않는다. 고른 값은 `messages.emotion`에 남는다.
 - **옵션**: `backend/.env`의 `VIDEO_LORA_STRENGTH`(0 = 원본 FLOAT, 1 = LoRA), `VIDEO_E_CFG_SCALE`(표정 세기), `VIDEO_SEED` 등. 비우면 핸들러 기본값.
-- **사진 충실도·눈 후처리**: Kaggle 노트북(`float_infer.ipynb`)에서 고른 기능을 `gpu_worker/float_tuning.py`로 옮겼다. `VIDEO_R_CFG_SCALE`(사진 충실도), `VIDEO_REF_MODE`(적용 범위), `VIDEO_EYE_STABLE`(시선 안정), `VIDEO_BLINK_GAP`(깜빡임 간격), `VIDEO_DEJUMP`(튀는 곳만 다듬기). 비우면 모두 꺼져서 FLOAT 원래 동작과 같다. 노트북 추천값은 `.env.example` 참고.
+- **사진 충실도·눈 후처리**: Kaggle 노트북(`float_infer.ipynb`)에서 고른 기능을 `gpu_worker/float_tuning.py`로 옮겼다. `VIDEO_R_CFG_SCALE`(사진 충실도), `VIDEO_REF_MODE`(적용 범위), `VIDEO_EYE_STABLE`(시선 안정), `VIDEO_BLINK_GAP`(깜빡임 간격), `VIDEO_DEJUMP`(튀는 곳만 다듬기). 비우면 핸들러 기본값(사진 충실도 4·free, 시선 안정 0.7, 튀는 곳 다듬기 켬, 깜빡임 간격 끔)을 쓴다. 기본값은 `float_tuning.DEFAULTS` 한곳에 있고, 끄는 값은 `.env.example` 참고.
 - **GPU 필요**: FLOAT 코드가 `.cuda()`를 직접 불러서 CPU로는 돌지 않는다. GPU 없이 웹을 개발할 때는 `VIDEO_PROVIDER=local` 그대로 둔다.
 - **라이선스**: FLOAT는 비상업 라이선스(CC BY-NC)라 비상업 연구·PoC 용도로만 쓴다.
 

@@ -14,12 +14,12 @@
   a_cfg_scale    float          선택. 음성 반영 강도 (기본 2)
   e_cfg_scale    float          선택. 감정 반영 강도 (기본 1)
   nfe            int            선택. ODE 단계 수 (기본 10)
-  -- 생성 조정 (float_tuning.py, Kaggle 노트북 float_infer.ipynb에서 옮김). 주지 않으면 FLOAT 원래 동작 --
-  r_cfg_scale    float          선택. 사진 충실도. 올리면 시선·기본 표정이 사진에서 덜 벗어난다 (기본 1 = 끔, 노트북 추천 3)
+  -- 생성 조정 (float_tuning.py, Kaggle 노트북 float_infer.ipynb에서 옮김). 기본값은 float_tuning.DEFAULTS --
+  r_cfg_scale    float          선택. 사진 충실도. 올리면 시선·기본 표정이 사진에서 덜 벗어난다 (기본 4, 1 = 끔)
   ref_mode       str            선택. 사진 충실도 적용 범위 free|eye|all (기본 free = 입·감정은 살림)
-  eye_stable     float          선택. 0~1. 시선 떨림을 줄이고 사진 속 시선 쪽으로 당김 (기본 0 = 끔, 노트북 추천 0.4)
+  eye_stable     float          선택. 0~1. 시선 떨림을 줄이고 사진 속 시선 쪽으로 당김 (기본 0.7, 0 = 끔)
   blink_gap      float          선택. 초. 이보다 가깝게 붙은 깜빡임을 지움 (기본 0 = 끔, 노트북 추천 3)
-  dejump         bool           선택. 고개·표정이 갑자기 튀는 프레임의 앞뒤만 부드럽게 (기본 false, 노트북 추천 true)
+  dejump         bool           선택. 고개·표정이 갑자기 튀는 프레임의 앞뒤만 부드럽게 (기본 true)
 출력:
   {"video_b64": str(mp4), "width", "height", "frames", "fps", "crop", "notes", "seconds"}
   crop: 얼굴을 어떻게 잘랐는지 (float = FLOAT 검출기, face_box = 입력 face, center = 가운데)
@@ -235,16 +235,7 @@ def handler(job):
     if emo and emo not in EMOTIONS:
         raise ValueError(f"emo는 {', '.join(EMOTIONS)} 중 하나여야 합니다 (요청 {emo})")
     seed = int(inp["seed"]) if inp.get("seed") is not None else None
-    ref_mode = (inp.get("ref_mode") or "free").strip().lower()
-    if ref_mode not in tuning.REF_MODES:
-        raise ValueError(f"ref_mode는 {', '.join(tuning.REF_MODES)} 중 하나여야 합니다 (요청 {ref_mode})")
-    eye_stable = float(inp.get("eye_stable") or 0.0)
-    if not 0.0 <= eye_stable <= 1.0:
-        raise ValueError(f"eye_stable은 0~1이어야 합니다 (요청 {eye_stable})")
-    blink_gap = float(inp.get("blink_gap") or 0.0)
-    if blink_gap < 0:
-        raise ValueError(f"blink_gap은 0 이상이어야 합니다 (요청 {blink_gap})")
-    dejump = str(inp.get("dejump", False)).strip().lower() in ("1", "true", "yes", "on")
+    tune = tuning.options(inp)
 
     img = cv2.imdecode(np.frombuffer(base64.b64decode(inp["image_b64"]), np.uint8), cv2.IMREAD_COLOR)
     if img is None:
@@ -262,8 +253,7 @@ def handler(job):
                 a_cfg_scale=float(inp.get("a_cfg_scale", 2.0)),
                 e_cfg_scale=float(inp.get("e_cfg_scale", 1.0)),
                 nfe=int(inp.get("nfe", 10)),
-                r_cfg_scale=float(inp.get("r_cfg_scale", 1.0)),
-                ref_mode=ref_mode, eye_stable=eye_stable, blink_gap=blink_gap, dejump=dejump,
+                **tune,
             )
             if notes:
                 print(f"[video_handler] {' | '.join(notes)}", flush=True)
