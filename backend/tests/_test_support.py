@@ -27,7 +27,7 @@ with patch.dict(os.environ, {
     "TTS_PROVIDER": "local",
     "VIDEO_PROVIDER": "local",
     "S3GEN_TRAINING": "false",
-    "VOICE_TARGET_SECONDS": "90",
+    "VOICE_TARGET_SECONDS": "135",
 }):
     from app import db
     from app.config import settings

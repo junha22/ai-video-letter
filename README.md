@@ -152,7 +152,7 @@ cd backend; python -m app.worker                              # 워커
 | `TTS_PROVIDER` | `local`: Windows 내장 한국어 음성 (내 목소리 아님) | `wemeet`: 우리가 학습한 한국어 TTS 서버로 내 목소리 (아래 'TTS 서버 연동'), `runpod`: RunPod의 Chatterbox |
 | `VIDEO_PROVIDER` | `local`: 사진이 천천히 확대되는 영상 | `runpod`: FLOAT + 입 모양 LoRA로 립싱크 영상 |
 | `PUBLIC_BASE_URL` | `http://localhost:3000` (이 PC에서만 열림) | 배포/터널 주소 → 부모님 휴대폰에서 열림 |
-| `VOICE_TARGET_SECONDS` | 90초(1분 30초) | 목소리 사전 녹음의 완료 기준 |
+| `VOICE_TARGET_SECONDS` | 135초(2분 15초) | 목소리 사전 녹음의 완료 기준. S3Gen 음색 학습이 돌 수 있는 최소 길이 (비교 30초 + 검증 20초 + 학습 60초, 대본 단위로 나눠서 약 130초) |
 
 카카오톡 공유 버튼은 프론트엔드 `.env.local`에 `NEXT_PUBLIC_KAKAO_JS_KEY`를 넣으면 켜진다 (`.env.local.example` 참고).
 없으면 휴대폰 공유 창, 문자 보내기, 링크 복사로 보낸다.
@@ -191,7 +191,7 @@ npm run dev:all
 
 | 시점 | 백엔드 | TTS 서버 |
 |---|---|---|
-| 목소리 등록 (`voice` 작업) | 녹음 중 6~10초 문장 1개를 고른다 (길이 → 차분한 긴 문장 → 평서문 → 잡음 적은 순). voice_id(`user_<내부ID>_<무작위 8자>`)와 등록 시각을 `voice_profiles`에 저장 | `PUT /voices/{id}` |
+| 목소리 등록 (`voice` 작업) | 녹음 중 문장 1개를 고른다 (6초 이상 → 차분한 문장 → 평서문 → 잡음 적은 순). 서버는 앞 10초에서 그대로 자르므로, 그보다 긴 대본은 4~9.5초 사이의 가장 늦은 쉼에서 미리 잘라 `voice/tts_reference.wav`로 올린다 (`audio.trim_reference`, 음색 학습도 같은 파일 사용). voice_id(`user_<내부ID>_<무작위 8자>`)와 등록 시각을 `voice_profiles`에 저장 | `PUT /voices/{id}` |
 | 영상 생성 (`video` 작업 첫 단계) | 대본을 그대로 보내고 WAV는 `messages/<id>/audio.wav`, `X-Seed`는 `messages.tts_seed`에 저장 | `POST /tts` |
 | 다시 녹음, 동의 철회 | `voice_delete` 작업을 넣는다 | `DELETE /voices/{id}` |
 

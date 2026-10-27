@@ -22,22 +22,31 @@ from .services import audio, jobs, korean, s3gen, storage, tts, video, wemeet_tt
 
 log = logging.getLogger("ongi.worker")
 
-# TTS 서버 참조 음성: 차분한 6~10초 문장 1개. 서버는 말소리 3초 이상을 요구하고 앞 10초만 쓴다
-REFERENCE_SECONDS = (6.0, 10.0)
+# TTS 서버 참조 음성: 차분한 문장 1개. 서버는 말소리 3초 이상을 요구하고 앞 10초만 쓴다.
+# 10초보다 긴 대본은 _reference_file이 10초 안쪽의 쉼에서 잘라서 보낸다
+MIN_GOOD_REFERENCE_SECONDS = 6.0
 MIN_REFERENCE_SECONDS = 3.5  # 녹음 길이에는 앞뒤 여백 0.15초씩이 들어 있어서 서버 기준(3초)보다 조금 길게 잡는다
 
 
 def _pick_reference(samples: list[VoiceSample], sentences: list[dict]) -> VoiceSample | None:
-    """길이가 6~10초에 가까운 것 → 차분한 문장 → 평서문 → 잡음이 적은 것 순으로 고른다."""
+    """6초 이상인 것 → 차분한 문장 → 평서문 → 잡음이 적은 것 순으로 고른다. 긴 녹음은 잘라 쓰므로 길어도 깎지 않는다."""
     kinds = {i: s["kind"] for i, s in enumerate(sentences)}
 
     def rank(s: VoiceSample):
-        off = max(REFERENCE_SECONDS[0] - s.duration, s.duration - REFERENCE_SECONDS[1], 0.0)
+        short = max(MIN_GOOD_REFERENCE_SECONDS - s.duration, 0.0)
         kind = kinds.get(s.index)
-        return (round(off, 1), kind != "calm", kind != "statement", -s.snr_db)
+        return (round(short, 1), kind != "calm", kind != "statement", -s.snr_db)
 
     usable = [s for s in samples if s.duration >= MIN_REFERENCE_SECONDS]
     return min(usable, key=rank) if usable else None
+
+
+def _reference_file(sample: VoiceSample) -> Path:
+    """TTS 서버에 올리는 참조 음성. 10초보다 길면 10초 안쪽의 쉼에서 자른 파일을 만든다 (audio.trim_reference).
+    음색 학습도 이 파일을 참조로 써서 실제로 등록된 목소리와 조건을 맞춘다."""
+    path = storage.user_dir(sample.user_id, "voice") / "tts_reference.wav"
+    audio.write_wav(path, audio.trim_reference(audio.read_wav(storage.abs_path(sample.path))))
+    return path
 
 
 def _register_voice(db: Session, profile: VoiceProfile) -> None:
@@ -54,8 +63,9 @@ def _register_voice(db: Session, profile: VoiceProfile) -> None:
         profile.tts_voice_id = f"user_{profile.user_id}_{secrets.token_hex(4)}"
     profile.tts_registered_at = None
     db.commit()
+    reference = _reference_file(sample)
     try:
-        meta = wemeet_tts.register_voice(profile.tts_voice_id, storage.abs_path(sample.path))
+        meta = wemeet_tts.register_voice(profile.tts_voice_id, reference)
     except wemeet_tts.TTSRejected as e:
         if e.status == 400:  # 말소리가 너무 짧거나 없음
             e.user_message = "녹음에서 목소리를 읽지 못했어요. 처음부터 다시 녹음해 주세요."
@@ -72,8 +82,8 @@ def _register_voice(db: Session, profile: VoiceProfile) -> None:
     profile.tts_registered_at = utcnow()
     db.commit()
     log.info(
-        "TTS 목소리 등록 %s (문장 %s번, %.1f초, 말소리 %s초)",
-        profile.tts_voice_id, sample.index, sample.duration, meta.get("speech_seconds"),
+        "TTS 목소리 등록 %s (문장 %s번, %.1f초 중 %.1f초, 말소리 %s초)",
+        profile.tts_voice_id, sample.index, sample.duration, audio.wav_duration(reference), meta.get("speech_seconds"),
     )
 
 
@@ -224,9 +234,16 @@ def run_voice_train(db: Session, job: Job) -> None:
         db.expire_all()
         return _train_target(db, job) is not None
 
-    clips = [{"id": f"s{s.index:02d}", "audio": str(storage.abs_path(s.path)), "duration": round(s.duration, 2)} for s in samples]
+    # 참조 문장은 TTS 서버에 등록한 것과 같은 잘린 파일을 쓴다 (학습 프롬프트·비교용 후보 목소리 모두)
+    reference = _reference_file(ref)
+    clips = [
+        {"id": f"s{s.index:02d}", "audio": str(storage.abs_path(s.path)), "duration": round(s.duration, 2)}
+        if s is not ref
+        else {"id": f"s{s.index:02d}", "audio": str(reference), "duration": round(audio.wav_duration(reference), 2)}
+        for s in samples
+    ]
     try:
-        outcome = s3gen.run(clips, f"s{ref.index:02d}", storage.abs_path(ref.path), voice_id, work, still_current)
+        outcome = s3gen.run(clips, f"s{ref.index:02d}", reference, voice_id, work, still_current)
     finally:
         if not s3gen.delete_candidate(voice_id):
             jobs.enqueue_voice_delete(db, job.user_id, f"{voice_id}_cand")

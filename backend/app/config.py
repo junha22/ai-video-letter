@@ -93,7 +93,7 @@ class Settings:
     s3gen_min_ve_gain = _float("S3GEN_MIN_VE_GAIN", 0.005)
     s3gen_min_sv_gain = _float("S3GEN_MIN_SV_GAIN", 0.0)
 
-    voice_target_seconds = int(os.getenv("VOICE_TARGET_SECONDS", "90"))
+    voice_target_seconds = int(os.getenv("VOICE_TARGET_SECONDS", "135"))
     reference_seconds = 12
     share_link_days = int(os.getenv("SHARE_LINK_DAYS", "30"))
     job_max_attempts = 3

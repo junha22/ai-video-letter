@@ -135,6 +135,35 @@ def clean(samples: np.ndarray) -> np.ndarray:
     return (samples * gain).astype(np.float32)
 
 
+def trim_reference(samples: np.ndarray, max_seconds: float = 9.5, min_seconds: float = 4.0) -> np.ndarray:
+    """TTS 서버 참조 음성용. 서버는 첫 말소리부터 10초에서 그대로 잘라서 긴 대본은 말이 중간에 끊긴다.
+    그래서 첫 말소리부터 min_seconds~max_seconds 사이의 가장 늦은 쉼에서 미리 자른다. 그보다 짧으면 그대로 둔다.
+    쉼은 0.14초 평균 크기로 찾는다. 단어 안의 짧은 끊김(받침·파열음)은 앞뒤 말소리에 묻히고 문장·구절 사이만 낮게 남는다.
+    말소리보다 18dB 이상 작은 쉼을 먼저, 없으면 12dB 이상 작은 쉼, 그것도 없으면 max_seconds에서 자른다."""
+    db = _frame_db(samples)
+    voiced = np.nonzero(db > db.max() - 35)[0]  # 서버(librosa top_db=35)와 같은 기준으로 첫 말소리를 찾는다
+    if not len(voiced):
+        return samples
+    first, limit = voiced[0], voiced[0] + int(max_seconds * SAMPLE_RATE) // FRAME
+    if len(db) <= limit:
+        return samples
+
+    smooth = 10 * np.log10(np.convolve(10 ** (db / 10), np.ones(7) / 7, mode="same") + 1e-12)
+    speech = np.percentile(db, 90)
+    earliest = first + int(min_seconds * SAMPLE_RATE) // FRAME
+    window = smooth[earliest:limit]
+    for drop in (18, 12):
+        quiet = window <= speech - drop
+        if quiet.any():
+            end = int(np.nonzero(quiet)[0][-1])
+            start = end
+            while start > 0 and quiet[start - 1]:
+                start -= 1
+            cut = earliest + start + int(np.argmin(window[start : end + 1]))  # 가장 늦은 쉼에서 가장 조용한 곳
+            return samples[: cut * FRAME]
+    return samples[: limit * FRAME]
+
+
 def concat(paths: list[Path], gap: float = 0.25) -> np.ndarray:
     silence = np.zeros(int(gap * SAMPLE_RATE), dtype=np.float32)
     parts: list[np.ndarray] = []

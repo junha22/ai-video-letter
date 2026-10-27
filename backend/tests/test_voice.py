@@ -1,4 +1,4 @@
-"""Recording completion uses accepted audio and the 90-second target."""
+"""Recording completion uses accepted audio and the 135-second target."""
 
 import unittest
 from unittest.mock import patch
@@ -34,12 +34,12 @@ class VoiceRecordingTargetTests(unittest.TestCase):
                                     speech_db=-20, snr_db=30, ok=accepted))
             session.commit()
 
-    def test_recording_and_dashboard_report_ninety_second_target(self):
-        self.assertEqual(self.client.get("/api/voice").json()["target_seconds"], 90)
-        self.assertEqual(self.client.get("/api/me").json()["voice"]["target_seconds"], 90)
+    def test_recording_and_dashboard_report_135_second_target(self):
+        self.assertEqual(self.client.get("/api/voice").json()["target_seconds"], 135)
+        self.assertEqual(self.client.get("/api/me").json()["voice"]["target_seconds"], 135)
 
-    def test_less_than_ninety_accepted_seconds_cannot_finalize(self):
-        self.add_sample(0, 89.9)
+    def test_less_than_135_accepted_seconds_cannot_finalize(self):
+        self.add_sample(0, 134.9)
         self.add_sample(1, 20, accepted=False)
         response = self.client.post("/api/voice/finalize")
         self.assertEqual(response.status_code, 400, response.text)
@@ -47,13 +47,13 @@ class VoiceRecordingTargetTests(unittest.TestCase):
         with db.SessionLocal() as session:
             self.assertEqual(session.scalar(select(func.count()).select_from(Job)), 0)
 
-    def test_ninety_seconds_can_finalize_once_without_extra_recording(self):
+    def test_135_seconds_can_finalize_once_without_extra_recording(self):
         for index in range(9):
-            self.add_sample(index, 10)
+            self.add_sample(index, 15)
         for _ in range(2):
             response = self.client.post("/api/voice/finalize")
             self.assertEqual(response.status_code, 200, response.text)
             self.assertEqual(response.json()["status"], "processing")
-            self.assertEqual(response.json()["total_seconds"], 90)
+            self.assertEqual(response.json()["total_seconds"], 135)
         with db.SessionLocal() as session:
             self.assertEqual(session.scalar(select(func.count()).select_from(Job).where(Job.type == "voice")), 1)
