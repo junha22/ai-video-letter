@@ -24,7 +24,7 @@ GPU PC가 꺼져 있으면 로그인·대화방·답글·이미 만든 영상 �
 | 파일 | 역할 |
 |---|---|
 | `backend/Dockerfile` | API·워커 이미지 (한글 글꼴 포함, GPU 코드 없음) |
-| `Dockerfile.web` | 웹 이미지 (`BACKEND_URL`을 빌드할 때 넣는다) |
+| `Dockerfile.web` | 웹 이미지. `/api/*`는 `src/app/api/[...path]/route.ts`가 `BACKEND_URL`(실행할 때 읽음, 기본 `http://ongi-api`)로 넘긴다 |
 | `infra/main.bicep` | Azure 리소스 전체 |
 | `infra/deploy.ps1` | 리소스 만들기·바꾸기 |
 | `infra/ops.ps1` | 시연 때 켜고 끄기 |
