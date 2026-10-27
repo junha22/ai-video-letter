@@ -3,7 +3,7 @@
 // VIDEO_PROVIDER=runpod이고 RUNPOD_VIDEO_ENDPOINT_ID가 이 PC 주소면 영상 서버(FLOAT, gpu_worker/video_handler.py)도 같이 띄운다
 // 포트 바꾸기: WEB_PORT=3001 API_PORT=8001 npm run dev:all
 // npm run gpu (--gpu-only): 웹·API·워커 없이 TTS·영상 서버와 게이트웨이(gpu_worker/gateway.py)만 띄운다.
-//   Azure에 배포한 백엔드가 Tailscale Funnel로 이 PC의 GPU를 쓸 때 (docs/DEPLOY_AZURE.md)
+//   Azure에 배포한 백엔드가 Tailscale(tailnet 안)로 이 PC의 GPU를 쓸 때 (docs/DEPLOY_AZURE.md)
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -253,7 +253,7 @@ process.on("SIGTERM", shutdown);
 
 if (gpuOnly) {
   console.log(`[dev] GPU 모드: 게이트웨이 http://127.0.0.1:${gatewayPort} (/tts → ${ttsUrl.origin}, /video → ${videoUrl.origin})`);
-  console.log(`[dev] 밖에서 쓰려면 다른 창에서: tailscale funnel --bg ${gatewayPort}  (상태 확인: https://<PC>.<tailnet>.ts.net/health)`);
+  console.log(`[dev] Azure에서 쓰려면 다른 창에서: tailscale serve --bg ${gatewayPort}  (tailnet 안에서만. 상태: https://<PC>.<tailnet>.ts.net/health)`);
 } else {
   console.log(`[dev] 웹 http://localhost:${webPort}  ·  API http://127.0.0.1:${apiPort}/docs`);
 }

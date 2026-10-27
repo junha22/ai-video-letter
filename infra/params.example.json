@@ -10,6 +10,7 @@
     "sessionSecret": { "value": "<긴 임의 문자열>" },
     "naverApiKey": { "value": "" },
     "gpuGatewayUrl": { "value": "https://<PC 이름>.<tailnet>.ts.net" },
-    "gpuGatewayToken": { "value": "<GPU PC backend/.env의 GPU_GATEWAY_TOKEN과 같은 값>" }
+    "gpuGatewayToken": { "value": "<GPU PC backend/.env의 GPU_GATEWAY_TOKEN과 같은 값>" },
+    "tailscaleAuthKey": { "value": "<Tailscale 인증 키 tskey-auth-… (재사용·임시)>" }
   }
 }

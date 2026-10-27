@@ -3,7 +3,7 @@
 #   .\infra\ops.ps1 stop   -ResourceGroup rg-ongi-poc   앱을 0개로 줄이고 Postgres를 정지한다
 #   .\infra\ops.ps1 status -ResourceGroup rg-ongi-poc
 # Azure는 정지한 Postgres를 7일 뒤 자동으로 다시 켠다. 길게 안 쓸 때는 status로 확인하고 다시 stop
-# GPU PC는 따로 켠다: npm run gpu + tailscale funnel --bg 8200
+# GPU PC는 따로 켠다: npm run gpu + tailscale serve --bg 8200
 param(
     [Parameter(Mandatory = $true, Position = 0)] [ValidateSet("start", "stop", "status")] [string] $Action,
     [Parameter(Mandatory = $true)] [string] $ResourceGroup,

@@ -10,8 +10,9 @@ Azure for Students 구독으로 웹·API·워커·DB·파일은 Azure에, GPU �
                                 └ ongi-worker  작업 워커 (1개)
                                      │                 │
                           PostgreSQL B1ms        Azure Files (/data: 녹음·사진·영상)
+           (api·worker 옆 Tailscale 컨테이너, 프록시 127.0.0.1:1055)
                                      │
-                         HTTPS (Tailscale Funnel) + 토큰
+                       tailnet 안 HTTPS (tailscale serve) + 토큰 · 공개 주소 없음
                                      │
                       [GPU PC]  gpu_worker/gateway.py :8200
                                   ├ /tts   → TTS 서버 :8100
@@ -53,15 +54,18 @@ az postgres flexible-server list-skus -l koreacentral --query "[].supportedServe
 ## 2. GPU PC 준비
 
 1. `backend/.env`에 `GPU_GATEWAY_TOKEN`(24자 이상 임의 문자열)이 있는지 확인한다. 같은 값을 Azure `gpuGatewayToken`에 넣는다.
-2. Tailscale 설치·로그인 → 관리 화면(https://login.tailscale.com/admin)에서 **HTTPS 인증서**와 **Funnel**을 켠다.
-3. GPU 서버와 게이트웨이를 띄우고 Funnel로 연다.
+2. Tailscale 설치·로그인(개인 계정) → 관리 화면(https://login.tailscale.com/admin) **DNS**에서 MagicDNS와 **HTTPS 인증서**를 켠다. PC 이름을 `ongi-gpu`처럼 정한다.
+3. 관리 화면 **Settings → Keys → Generate auth key**: **Reusable**와 **Ephemeral**을 켜고 만든다 (`tskey-auth-…`).
+   `infra/params.local.json`의 `tailscaleAuthKey`에 넣는다. Azure의 api·worker 옆 Tailscale 컨테이너가 이 키로 tailnet에 들어온다 (꺼지면 자동으로 빠짐). 키 유효 기간이 지나면 새로 만들어 다시 배포한다.
+4. GPU 서버와 게이트웨이를 띄우고 tailnet 안에만 연다.
    ```powershell
    conda activate ai-video-letter
-   npm run gpu                      # TTS·영상 서버 + 게이트웨이 :8200 (이미 떠 있는 서버는 그대로 쓴다)
-   tailscale funnel --bg 8200       # 다른 창에서. 끌 때: tailscale funnel --https=443 off
+   npm run gpu                      # TTS·영상 서버 + 게이트웨이 :8200 (창을 닫으면 같이 꺼진다)
+   tailscale serve --bg 8200        # 다른 창에서. tailnet 안에서만 https://<PC>.<tailnet>.ts.net
    ```
-4. 휴대폰 데이터망에서 `https://<PC 이름>.<tailnet>.ts.net/health`가 `{"tts":"ok","video":"ok"}`인지 확인한다. 학교망에서 막히면 관리자에게 문의한다.
 5. 전원 옵션에서 절전·최대 절전을 끈다.
+
+공개 주소를 여는 **Funnel은 쓰지 않는다.** Funnel 주소가 공개 DNS에 등록되지 않아 Azure에서 찾지 못한 적이 있고 (2026-10-27), tailnet 안에서만 열면 GPU 서버가 인터넷에 드러나지 않는다.
 
 게이트웨이는 `/health`와 `/tts/health`만 토큰 없이 열고, 나머지는 `X-API-Key` 또는 `Authorization: Bearer` 토큰을 확인한다. 음성·사진·영상 내용은 로그에 남기지 않는다.
 
@@ -136,7 +140,7 @@ GPU PC는 따로 켠다 (2단계 3번). Azure는 정지한 Postgres를 7일 뒤 
 
 - 목소리·사진·영상이 Azure와 GPU PC에서 처리된다. 시연 참가자에게 동의 화면 안내(`DATA_PROCESSING_NOTICE`)로 알린다. 문구를 바꾸면 `consentVersion`도 바꾼다.
 - FLOAT는 비상업 라이선스(CC BY-NC)라 시연·연구 용도로만 쓴다.
-- Funnel 주소는 인터넷에 공개된다. 게이트웨이 토큰이 새면 `GPU_GATEWAY_TOKEN`과 Azure `gpuGatewayToken`을 함께 바꾼다.
+- GPU PC 주소는 tailnet 안에서만 열린다. Tailscale 인증 키나 게이트웨이 토큰이 새면 관리 화면에서 키를 지우고, `GPU_GATEWAY_TOKEN`과 Azure `gpuGatewayToken`도 함께 바꾼다.
 - 연구용 음성(zoouzae 등)과 이 PC의 테스트 데이터는 클라우드에 올리지 않는다 (새 DB로 시작).
 
 ## 정리 (전부 삭제)

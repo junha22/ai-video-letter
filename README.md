@@ -376,9 +376,9 @@ $env:TEST_DATABASE_URL = "postgresql+psycopg://user:pass@127.0.0.1:5432/ongi_tes
 
 ## Azure 배포 (시연용)
 
-웹·API·워커·PostgreSQL·파일은 Azure Container Apps에, GPU 작업(TTS·영상)은 GPU PC에 두고 Tailscale Funnel + 토큰으로 연결한다. 순서·명령·비용은 [Azure 배포 문서](docs/DEPLOY_AZURE.md).
+웹·API·워커·PostgreSQL·파일은 Azure Container Apps에, GPU 작업(TTS·영상)은 GPU PC에 두고 Tailscale로 연결한다 (API·워커 옆 Tailscale 컨테이너 → tailnet 안의 GPU PC, 공개 주소 없음 + 토큰). 순서·명령·비용은 [Azure 배포 문서](docs/DEPLOY_AZURE.md).
 
-- GPU PC: `npm run gpu` (TTS·영상 서버 + 게이트웨이 `backend/gpu_worker/gateway.py` :8200) → `tailscale funnel --bg 8200`
+- GPU PC: `npm run gpu` (TTS·영상 서버 + 게이트웨이 `backend/gpu_worker/gateway.py` :8200) → `tailscale serve --bg 8200` (tailnet 안에서만)
 - 리소스: `infra/main.bicep`, `infra/deploy.ps1`, 시연 때 켜고 끄기 `infra/ops.ps1 start|stop`
 - main 푸시 → 테스트(SQLite·PostgreSQL) → 이미지(GHCR) → Container Apps 이미지 교체
 

@@ -1,13 +1,14 @@
 """GPU PC 게이트웨이: 이 PC의 TTS 서버와 영상 서버를 주소 하나로 묶고 토큰으로 막는다.
 
-Azure의 워커가 Tailscale Funnel(https://<PC 이름>.<tailnet>.ts.net)을 거쳐 이 PC의 GPU 서버를 부를 때 쓴다.
+Azure의 API·워커가 Tailscale(tailnet 안, https://<PC 이름>.<tailnet>.ts.net)을 거쳐 이 PC의 GPU 서버를 부를 때 쓴다.
+이 PC에서 `tailscale serve --bg 8200`으로 tailnet 안에만 연다 (공개하는 Funnel은 쓰지 않는다).
   /tts/...    → TTS 서버   (기본 http://127.0.0.1:8100)
   /video/...  → 영상 서버  (기본 http://127.0.0.1:8010, RunPod 로컬 테스트 서버라 자체 인증이 없다)
   /health     → 토큰 없이 두 서버 상태만 알려 준다 (/tts/health도 TTS 서버처럼 토큰 없이 연다)
 
 토큰은 X-API-Key 또는 Authorization: Bearer로 받는다. 백엔드(Azure) 설정:
-  WEMEET_TTS_URL=https://<funnel>/tts        WEMEET_TTS_API_KEY=<토큰>
-  RUNPOD_VIDEO_ENDPOINT_ID=https://<funnel>/video   RUNPOD_API_KEY=<토큰>
+  WEMEET_TTS_URL=https://<PC>.<tailnet>.ts.net/tts        WEMEET_TTS_API_KEY=<토큰>
+  RUNPOD_VIDEO_ENDPOINT_ID=https://<PC>.<tailnet>.ts.net/video   RUNPOD_API_KEY=<토큰>
 
 실행: npm run gpu (TTS·영상 서버와 같이 띄운다). 직접 띄울 때:
   GPU_GATEWAY_TOKEN=<토큰> python gpu_worker/gateway.py --port 8200
@@ -97,7 +98,7 @@ async def forward(service: str, path: str, request: Request):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="127.0.0.1")  # Funnel이 이 PC 안에서 접속하므로 밖으로 열지 않는다
+    parser.add_argument("--host", default="127.0.0.1")  # tailscale serve가 이 PC 안에서 접속하므로 밖으로 열지 않는다
     parser.add_argument("--port", type=int, default=8200)
     args = parser.parse_args()
     if len(TOKEN) < 24:

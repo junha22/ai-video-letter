@@ -1,7 +1,7 @@
 // 온기 시연용(PoC) Azure 구성. 자세한 순서는 docs/DEPLOY_AZURE.md
 //   web    : Next.js (외부 공개). /api/*는 같은 환경의 api 앱으로 넘긴다 (BACKEND_URL은 이미지 빌드 때 http://<apiName>)
 //   api    : FastAPI (내부 전용)
-//   worker : 작업 워커 (항상 1개). TTS·영상 생성은 GPU PC 게이트웨이(Tailscale Funnel)를 부른다
+//   worker : 작업 워커 (항상 1개). TTS·영상 생성은 GPU PC 게이트웨이를 tailnet 안에서 부른다 (옆의 Tailscale 컨테이너)
 //   Postgres(B1ms) + Azure Files(녹음·사진·영상, /data)
 // 배포: infra/deploy.ps1 (az deployment group create). 이미지 교체는 GitHub Actions(.github/workflows/deploy.yml)가 한다
 // 시연 때만 켜기: infra/ops.ps1 start|stop (이 파일을 다시 배포하면 아래 replica 수로 돌아간다)
@@ -38,8 +38,11 @@ param sessionSecret string
 @description('HyperCLOVA X 키. 비우면 규칙 기반 기본 대본')
 param naverApiKey string = ''
 
-@description('GPU PC 게이트웨이 주소 (Tailscale Funnel). 예: https://my-pc.tail1234.ts.net')
+@description('GPU PC 게이트웨이 주소. tailnet 안에서만 열린다 (GPU PC: tailscale serve --bg 8200). 예: https://my-pc.tail1234.ts.net')
 param gpuGatewayUrl string
+@secure()
+@description('Tailscale 인증 키 (관리 화면 Settings → Keys, 재사용·임시(ephemeral)). API·워커 옆 Tailscale 컨테이너가 tailnet에 들어갈 때 쓴다')
+param tailscaleAuthKey string
 @secure()
 @description('게이트웨이 토큰 (GPU PC backend/.env의 GPU_GATEWAY_TOKEN과 같은 값)')
 param gpuGatewayToken string
@@ -117,10 +120,14 @@ resource postgresAllowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallR
   properties: { startIpAddress: '0.0.0.0', endIpAddress: '0.0.0.0' }
 }
 
-resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
+resource env 'Microsoft.App/managedEnvironments@2026-07-01' = {
   name: '${prefix}-env'
   location: location
   properties: {
+    // 모드를 정하지 않으면 Express 환경으로 만들어지는데, Express는 Azure Files 연결을 지원하지 않는다.
+    // 일반(WorkloadProfiles) 환경 + 사용량 과금(Consumption) 프로필만 쓴다 (전용 프로필 없음 → 관리 요금 없음)
+    environmentMode: 'WorkloadProfiles'
+    workloadProfiles: [ { name: 'Consumption', workloadProfileType: 'Consumption' } ]
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
@@ -131,7 +138,7 @@ resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
-resource envStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = {
+resource envStorage 'Microsoft.App/managedEnvironments/storages@2026-07-01' = {
   parent: env
   name: 'ongidata'
   properties: {
@@ -161,6 +168,7 @@ var backendSecrets = concat(registrySecret, [
   { name: 'database-url', value: databaseUrl }
   { name: 'session-secret', value: sessionSecret }
   { name: 'gpu-token', value: gpuGatewayToken }
+  { name: 'ts-authkey', value: tailscaleAuthKey }
 ], naverSecret)
 
 var backendEnv = concat(naverEnv, [
@@ -175,6 +183,11 @@ var backendEnv = concat(naverEnv, [
   { name: 'VIDEO_PROVIDER', value: 'runpod' }
   { name: 'RUNPOD_VIDEO_ENDPOINT_ID', value: '${gpuGatewayUrl}/video' }
   { name: 'RUNPOD_API_KEY', secretRef: 'gpu-token' }
+  // GPU PC는 공개 주소가 없고 tailnet 안에서만 열린다. 옆의 Tailscale 컨테이너(사용자 공간 모드)가 여는 프록시로 나간다.
+  // HyperCLOVA는 프록시 없이 바로 부른다 (httpx가 이 환경 변수들을 따른다. DB(psycopg)는 영향 없음)
+  { name: 'HTTPS_PROXY', value: 'http://127.0.0.1:1055' }
+  { name: 'HTTP_PROXY', value: 'http://127.0.0.1:1055' }
+  { name: 'NO_PROXY', value: 'clovastudio.stream.ntruss.com,localhost,127.0.0.1' }
   // 음색 학습은 워커가 같은 기계에서 GPU로 돌리는 구조라 클라우드 워커에서는 끈다
   { name: 'S3GEN_TRAINING', value: 'false' }
   { name: 'VOICE_TARGET_SECONDS', value: '135' }
@@ -190,11 +203,25 @@ var dataVolume = {
   mountOptions: 'uid=10001,gid=10001,dir_mode=0750,file_mode=0640'
 }
 
-resource web 'Microsoft.App/containerApps@2024-03-01' = {
+// API·워커 옆에서 tailnet에 들어가는 Tailscale 컨테이너. 임시(ephemeral) 노드라 꺼지면 tailnet에서 자동으로 빠진다
+func tailscaleSidecar(hostname string) object => {
+  name: 'tailscale'
+  image: 'ghcr.io/tailscale/tailscale:v1.104.2'
+  env: [
+    { name: 'TS_AUTHKEY', secretRef: 'ts-authkey' }
+    { name: 'TS_HOSTNAME', value: hostname }
+    { name: 'TS_USERSPACE', value: 'true' }
+    { name: 'TS_OUTBOUND_HTTP_PROXY_LISTEN', value: '127.0.0.1:1055' }
+  ]
+  resources: { cpu: json('0.25'), memory: '0.5Gi' }
+}
+
+resource web 'Microsoft.App/containerApps@2026-07-01' = {
   name: '${prefix}-web'
   location: location
   properties: {
     managedEnvironmentId: env.id
+    workloadProfileName: 'Consumption'
     configuration: {
       ingress: { external: true, targetPort: 3000, transport: 'auto', allowInsecure: false }
       registries: registries
@@ -213,12 +240,13 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-resource api 'Microsoft.App/containerApps@2024-03-01' = {
+resource api 'Microsoft.App/containerApps@2026-07-01' = {
   name: apiName
   location: location
   dependsOn: [ postgresDb, postgresAllowAzure ]
   properties: {
     managedEnvironmentId: env.id
+    workloadProfileName: 'Consumption'
     configuration: {
       // 내부 전용: 브라우저는 web을 거쳐서만 들어온다 (세션 쿠키·출처 검사가 web 주소 기준)
       ingress: { external: false, targetPort: 8000, transport: 'auto', allowInsecure: true }
@@ -237,6 +265,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { type: 'Readiness', httpGet: { path: '/api/health', port: 8000 }, periodSeconds: 30, timeoutSeconds: 10 }
           ]
         }
+        tailscaleSidecar('${prefix}-api')
       ]
       volumes: [ dataVolume ]
       scale: { minReplicas: replicas, maxReplicas: 1 }
@@ -244,12 +273,13 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-resource worker 'Microsoft.App/containerApps@2024-03-01' = {
+resource worker 'Microsoft.App/containerApps@2026-07-01' = {
   name: '${prefix}-worker'
   location: location
   dependsOn: [ postgresDb, postgresAllowAzure ]
   properties: {
     managedEnvironmentId: env.id
+    workloadProfileName: 'Consumption'
     configuration: {
       registries: registries
       secrets: backendSecrets
@@ -265,6 +295,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
           resources: { cpu: json('1.0'), memory: '2Gi' }
           volumeMounts: [ { volumeName: 'data', mountPath: '/data' } ]
         }
+        tailscaleSidecar('${prefix}-worker')
       ]
       volumes: [ dataVolume ]
       // 작업 큐는 워커 1개를 전제로 한다 (README '작업 큐')
