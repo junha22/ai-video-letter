@@ -82,7 +82,7 @@ export function SharePanel({
   const copy = async () => {
     setError(null);
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(share.url);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
       await markSent("copy");
