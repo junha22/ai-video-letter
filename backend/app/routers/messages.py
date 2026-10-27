@@ -13,7 +13,7 @@ from ..auth import current_user
 from ..config import settings
 from ..db import get_db, utcnow
 from ..models import Message, Photo, ShareLink, User, VoiceProfile
-from ..services import jobs, script_llm, storage
+from ..services import conversations, jobs, script_llm, storage
 from ..services import video as video_service  # 아래 video() 엔드포인트와 이름이 겹친다
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
@@ -48,6 +48,7 @@ def list_messages(user: User = Depends(current_user), db: Session = Depends(get_
 class MessageIn(BaseModel):
     memo: str = Field(min_length=1, max_length=200)
     template: str = "greeting"
+    recipient_id: int | None = Field(default=None, gt=0)
 
 
 @router.post("")
@@ -57,9 +58,14 @@ def create_message(body: MessageIn, user: User = Depends(current_user), db: Sess
     parent = user.parent
     if not parent:
         raise HTTPException(400, "먼저 부모님 정보를 등록해 주세요.")
+    primary = conversations.ensure_primary(db, user)
+    recipient = conversations.owned_recipient(db, user, body.recipient_id) if body.recipient_id else primary
+    if not body.memo.strip():
+        raise HTTPException(422, "편지에 담을 이야기를 입력해 주세요.")
     template = body.template if body.template in script_llm.TEMPLATES else "greeting"
-    m = Message(user_id=user.id, parent_id=parent.id, memo=body.memo.strip(), template=template)
+    m = Message(user_id=user.id, parent_id=parent.id, recipient_id=recipient.id, memo=body.memo.strip(), template=template)
     m.parent = parent
+    m.recipient = recipient
     _fill_candidates(m)
     db.add(m)
     db.commit()
@@ -69,7 +75,7 @@ def create_message(body: MessageIn, user: User = Depends(current_user), db: Sess
 def _fill_candidates(m: Message, level: str | None = None) -> None:
     """후보 대본을 새로 만든다. 후보가 하나뿐이면(AI 연결 실패 등) 고를 필요 없이 바로 쓴다.
     말투는 이번에 바꾼 값 > 이 메시지에 쓰던 값 > 부모님 정보·메모로 판단한 값 순서."""
-    p = m.parent
+    p = m.recipient or m.parent
     m.speech_level = level or m.speech_level or script_llm.speech_level(p.tone_examples, m.memo, p.speech_level)
     m.candidates = script_llm.generate_candidates(
         m.memo, m.template, p.nickname, p.relation, p.child_name, p.tone_examples, m.speech_level

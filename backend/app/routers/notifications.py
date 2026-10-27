@@ -25,6 +25,7 @@ def list_notifications(user: User = Depends(current_user), db: Session = Depends
                 "kind": n.kind,
                 "text": n.text,
                 "message_id": n.message_id,
+                "recipient_id": n.recipient_id,
                 "created_at": iso(n.created_at),
                 "read": n.read_at is not None,
             }

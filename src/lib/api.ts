@@ -7,7 +7,7 @@ export class ApiError extends Error {
   }
 }
 
-type Options = { method?: string; json?: unknown; form?: FormData };
+type Options = { method?: string; json?: unknown; form?: FormData; signal?: AbortSignal };
 
 /** 같은 주소의 /api/* 로 요청한다 (next.config.mjs에서 FastAPI로 프록시). */
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {
@@ -17,6 +17,7 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
     headers: opts.json !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: opts.json !== undefined ? JSON.stringify(opts.json) : opts.form,
     cache: "no-store",
+    signal: opts.signal,
   });
   if (!res.ok) {
     let message = "요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.";

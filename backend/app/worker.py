@@ -324,10 +324,22 @@ def main() -> None:
                 log.warning("S3GEN_TRAINING이 켜져 있지만 학습할 수 없습니다: %s", reason)
             else:
                 log.info("S3Gen 음색 학습 켜짐 (%s step, 배치 %s)", settings.s3gen_steps, settings.s3gen_batch_size)
+    from .services.conversations import refresh_closed_portfolios
+
     last_check = time.monotonic()
+    last_portfolio_check = 0.0
     while True:
         try:
             with SessionLocal() as db:
+                if time.monotonic() - last_portfolio_check > 60:
+                    last_portfolio_check = time.monotonic()
+                    try:
+                        changed = refresh_closed_portfolios(db)
+                        if changed:
+                            log.info("지난달 대화 포트폴리오 %s개 작성", changed)
+                    except Exception:
+                        db.rollback()
+                        log.exception("대화 포트폴리오 자동 작성 오류")
                 job = jobs.claim(db)
                 if job:
                     process(db, job)

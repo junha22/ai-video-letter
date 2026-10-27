@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Copy, MessageCircle, Share2, Smartphone } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatDate, nameSubject } from "@/lib/format";
@@ -42,11 +42,12 @@ export function SharePanel({
 }) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [canNativeShare, setCanNativeShare] = useState(false);
+  useEffect(() => { setCanNativeShare("share" in navigator); }, []);
   const share = message.share!;
   const title = `${nameSubject(childName)} 영상 편지를 보냈어요`;
-  const text = `${title}\n아래 링크를 누르고 재생 버튼을 눌러 보세요.\n${share.url}`;
+  const text = `${title}\n아래 링크로 들어와 영상을 보고 답글을 남겨 주세요. 로그인 없이 대화를 이어갈 수 있어요.\n${share.url}`;
   const local = /localhost|127\.0\.0\.1/.test(share.url);
-  const canNativeShare = typeof navigator !== "undefined" && "share" in navigator;
 
   const markSent = async (channel: string) => {
     onSent(await api<Message>(`/api/messages/${message.id}/sent`, { json: { channel } }));
@@ -59,9 +60,9 @@ export function SharePanel({
       if (!Kakao.isInitialized()) Kakao.init(KAKAO_JS_KEY!);
       Kakao.Share.sendDefault({
         objectType: "text",
-        text: `${title}\n눌러서 바로 보세요.`,
+        text: `${title}\n눌러서 영상을 보고 답글을 남겨 주세요.`,
         link: { mobileWebUrl: share.url, webUrl: share.url },
-        buttonTitle: "영상 보기",
+        buttonTitle: "대화방 열기",
       });
       await markSent("kakao");
     } catch (e) {
@@ -71,7 +72,7 @@ export function SharePanel({
 
   const nativeShare = async () => {
     try {
-      await navigator.share({ title, text: `${title}\n아래 링크를 누르고 재생 버튼을 눌러 보세요.`, url: share.url });
+      await navigator.share({ title, text: `${title}\n로그인 없이 영상을 보고 답글을 남겨 주세요.`, url: share.url });
       await markSent("share");
     } catch {
       // 공유 창을 닫은 경우
@@ -79,10 +80,15 @@ export function SharePanel({
   };
 
   const copy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-    await markSent("copy");
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+      await markSent("copy");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "링크를 복사하지 못했어요. 아래 주소를 직접 복사해 주세요.");
+    }
   };
 
   return (
@@ -124,7 +130,8 @@ export function SharePanel({
       </Button>
 
       <p className="break-all rounded-xl bg-stone-100 px-3 py-2 text-xs text-stone-500">{share.url}</p>
-      <p className="text-center text-xs text-stone-400">{formatDate(share.expires_at)}까지 볼 수 있어요</p>
+      <p className="text-center text-sm leading-6 text-stone-500">이 링크로 로그인 없이 대화방에 들어가 영상을 보고 답글을 남길 수 있어요.</p>
+      <p className="text-center text-xs text-stone-400">{formatDate(share.expires_at)}까지 대화방에 들어갈 수 있어요. 링크를 가진 분이 이 대상자의 대화 내역을 볼 수 있으니 받는 분께만 공유해 주세요.</p>
     </div>
   );
 }

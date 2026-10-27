@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "./api";
 import type { Me } from "./types";
@@ -9,21 +9,34 @@ import type { Me } from "./types";
 export function useMe() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
+  const requestVersion = useRef(0);
+  const cancelPendingRequests = useCallback(() => { requestVersion.current += 1; }, []);
 
   const reload = useCallback(async () => {
+    const version = ++requestVersion.current;
     try {
       const data = await api<Me>("/api/me");
+      if (version !== requestVersion.current) return null;
       setMe(data);
       return data;
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) router.replace("/");
+      if (version !== requestVersion.current) return null;
+      if (e instanceof ApiError && e.status === 401) {
+        setMe(null);
+        const destination = window.location.pathname + window.location.search;
+        router.replace(`/?next=${encodeURIComponent(destination)}`);
+      }
       return null;
     }
   }, [router]);
 
   useEffect(() => {
     reload();
-  }, [reload]);
+    const refresh = () => { if (document.visibilityState === "visible") void reload(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { cancelPendingRequests(); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [reload, cancelPendingRequests]);
 
   return { me, reload };
 }

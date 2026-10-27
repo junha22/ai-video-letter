@@ -3,34 +3,28 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, CircleCheck, Eye, PenLine, Mail, Mic, Image as ImageIcon } from "lucide-react";
-import { api } from "@/lib/api";
-import { formatDate, formatSeconds, STATUS_LABEL, TUNING_LABEL } from "@/lib/format";
+import { ChevronRight, CircleCheck, PenLine, Mail, Mic, Image as ImageIcon, MessageCircle } from "lucide-react";
+import { api, errorText } from "@/lib/api";
+import { formatDate, formatSeconds, TUNING_LABEL } from "@/lib/format";
+import type { Recipient } from "@/lib/conversations";
 import type { Me, Message } from "@/lib/types";
 import { useMe } from "@/lib/useMe";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Card, Notice, Spinner } from "@/components/ui";
 import { FamilyIllustration } from "./FamilyIllustration";
 
-const STATUS_STYLE: Record<string, string> = {
-  draft: "bg-stone-100 text-stone-700",
-  generating: "bg-amber-100 text-amber-900",
-  ready: "bg-sky-100 text-sky-900",
-  failed: "bg-red-100 text-red-800",
-  approved: "bg-violet-100 text-violet-900",
-  sent: "bg-ongi-100 text-ongi-900",
-  viewed: "bg-emerald-100 text-emerald-900",
-};
-
 export default function HomePage() {
   const router = useRouter();
   const { me, reload } = useMe();
   const [messages, setMessages] = useState<Message[] | null>(null);
+  const [recipients, setRecipients] = useState<Recipient[] | null>(null);
+  const [inboxError, setInboxError] = useState<string | null>(null);
 
   const loadMessages = useCallback(() => {
     api<Message[]>("/api/messages")
       .then(setMessages)
       .catch(() => setMessages([]));
+    api<Recipient[]>("/api/recipients").then((rows) => { setRecipients(rows); setInboxError(null); }).catch((e) => setInboxError(errorText(e)));
   }, []);
 
   useEffect(() => {
@@ -124,27 +118,23 @@ export default function HomePage() {
       </div>
 
       <div id="letters" className="mb-4 mt-9 flex scroll-mt-24 items-center justify-between gap-3">
-        <h2 className="text-lg font-bold">나의 영상 편지</h2>
-        {messages !== null && <span className="text-xs text-stone-500">전체 {messages.length}개</span>}
+        <h2 className="text-lg font-bold">대상자별 영상 편지함</h2>
+        <Link href="/letters" className="inline-flex min-h-11 items-center gap-1 text-sm font-bold text-[#315d4b]">전체 보기·대상 추가 <ChevronRight size={16} /></Link>
       </div>
-      {messages === null ? (
+      <p className="mb-4 text-sm leading-7 text-stone-500">대상자를 누르면 오늘의 대화와 날짜별 지난 편지, 월간 답글 포트폴리오를 볼 수 있어요.</p>
+      {inboxError && <Notice tone="error">{inboxError} <button onClick={loadMessages} className="ml-2 underline">다시 불러오기</button></Notice>}
+      {recipients === null && !inboxError ? (
         <Spinner />
-      ) : messages.length === 0 ? (
-        <div className="rounded-[22px] border border-[#e8e9e2] bg-white px-4 py-12 text-center"><Mail className="mx-auto mb-4 h-8 w-8 text-[#7f9b84]" /><p className="text-sm text-stone-500">아직 만든 영상 편지가 없어요</p></div>
+      ) : recipients?.length === 0 ? (
+        <div className="rounded-[22px] border border-[#e8e9e2] bg-white px-4 py-12 text-center"><Mail className="mx-auto mb-4 h-8 w-8 text-[#7f9b84]" /><p className="text-sm text-stone-500">편지를 주고받을 분을 등록해 주세요.</p><Link href="/letters" className="mt-4 inline-block font-bold text-[#315d4b] underline">대상자 등록하기</Link></div>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2">
-          {messages.map((m) => (
-            <li key={m.id}>
-              <Link href={`/messages/${m.id}`} className="block h-full rounded-[22px] border border-[#e8e9e2] bg-white p-5 shadow-sm transition-colors hover:border-[#bccdc0]">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${STATUS_STYLE[m.status] ?? ""}`}>
-                    {m.status === "viewed" && <Eye className="mr-1 inline h-3.5 w-3.5" />}
-                    {STATUS_LABEL[m.status] ?? m.status}
-                  </span>
-                  <span className="text-xs text-stone-500">{formatDate(m.viewed_at ?? m.created_at)}</span>
-                </div>
-                <p className="line-clamp-2 text-[15px] leading-relaxed text-stone-800">{m.script || m.memo}</p>
-                <span className="mt-4 flex items-center justify-end gap-1 text-xs font-bold text-[#315d4b]">편지 보기 <ChevronRight size={14} /></span>
+          {recipients?.map((r) => (
+            <li key={r.id}>
+              <Link href={`/conversations/${r.id}`} className="block h-full rounded-[22px] border border-[#e8e9e2] bg-white p-5 shadow-sm transition-colors hover:border-[#bccdc0]">
+                <div className="mb-4 flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e9f0e9] text-[#315d4b]"><MessageCircle size={24} /></span><div className="min-w-0 flex-1"><h3 className="font-bold">{r.nickname}</h3><p className="text-xs text-stone-500">{r.relation} · 영상 {r.video_count}개 · 답글 {r.reply_count}개</p></div></div>
+                <p className="line-clamp-2 min-h-12 text-sm leading-6 text-stone-600">{r.last_preview || "첫 영상 편지를 보내고 대화를 시작해 보세요."}</p>
+                <div className="mt-4 flex items-center justify-between gap-2"><span className="text-xs text-stone-500">{r.last_activity_at ? formatDate(r.last_activity_at) : "아직 대화가 없어요"}</span><span className="inline-flex items-center gap-1 text-xs font-bold text-[#315d4b]">대화 보기 <ChevronRight size={14} /></span></div>
               </Link>
             </li>
           ))}

@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from .. import serialize
 from ..auth import current_user
 from ..db import get_db, utcnow
-from ..models import Consent, DeletionLog, Job, Message, ParentProfile, Photo, ShareLink, User, VoiceProfile, VoiceSample
-from ..services import jobs, storage
+from ..models import Consent, DeletionLog, Job, Message, MonthlyPortfolio, Notification, ParentProfile, Photo, SeniorReply, ShareLink, User, VoiceProfile, VoiceSample
+from ..services import conversations, jobs, storage
 
 router = APIRouter(prefix="/api", tags=["account"])
 
@@ -46,6 +46,7 @@ def give_consent(body: ConsentIn, user: User = Depends(current_user), db: Sessio
 @router.post("/consent/withdraw")
 def withdraw_consent(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """동의 철회: 녹음, 목소리 모델, 사진, 영상 파일을 모두 지우고 기록을 남긴다."""
+    conversations.lock_owner(db, user.id)
     root = storage.user_dir(user.id)
     detail = {
         "voice_files": storage.delete_tree(root / "voice"),
@@ -58,6 +59,11 @@ def withdraw_consent(user: User = Depends(current_user), db: Session = Depends(g
     db.execute(delete(Photo).where(Photo.user_id == user.id))
     message_ids = db.scalars(select(Message.id).where(Message.user_id == user.id)).all()
     detail["messages"] = len(message_ids)
+    detail["senior_replies"] = db.execute(delete(SeniorReply).where(SeniorReply.user_id == user.id)).rowcount
+    detail["monthly_portfolios"] = db.execute(delete(MonthlyPortfolio).where(MonthlyPortfolio.user_id == user.id)).rowcount
+    detail["reply_notifications"] = db.execute(
+        delete(Notification).where(Notification.user_id == user.id, Notification.kind == "senior_reply")
+    ).rowcount
     # 대본 텍스트는 악용 추적을 위한 생성 로그로 남기고, 영상·음성은 지운다
     db.execute(
         update(Message)
@@ -114,4 +120,9 @@ def put_parent(body: ParentIn, user: User = Depends(current_user), db: Session =
     db.add(profile)
     db.commit()
     db.refresh(user)
+    recipient = conversations.ensure_primary(db, user)
+    if recipient:
+        for key in conversations.PROFILE_FIELDS:
+            setattr(recipient, key, getattr(profile, key))
+        db.commit()
     return serialize.parent(user.parent)

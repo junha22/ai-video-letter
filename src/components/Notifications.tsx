@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bell, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+import { kstDate } from "@/lib/conversations";
 import type { NotificationItem } from "@/lib/types";
 
 const POLL_MS = 10_000;
@@ -88,7 +89,7 @@ export function NotificationBell({ onNew }: { onNew?: (n: NotificationItem) => v
               {items.map((n) => (
                 <li key={n.id}>
                   <Link
-                    href={n.message_id ? `/messages/${n.message_id}` : "/home"}
+                    href={n.recipient_id ? `/conversations/${n.recipient_id}?date=${kstDate(new Date(n.created_at))}` : n.message_id ? `/messages/${n.message_id}` : "/home"}
                     onClick={() => setOpen(false)}
                     className="block rounded-xl px-3 py-2.5 hover:bg-stone-50"
                   >

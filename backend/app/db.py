@@ -56,6 +56,18 @@ def init_db() -> None:
 
     Base.metadata.create_all(engine)
     _add_missing_columns()
+    # Existing SQLite tables need the new recipient index after ALTER TABLE.
+    for table in Base.metadata.sorted_tables:
+        for index in table.indexes:
+            try:
+                index.create(engine, checkfirst=True)
+            except DBAPIError:
+                # The API and worker can start together and create the same index.
+                if index.name not in {item["name"] for item in inspect(engine).get_indexes(table.name)}:
+                    raise
+    from .services.conversations import backfill_recipient_data
+    with SessionLocal() as db:
+        backfill_recipient_data(db)
 
 
 def _add_missing_columns() -> None:

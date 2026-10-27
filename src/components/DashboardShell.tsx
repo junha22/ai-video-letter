@@ -14,11 +14,11 @@ export function DashboardShell({ children, back, onNotification }: {
   onNotification?: (n: NotificationItem) => void;
 }) {
   const pathname = usePathname();
-  const pageLabel = pathname.startsWith("/onboarding/") ? "편지를 위한 준비" : pathname.startsWith("/messages/") ? "마음을 전하는 편지" : pathname === "/settings" ? "나의 설정" : "오늘의 온기";
+  const pageLabel = pathname.startsWith("/onboarding/") ? "편지를 위한 준비" : pathname === "/letters" ? "영상 편지함" : pathname.startsWith("/conversations/") ? "날짜별 대화와 월간 기록" : pathname.startsWith("/messages/") ? "마음을 전하는 편지" : pathname === "/settings" ? "나의 설정" : "오늘의 온기";
   const navigation = (
     <>
       <Link href="/home" aria-current={pathname === "/home" ? "page" : undefined} className={`flex items-center gap-3 rounded-2xl px-4 py-3 font-bold ${pathname === "/home" ? "bg-[#e8eee6] text-[#315d4b]" : "text-stone-600 hover:bg-[#eeeee5]"}`}><House size={20} />홈</Link>
-      <Link href="/home#letters" className="flex items-center gap-3 rounded-2xl px-4 py-3 text-stone-600 hover:bg-[#eeeee5]"><Mail size={20} />영상 편지함</Link>
+      <Link href="/letters" aria-current={pathname === "/letters" || pathname.startsWith("/conversations/") ? "page" : undefined} className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${pathname === "/letters" || pathname.startsWith("/conversations/") ? "bg-[#e8eee6] font-bold text-[#315d4b]" : "text-stone-600 hover:bg-[#eeeee5]"}`}><Mail size={20} />영상 편지함</Link>
       <Link href="/settings" aria-current={pathname === "/settings" ? "page" : undefined} className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${pathname === "/settings" ? "bg-[#e8eee6] font-bold text-[#315d4b]" : "text-stone-600 hover:bg-[#eeeee5]"}`}><Settings size={20} />설정</Link>
     </>
   );

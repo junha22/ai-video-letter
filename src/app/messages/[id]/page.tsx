@@ -110,7 +110,8 @@ export default function MessagePage() {
   };
 
   return (
-    <AppShell back="/home" onNotification={load}>
+    <AppShell back={m.recipient_id ? `/conversations/${m.recipient_id}` : "/letters"} onNotification={load}>
+      {m.recipient_id && <Link href={`/conversations/${m.recipient_id}`} className="mb-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#e9f0e9] px-4 py-2 text-sm font-bold text-[#315d4b]">{m.parent_nickname}님과 대화 이어보기</Link>}
       <div className="mb-4 flex items-center gap-2 text-sm">
         <span className="rounded-full bg-ongi-100 px-2.5 py-1 font-bold text-ongi-900">{m.template_label}</span>
         <span className="text-stone-500">{formatDate(m.created_at)}</span>
@@ -274,8 +275,8 @@ export default function MessagePage() {
                 <div className="mt-5">
                   <SharePanel
                     message={m}
-                    childName={me.parent?.child_name || me.user.name}
-                    phone={me.parent?.phone}
+                    childName={m.recipient?.child_name || me.user.name}
+                    phone={m.recipient?.phone}
                     onSent={apply}
                   />
                 </div>

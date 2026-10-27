@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base, utcnow
@@ -15,6 +15,43 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     parent: Mapped["ParentProfile | None"] = relationship(back_populates="user", uselist=False)
+
+
+class AccountCredential(Base):
+    """Separate credentials preserve legacy account IDs and their content."""
+
+    __tablename__ = "account_credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class AuthSession(Base):
+    """Only the hash of the random cookie session identifier is stored."""
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    auth_method: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AuthRateLimit(Base):
+    """Short-lived shared counters; hashed keys contain no raw email or IP."""
+
+    __tablename__ = "auth_rate_limits"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
 
 class ParentProfile(Base):
@@ -52,6 +89,32 @@ class Consent(Base):
     version: Mapped[str] = mapped_column(String(20))
     agreed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class Recipient(Base):
+    """Conversation recipient. The legacy onboarding profile remains the primary contact."""
+
+    __tablename__ = "recipients"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    legacy_parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("parent_profiles.id", ondelete="SET NULL"), unique=True
+    )
+    nickname: Mapped[str] = mapped_column(String(20))
+    relation: Mapped[str] = mapped_column(String(20))
+    phone: Mapped[str] = mapped_column(String(20), default="")
+    child_call_name: Mapped[str] = mapped_column(String(20), default="")
+    speech_level: Mapped[str] = mapped_column(String(10), default="")
+    tone_examples: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    user: Mapped[User] = relationship()
+
+    @property
+    def child_name(self) -> str:
+        return self.child_call_name or self.user.name
 
 
 class VoiceProfile(Base):
@@ -110,6 +173,7 @@ class Message(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     parent_id: Mapped[int] = mapped_column(ForeignKey("parent_profiles.id", ondelete="CASCADE"))
+    recipient_id: Mapped[int | None] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"), index=True)
     voice_profile_id: Mapped[int | None] = mapped_column(Integer)
     memo: Mapped[str] = mapped_column(Text)
     template: Mapped[str] = mapped_column(String(20))
@@ -136,6 +200,39 @@ class Message(Base):
     viewed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     parent: Mapped[ParentProfile] = relationship()
+    recipient: Mapped[Recipient | None] = relationship()
+
+
+class SeniorReply(Base):
+    __tablename__ = "senior_replies"
+    __table_args__ = (
+        UniqueConstraint("recipient_id", "client_id", name="uq_reply_recipient_client"),
+        Index("ix_reply_recipient_created", "recipient_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"), index=True)
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
+    share_link_id: Mapped[int | None] = mapped_column(ForeignKey("share_links.id", ondelete="SET NULL"))
+    client_id: Mapped[str] = mapped_column(String(80))
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class MonthlyPortfolio(Base):
+    __tablename__ = "monthly_portfolios"
+    __table_args__ = (UniqueConstraint("recipient_id", "month", name="uq_portfolio_recipient_month"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"), index=True)
+    month: Mapped[str] = mapped_column(String(7))
+    source_fingerprint: Mapped[str] = mapped_column(String(64))
+    source_reply_count: Mapped[int] = mapped_column(Integer, default=0)
+    source_latest_reply_id: Mapped[int] = mapped_column(Integer, default=0)
+    report: Mapped[dict] = mapped_column(JSON)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Job(Base):
@@ -184,6 +281,7 @@ class Notification(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
+    recipient_id: Mapped[int | None] = mapped_column(ForeignKey("recipients.id", ondelete="SET NULL"))
     kind: Mapped[str] = mapped_column(String(20))  # viewed | voice_ready | voice_failed
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

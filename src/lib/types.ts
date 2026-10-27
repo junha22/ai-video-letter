@@ -29,7 +29,14 @@ export type PhotoInfo = {
 };
 
 export type Me = {
-  user: { id: number; name: string; kakao: boolean };
+  user: {
+    id: number;
+    name: string;
+    kakao: boolean;
+    email?: string | null;
+    auth_method?: "password" | "dev" | "kakao";
+    has_password?: boolean;
+  };
   consent_ok: boolean;
   parent: Parent | null;
   voice: VoiceSummary;
@@ -73,6 +80,8 @@ export type Emotion = "neutral" | "happy" | "sad" | "surprise";
 
 export type Message = {
   id: number;
+  recipient_id: number;
+  recipient: { id: number; nickname: string; relation: string; phone: string; child_name: string } | null;
   memo: string;
   template: string;
   template_label: string;
@@ -135,6 +144,7 @@ export type NotificationItem = {
   kind: string;
   text: string;
   message_id: number | null;
+  recipient_id?: number | null;
   created_at: string;
   read: boolean;
 };

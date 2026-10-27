@@ -125,11 +125,12 @@ def photo(p: Photo | None) -> dict | None:
 
 
 def me(db: Session, user: User) -> dict:
+    from .auth import user_info
     voice = voice_summary(db, user.id)
     p = db.scalar(select(Photo).where(Photo.user_id == user.id))
     consent = consent_ok(db, user.id)
     return {
-        "user": {"id": user.id, "name": user.name, "kakao": not (user.kakao_id or "dev:").startswith("dev:")},
+        "user": user_info(db, user),
         "consent_ok": consent,
         "parent": parent(user.parent),
         "voice": voice,
@@ -148,8 +149,14 @@ def message(db: Session, m: Message) -> dict:
     render_job = jobs.latest(db, "video", m.user_id, m.id)
     version = int(m.rendered_at.timestamp()) if m.rendered_at else 0
     has_video = bool(m.video_path) and m.status not in ("draft", "generating", "deleted")
+    recipient = m.recipient or m.parent
     return {
         "id": m.id,
+        "recipient_id": m.recipient_id,
+        "recipient": {
+            "id": m.recipient_id, "nickname": recipient.nickname, "relation": recipient.relation,
+            "phone": recipient.phone, "child_name": recipient.child_name,
+        } if recipient else None,
         "memo": m.memo,
         "template": m.template,
         "template_label": script_llm.TEMPLATES.get(m.template, ("안부",))[0],
@@ -192,7 +199,7 @@ def message(db: Session, m: Message) -> dict:
         }
         if link and not link.revoked
         else None,
-        "parent_nickname": m.parent.nickname if m.parent else None,
+        "parent_nickname": recipient.nickname if recipient else None,
         "created_at": iso(m.created_at),
         "approved_at": iso(m.approved_at),
         "sent_at": iso(m.sent_at),

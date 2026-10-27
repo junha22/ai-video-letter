@@ -1,11 +1,11 @@
 "use client";
 
-import type { ChangeEventHandler, KeyboardEventHandler, ReactNode } from "react";
+import type { FormEventHandler, ReactNode } from "react";
 import { Heart, Mail, MessageCircle, Mic, ShieldCheck } from "lucide-react";
 import { FamilyIllustration } from "@/app/home/FamilyIllustration";
+import type { AuthConfig } from "@/lib/auth";
+import { AuthField, PasswordField } from "./AuthFields";
 import { Button, Notice, Spinner } from "./ui";
-
-export const KAKAO_LOGIN_CLASS = "flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#FEE500] px-4 py-4 text-base font-bold text-[#191919] transition-colors hover:bg-[#f5dc00] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#315d4b]";
 
 /** 인증과 API를 소유하지 않는 공통 화면. 실제 페이지와 프리뷰가 같은 UI를 사용한다. */
 export function LoginScreen({ children, preview = false }: { children: ReactNode; preview?: boolean }) {
@@ -39,30 +39,58 @@ export function LoginScreen({ children, preview = false }: { children: ReactNode
   );
 }
 
-/** 표시 조건·입력값·이벤트는 호출자가 제공한다. 여기에서는 로그인 요청을 만들지 않는다. */
-export function LoginOptions({ config, error, name, busy, kakaoAction, onNameChange, onNameKeyDown, onDevLogin }: {
-  config: { kakao: boolean; dev_login: boolean } | null;
+export type LoginMode = "login" | "signup";
+export type LoginValues = { name: string; email: string; password: string; confirmPassword: string; devName: string };
+export const EMPTY_LOGIN_VALUES: LoginValues = { name: "", email: "", password: "", confirmPassword: "", devName: "" };
+
+/** 실제 화면과 디자인 프리뷰가 공유하는 폼. 인증 요청은 호출자가 처리한다. */
+export function LoginOptions({ config, configLoading = false, configError, error, mode, values, busy, devBusy = false, onModeChange, onValueChange, onSubmit, onRetry, onDevLogin }: {
+  config: AuthConfig | null;
+  configLoading?: boolean;
+  configError?: string | null;
   error: string | null;
-  name: string;
+  mode: LoginMode;
+  values: LoginValues;
   busy: boolean;
-  kakaoAction: ReactNode;
-  onNameChange: ChangeEventHandler<HTMLInputElement>;
-  onNameKeyDown: KeyboardEventHandler<HTMLInputElement>;
-  onDevLogin: () => void | Promise<void>;
+  devBusy?: boolean;
+  onModeChange: (mode: LoginMode) => void;
+  onValueChange: (field: keyof LoginValues, value: string) => void;
+  onSubmit: FormEventHandler<HTMLFormElement>;
+  onRetry: () => void;
+  onDevLogin: FormEventHandler<HTMLFormElement>;
 }) {
+  const pending = busy || devBusy;
+  const signup = mode === "signup";
   return (
     <div className="space-y-4">
-      {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
-      {!config && !error && <div role="status"><Spinner label="로그인 정보를 확인하고 있어요" /></div>}
-      {config?.kakao && kakaoAction}
+      <div role="group" aria-label="로그인 또는 회원가입" className="flex rounded-xl bg-[#f1f4ed] p-1">
+        {([['login', '로그인'], ['signup', '회원가입']] as const).map(([value, label]) => (
+          <button key={value} type="button" disabled={pending} aria-pressed={mode === value} onClick={() => onModeChange(value)} className={`min-h-11 flex-1 rounded-lg px-3 py-2 text-sm font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#315d4b] ${mode === value ? "bg-white text-[#315d4b] shadow-sm" : "text-[#737d74]"}`}>{label}</button>
+        ))}
+      </div>
+      {configLoading && <div role="status"><Spinner label="로그인 설정을 확인하고 있어요" /></div>}
+      {configError && <div role="alert" className="space-y-3"><Notice tone="error">{configError}</Notice><Button type="button" variant="secondary" onClick={onRetry} disabled={pending || configLoading} className="w-full">다시 연결하기</Button></div>}
+      {config && !config.password_login && <Notice>이메일 로그인을 사용할 수 없어요. 잠시 후 다시 시도해 주세요.</Notice>}
+      <form onSubmit={onSubmit} aria-label={signup ? "회원가입" : "이메일 로그인"} className="space-y-4" aria-busy={busy}>
+        <fieldset disabled={pending} className="min-w-0 space-y-4">
+          {signup && <AuthField id="signup-name" name="name" label="이름" autoComplete="name" value={values.name} onChange={(event) => onValueChange("name", event.target.value)} required maxLength={50} placeholder="편지를 보내는 분의 이름" />}
+          <AuthField id="login-email" name="email" type="email" label="이메일" autoComplete="username" inputMode="email" autoCapitalize="none" spellCheck={false} value={values.email} onChange={(event) => onValueChange("email", event.target.value)} required maxLength={254} placeholder="name@example.com" />
+          <PasswordField id="login-password" name="password" label="비밀번호" autoComplete={signup ? "new-password" : "current-password"} value={values.password} onChange={(event) => onValueChange("password", event.target.value)} required hint={signup ? "4자 이상 입력해 주세요." : undefined} />
+          {signup && <PasswordField id="signup-confirm-password" name="confirm_password" label="비밀번호 확인" autoComplete="new-password" value={values.confirmPassword} onChange={(event) => onValueChange("confirmPassword", event.target.value)} required />}
+        </fieldset>
+        {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
+        <Button type="submit" loading={busy} disabled={devBusy || !config?.password_login || configLoading} className="w-full">{signup ? "가입하고 시작하기" : "로그인"}</Button>
+      </form>
+      <p className="text-center text-xs leading-6 text-[#737d74]">{signup ? "내 계정을 만들고 가족과의 대화를 이어가세요." : "처음 오셨나요? 위의 회원가입을 선택해 주세요."}</p>
       {config?.dev_login && (
-        <div className="rounded-2xl border border-dashed border-[#cbd9ce] bg-[#f7f9f4] p-4">
-          <label htmlFor="login-name" className="mb-3 block text-xs font-bold leading-6 text-[#647568]">개발용 로그인 (카카오 키 설정 전)</label>
-          <div className="flex gap-2">
-            <input id="login-name" value={name} onChange={onNameChange} onKeyDown={onNameKeyDown} placeholder="내 이름 (예: 준하)" maxLength={20} className="min-h-12 min-w-0 flex-1 rounded-xl border border-[#d6dfd2] bg-white px-3 py-3 text-base outline-none focus:border-[#315d4b] focus:ring-2 focus:ring-[#dce8d8]" />
-            <Button onClick={onDevLogin} disabled={!name.trim()} loading={busy} className="min-h-12 shrink-0 !rounded-xl !bg-[#315d4b] !px-4 !text-white hover:!bg-[#234b39] disabled:!bg-stone-200 disabled:!text-stone-500">시작</Button>
-          </div>
-        </div>
+        <details className="rounded-2xl border border-dashed border-[#cbd9ce] bg-[#f7f9f4] p-4">
+          <summary className="cursor-pointer text-xs font-bold leading-6 text-[#647568]">개발 환경 전용 로그인</summary>
+          <p className="mb-3 mt-2 text-xs leading-5 text-[#737d74]">테스트 서버에서만 사용할 수 있는 이름 로그인입니다.</p>
+          <form onSubmit={onDevLogin} aria-label="개발용 로그인" className="space-y-3">
+            <AuthField id="dev-login-name" name="dev_name" label="테스트 이름" value={values.devName} onChange={(event) => onValueChange("devName", event.target.value)} required maxLength={50} disabled={pending} autoComplete="off" />
+            <Button type="submit" variant="secondary" disabled={busy || !values.devName.trim()} loading={devBusy} className="w-full">개발용으로 시작</Button>
+          </form>
+        </details>
       )}
     </div>
   );

@@ -48,7 +48,8 @@ class Settings:
 
     kakao_rest_api_key = os.getenv("KAKAO_REST_API_KEY", "")
     kakao_client_secret = os.getenv("KAKAO_CLIENT_SECRET", "")
-    dev_login = _bool("DEV_LOGIN", default=not kakao_rest_api_key)
+    # Name-only access must be explicitly enabled on an isolated development server.
+    dev_login = _bool("DEV_LOGIN", default=False)
 
     naver_api_key = os.getenv("NAVER_API_KEY", "")
     hcx_endpoint = os.getenv(
@@ -92,7 +93,7 @@ class Settings:
     s3gen_min_ve_gain = _float("S3GEN_MIN_VE_GAIN", 0.005)
     s3gen_min_sv_gain = _float("S3GEN_MIN_SV_GAIN", 0.0)
 
-    voice_target_seconds = int(os.getenv("VOICE_TARGET_SECONDS", "180"))
+    voice_target_seconds = int(os.getenv("VOICE_TARGET_SECONDS", "90"))
     reference_seconds = 12
     share_link_days = int(os.getenv("SHARE_LINK_DAYS", "30"))
     job_max_attempts = 3

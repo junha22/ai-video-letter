@@ -72,7 +72,14 @@ export default function VoicePage() {
     return () => cancelAnimationFrame(raf);
   }, [phase]);
 
-  const current = voice?.sentences.find((s) => !s.sample?.ok && !skipped.has(s.index)) ?? null;
+  const reachedTarget = Boolean(voice && voice.total_seconds >= voice.target_seconds);
+  const current = reachedTarget ? null : voice?.sentences.find((s) => !s.sample?.ok && !skipped.has(s.index)) ?? null;
+
+  useEffect(() => {
+    if (!reachedTarget) return;
+    recorder.current?.close();
+    recorder.current = null;
+  }, [reachedTarget]);
 
   const openMic = async () => {
     setError(null);
@@ -130,14 +137,14 @@ export default function VoicePage() {
   // 컴퓨터에서는 스페이스바로 녹음 시작/끝
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || (e.target as HTMLElement).tagName === "TEXTAREA") return;
+      if (!current || e.code !== "Space" || (e.target as HTMLElement).tagName === "TEXTAREA") return;
       e.preventDefault();
       if (phase === "ready" || phase === "result") start();
       else if (phase === "recording") stop();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase, start, stop]);
+  }, [current, phase, start, stop]);
 
   const skip = () => {
     if (!current) return;
@@ -242,7 +249,7 @@ export default function VoicePage() {
       {voice.status === "failed" && <Notice tone="error">{voice.error ?? "목소리 등록에 실패했어요."} 다시 등록해 주세요.</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
-      {phase === "intro" && (
+      {phase === "intro" && !enough && (
         <VoiceWorkspace
           reading={<><p className="mb-4 text-xs font-semibold text-[#6b8566]">녹음 전, 잠깐만 준비해 주세요</p><h3 className="mb-5 text-2xl font-bold leading-relaxed tracking-tight text-[#344a38]">가장 편안한<br />나의 목소리로.</h3><ul className="space-y-3 text-sm leading-7 text-[#7b8574]"><li>TV나 음악을 끄고 조용한 곳에서 녹음해 주세요.</li><li>휴대폰은 입에서 한 뼘 정도 떨어뜨려 주세요.</li><li>부모님께 말하듯 평소 말투로 읽으면 더 자연스러워요.</li><li>중간에 그만둬도 녹음한 문장은 저장돼요.</li></ul></>}
           controls={<><span className="mb-5 flex h-20 w-20 items-center justify-center rounded-full border border-white/20 bg-white/10"><Mic className="h-8 w-8 text-[#e9eddb]" strokeWidth={1.5} aria-hidden="true" /></span><p className="mb-5 text-sm font-medium text-[#dae4d3]">목소리를 들려주실 준비가 됐나요?</p><Button onClick={openMic} className="w-full !bg-[#f0ecd9] !text-[#284f3e] hover:!bg-white"><Mic className="h-4 w-4" /> 마이크 켜기</Button><p className="mt-4 text-center text-[11px] leading-6 text-[#a7bda6]">편안한 목소리로, 한 문장씩 시작해요.</p></>}
@@ -344,7 +351,7 @@ export default function VoicePage() {
       {enough && (
         <Card className="mt-6 border-emerald-300 bg-emerald-50">
           <p className="font-bold text-emerald-900">충분히 녹음했어요!</p>
-          <p className="mt-1 text-sm text-emerald-800">더 읽을수록 목소리가 자연스러워져요. 이제 등록해도 돼요.</p>
+          <p className="mt-1 text-sm text-emerald-800">목표 녹음 시간 {formatSeconds(voice.target_seconds)}을 채웠어요. 이제 목소리를 등록해 주세요.</p>
           <Button onClick={finalize} loading={busy} className="mt-4 w-full">
             목소리 등록하기
           </Button>

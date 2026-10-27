@@ -1,11 +1,15 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+
+from .auth import check_origin
 
 from .config import settings
 from .db import init_db
-from .routers import account, auth, messages, notifications, photo, voice, watch
+from .routers import account, auth, conversations, messages, notifications, photo, voice, watch
 from .services import s3gen, wemeet_tts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -19,7 +23,29 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="온기 API", lifespan=lifespan)
 
-for module in (auth, account, voice, photo, messages, watch, notifications):
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, error: RequestValidationError):
+    # Validation errors can contain submitted input, including plaintext passwords.
+    if request.url.path.startswith("/api/auth/"):
+        return JSONResponse({"detail": "입력한 내용을 확인해 주세요. 이메일 형식과 비밀번호 길이(4자 이상)를 확인해 주세요."}, status_code=422)
+    details = [{"loc": item["loc"], "msg": item["msg"], "type": item["type"]} for item in error.errors()]
+    return JSONResponse({"detail": details}, status_code=422)
+
+
+@app.middleware("http")
+async def mutation_origin(request: Request, call_next):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        try:
+            check_origin(request)
+        except HTTPException as error:
+            return JSONResponse({"detail": error.detail}, status_code=error.status_code)
+    response = await call_next(request)
+    if request.url.path.startswith(("/api/auth", "/api/me")):
+        response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+for module in (auth, account, voice, photo, messages, watch, notifications, conversations):
     app.include_router(module.router)
 
 
