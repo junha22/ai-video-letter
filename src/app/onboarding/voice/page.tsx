@@ -6,20 +6,15 @@ import { CircleAlert, CircleCheck, Mic, RotateCcw, Square } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import { formatSeconds, TUNING_LABEL } from "@/lib/format";
 import { quickCheck, VoiceRecorder, type Take } from "@/lib/recorder";
-import type { Sentence, VoiceState } from "@/lib/types";
+import type { VoiceState } from "@/lib/types";
 import { AppShell } from "@/components/AppShell";
 import { VoiceWorkspace } from "@/components/StudioPanels";
+import { VoiceCategoryOverview, VoiceRecordingGuide, VoiceScriptLabel } from "@/components/VoiceRecordingGuide";
 import { Button, Card, LinkButton, Notice, Progress, Spinner, StepHeader } from "@/components/ui";
 
 type Phase = "intro" | "noise" | "ready" | "recording" | "checking" | "result";
 type Result = { ok: boolean; problems: string[] };
 
-const KIND_HINT: Record<Sentence["kind"], string> = {
-  calm: "차분하게 천천히",
-  statement: "평소 말하듯이",
-  question: "묻듯이 끝을 올려서",
-  exclamation: "감정을 담아서",
-};
 const MAX_TAKE_SECONDS = 20;
 
 export default function VoicePage() {
@@ -233,7 +228,7 @@ export default function VoicePage() {
         step={3}
         total={4}
         title="목소리를 등록해요"
-        desc={`화면에 나오는 문장을 소리 내어 읽어 주세요. 모두 ${formatSeconds(voice.target_seconds)} 정도면 돼요.`}
+        desc={`대본을 한 번에 약 10초씩 읽어 주세요. 누적 ${formatSeconds(voice.target_seconds)} 정도면 돼요.`}
       />
 
       <div className="mb-6 rounded-2xl border border-[#e4e9dd] bg-white px-5 py-4 sm:px-6">
@@ -248,6 +243,8 @@ export default function VoicePage() {
 
       {voice.status === "failed" && <Notice tone="error">{voice.error ?? "목소리 등록에 실패했어요."} 다시 등록해 주세요.</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
+
+      {phase === "intro" && !enough && <VoiceCategoryOverview sentences={voice.sentences} />}
 
       {phase === "intro" && !enough && (
         <VoiceWorkspace
@@ -273,7 +270,8 @@ export default function VoicePage() {
           )}
 
           <VoiceWorkspace
-            reading={<><p className="mb-5 text-xs font-semibold text-[#73906d]">{KIND_HINT[current.kind]} 읽어 주세요</p><p className="text-[25px] font-semibold leading-[1.8] tracking-tight text-[#344a38] sm:text-[30px]">{current.text}</p><p className="mt-7 text-[11px] text-[#98a18e]">평소 부모님께 말하듯, 자연스럽게 읽어 주세요.</p></>}
+            reading={<><VoiceScriptLabel sentence={current} /><p className="text-[25px] font-semibold leading-[1.8] tracking-tight text-[#344a38] sm:text-[30px]">{current.text}</p><p className="mt-7 text-xs leading-6 text-[#6b7767]">읽는 방법을 확인한 뒤, 대본만 소리 내어 읽어 주세요.</p></>}
+            guide={<VoiceRecordingGuide sentence={current} />}
             controls={<>
             {phase === "recording" ? (
               <button

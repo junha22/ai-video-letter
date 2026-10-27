@@ -246,10 +246,42 @@ def missing_facts(script: str, memo: str) -> list[str]:
     return found
 
 
-def fact_warnings(script: str, memo: str, replies: Sequence[str] = ()) -> list[str]:
+# 말투 예시에 자주 들어갈 일정·약속. 프롬프트로 말투만 따라 하라고 해도 예시 내용을 옮겨서(사투리 예시 18개 중 10개:
+# '생일 축하해' 메모에 '오늘 늦는데이') 코드로 잡는다. 예시에 있는 것만 보므로 예시가 없으면 아무것도 잡지 않는다.
+# (대본에서 찾는 표현, 메모·예시에서 찾는 표현). 메모 '주말에 갈게'를 '찾아뵐게요'로 바꿔 쓴 걸 잡지 않도록 메모 쪽은 넓게 본다
+# '집에 가서 쉬어', '들르지 말고'는 부모님께 하는 당부라서 자녀가 가겠다는 꼴(갈·간다, 들를)만 본다
+_VISIT = r"(?:내려|올라)[가갈간와올온]|찾아[뵙뵐뵈가갈]|들를|집에\s?(?:갈|간다)|놀러\s?[가갈]"
+_EXAMPLE_FACTS = {
+    # '너무 늦게까지 깨어 있지 마'는 부모님께 하는 말이라 뺀다
+    "늦는다는 말": (r"(?<!밤)늦(?:[어는을었네다지고음]|게(?!\s?까지))|야근|회식", r"늦|야근|회식"),
+    "주말 약속": (r"주말", r"주말|[토일]요일|[토일]욜"),
+    "찾아간다는 말": (
+        _VISIT,
+        _VISIT + r"|[갈간]\s?(?:게|께|거|다|대|래|까)|(?<![가-힣])감(?![가-힣])|가[요려서면]|(?:올|오)[게께]|온다|뵈|뵙|뵐",
+    ),
+    "연락하겠다는 말": (r"(?:전화|연락)\s?(?:할게|할께|드릴게|드릴께|하겠|드리겠|할끼|할 거)", r"전화|연락|톡|문자"),
+    "퇴근·도착 소식": (r"퇴근|출근|도착", r"퇴근|출근|도착"),
+}
+
+
+def example_leaks(script: str, source: str, tone: str) -> list[str]:
+    """말투 예시에서 옮겨 온 일정·약속. 예시와 대본에 모두 있는데 메모(와 답글)에는 없는 것."""
+    return [
+        label for label, (in_script, in_text) in _EXAMPLE_FACTS.items()
+        if re.search(in_text, tone) and re.search(in_script, script) and not re.search(in_text, source)
+    ]
+
+
+def _leak_sentences(script: str, leaks: list[str]) -> list[str]:
+    patterns = [_EXAMPLE_FACTS[label][0] for label in leaks]
+    return [s for s in re.split(r"(?<=[.!?~])\s+", script) if any(re.search(p, s) for p in patterns)]
+
+
+def fact_warnings(script: str, memo: str, replies: Sequence[str] = (), tone: str = "") -> list[str]:
     """화면에 보여 줄 경고 문구. 대본을 만들 때 넣은 부모님 답글에 나온 내용은 지어낸 것으로 보지 않는다"""
     warnings = []
-    if added := unsupported_facts(script, " ".join((memo, *replies))):
+    source = " ".join((memo, *replies))
+    if added := unsupported_facts(script, source) + example_leaks(script, source, tone):
         warnings.append(f"메모{'나 답글' if replies else ''}에 없던 내용이 들어갔어요: {', '.join(added)}")
     if missing := missing_facts(script, memo):
         warnings.append(f"메모에 있던 내용이 빠졌어요: {', '.join(missing)}")
@@ -516,6 +548,13 @@ def generate(
                 feedback.append(
                     f"{where}에 없는 내용({', '.join(facts)})을 넣었어요. {where}에 없는 날씨·요일·시간은 빼고, {where}에 있는 것만 전해 주세요."
                 )
+            leaks = example_leaks(script, source, tone)
+            if leaks:
+                # 무엇을 넣었는지만 말하면 그 문장은 두고 사투리만 표준어로 바꿔 다시 썼다. 문장을 짚어 주고 말투는 두라고 한다
+                quoted = " ".join(f'"{s}"' for s in _leak_sentences(script, leaks))
+                feedback.append(
+                    f"{quoted} 부분은 말투 예시에 있던 내용({', '.join(leaks)})이고 {where}에는 없어요. 이 부분만 빼 주세요. 말투와 표현은 지금처럼 예시를 따라 주세요."
+                )
             missing = missing_facts(script, memo)
             if missing:
                 feedback.append(
@@ -526,7 +565,7 @@ def generate(
             if not feedback:
                 return ScriptResult(script, "llm")
             # 길이·말투 문제보다 사실이 틀린 게 더 나쁘므로 틀린 항목 수만큼 더 무겁게 친다
-            score = len(feedback) + len(facts) + len(missing)
+            score = len(feedback) + len(facts) + len(leaks) + len(missing)
             if best is None or score < best[0]:
                 best = (score, script)
         messages += [

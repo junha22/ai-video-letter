@@ -43,6 +43,7 @@ def _state(db: Session, user: User, profile: VoiceProfile) -> dict:
                 "index": i,
                 "text": s["text"],
                 "kind": s["kind"],
+                **sentences.guidance(s),
                 "sample": {"duration": round(samples[i].duration, 1), "ok": samples[i].ok} if i in samples else None,
             }
             for i, s in enumerate(profile.sentences)

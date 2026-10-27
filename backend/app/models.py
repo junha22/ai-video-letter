@@ -124,7 +124,7 @@ class VoiceProfile(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
     # recording -> processing -> ready (zero-shot 사용 가능) / failed
     status: Mapped[str] = mapped_column(String(20), default="recording")
-    sentences: Mapped[list] = mapped_column(JSON)  # [{"text": ..., "kind": "calm|statement|question|exclamation"}]
+    sentences: Mapped[list] = mapped_column(JSON)  # text, legacy kind, category, hint, guide, focus
     reference_path: Mapped[str | None] = mapped_column(String(500))
     # TTS_PROVIDER=wemeet: TTS 서버에 등록한 목소리. 다시 녹음할 때마다 새 id를 쓴다
     tts_voice_id: Mapped[str | None] = mapped_column(String(64))
