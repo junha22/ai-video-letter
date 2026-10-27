@@ -117,10 +117,16 @@ export type Message = {
   viewed_at: string | null;
 };
 
+export type VoiceCategory = "emotion" | "calm" | "pronunciation";
+
 export type Sentence = {
   index: number;
   text: string;
   kind: "calm" | "statement" | "question" | "exclamation";
+  category?: VoiceCategory;
+  hint?: string;
+  guide?: string;
+  focus?: string[];
   sample: { duration: number; ok: boolean } | null;
 };
 

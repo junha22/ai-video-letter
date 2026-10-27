@@ -3,7 +3,7 @@ import { Camera, Check, Heart, Quote, Sun, User } from "lucide-react";
 import { SamplePortrait } from "./SamplePortrait";
 
 /** 실제 화면과 디자인 프리뷰에서 공유하는 표시 전용 컴포넌트. */
-export function VoiceWorkspace({ reading, controls }: { reading: ReactNode; controls: ReactNode }) {
+export function VoiceWorkspace({ reading, controls, guide }: { reading: ReactNode; controls: ReactNode; guide?: ReactNode }) {
   return (
     <section className="overflow-hidden rounded-[28px] border border-[#e3e8df] bg-white p-5 shadow-[0_12px_40px_rgba(36,62,44,0.045)] sm:p-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-[#edf0e8] pb-5">
@@ -11,11 +11,12 @@ export function VoiceWorkspace({ reading, controls }: { reading: ReactNode; cont
         <span className="flex items-center gap-2 rounded-full bg-[#f3f5ed] px-3 py-2 text-xs text-[#607564]"><span className="h-1.5 w-1.5 rounded-full bg-[#7b9c80]" />한 문장씩, 편안하게</span>
       </div>
       <div className="grid gap-5 lg:grid-cols-[1.4fr_0.9fr]">
-        <div className="relative flex min-w-0 flex-col justify-center overflow-hidden rounded-[22px] border border-[#e9ece3] bg-[#f8f9f4] p-6 sm:min-h-[330px] sm:p-9">
+        {guide && <div className="min-w-0 lg:col-start-2 lg:row-start-1">{guide}</div>}
+        <div className={`relative flex min-w-0 flex-col justify-center overflow-hidden rounded-[22px] border border-[#e9ece3] bg-[#f8f9f4] p-6 sm:min-h-[330px] sm:p-9 lg:col-start-1 lg:row-start-1 ${guide ? "lg:row-span-2" : ""}`}>
           <Quote size={84} strokeWidth={1} className="pointer-events-none absolute -right-3 -top-3 rotate-180 text-[#e5ebde]" aria-hidden="true" />
           <div className="relative">{reading}</div>
         </div>
-        <div className="flex min-w-0 flex-col items-center justify-center rounded-[22px] bg-[#284f3e] px-6 py-8 text-white sm:px-8">{controls}</div>
+        <div className="flex min-w-0 flex-col items-center justify-center rounded-[22px] bg-[#284f3e] px-6 py-8 text-white sm:px-8 lg:col-start-2">{controls}</div>
       </div>
     </section>
   );
