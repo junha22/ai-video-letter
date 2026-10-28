@@ -2,14 +2,23 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowUpRight, MessageCircle, Video } from "lucide-react";
+import { ArrowUpRight, MessageCircle, Trash2, Video } from "lucide-react";
 import { formatConversationTime, type ConversationEvent, type ConversationMessage } from "@/lib/conversations";
 import { STATUS_LABEL } from "@/lib/format";
 
-export function ConversationEvents({ events, recipientName, childName }: { events: ConversationEvent[]; recipientName: string; childName: string }) {
+type DeleteProps = { onDelete?: (event: ConversationEvent) => void; deleting?: string | null };
+
+export function ConversationEvents({ events, recipientName, childName, onDelete, deleting }: { events: ConversationEvent[]; recipientName: string; childName: string } & DeleteProps) {
   return <ol className="space-y-7" aria-label="날짜별 영상과 답글">{events.map((event) => <li key={`${event.type}-${event.id}`} id={event.type === "video" ? `video-${event.message.id}` : `reply-${event.id}`} className="scroll-mt-28">
-    {event.type === "video" ? <div className="ml-auto max-w-2xl"><p className="mb-2 text-right text-xs font-semibold text-[#84917a]">{childName}의 영상 편지</p><VideoMessage message={event.message} /><p className="mt-2 text-right text-[11px] text-stone-400">{formatConversationTime(event.created_at)}</p></div> : <div className="mr-auto max-w-xl"><p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-[#9a806a]"><MessageCircle size={13} />{recipientName}의 답글</p><div className="rounded-[22px] rounded-tl-md border border-[#e7dfd2] bg-[#f5eee2] px-5 py-4"><p className="whitespace-pre-wrap break-words text-[15px] leading-8 text-[#685947]">{event.text}</p>{event.message_id !== null && <Link href={`/messages/${event.message_id}`} className="mt-3 inline-flex min-h-8 items-center gap-1 text-[11px] font-semibold text-[#998266]">답글을 남긴 영상 보기<ArrowUpRight size={12} /></Link>}</div><p className="mt-2 text-[11px] text-stone-400">{formatConversationTime(event.created_at)}</p></div>}
+    {event.type === "video" ? <div className="ml-auto max-w-2xl"><p className="mb-2 text-right text-xs font-semibold text-[#84917a]">{childName}의 영상 편지</p><VideoMessage message={event.message} /><EventFooter event={event} align="right" onDelete={onDelete} deleting={deleting} /></div> : <div className="mr-auto max-w-xl"><p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-[#9a806a]"><MessageCircle size={13} />{recipientName}의 답글</p><div className="rounded-[22px] rounded-tl-md border border-[#e7dfd2] bg-[#f5eee2] px-5 py-4"><p className="whitespace-pre-wrap break-words text-[15px] leading-8 text-[#685947]">{event.text}</p>{event.message_id !== null && <Link href={`/messages/${event.message_id}`} className="mt-3 inline-flex min-h-8 items-center gap-1 text-[11px] font-semibold text-[#998266]">답글을 남긴 영상 보기<ArrowUpRight size={12} /></Link>}</div><EventFooter event={event} align="left" onDelete={onDelete} deleting={deleting} /></div>}
   </li>)}</ol>;
+}
+
+function EventFooter({ event, align, onDelete, deleting }: { event: ConversationEvent; align: "left" | "right" } & DeleteProps) {
+  const key = `${event.type}-${event.id}`;
+  // 만드는 중인 영상은 작업이 끝나야 지울 수 있다 (서버도 막는다)
+  const canDelete = onDelete && !(event.type === "video" && event.message.status === "generating");
+  return <div className={`mt-1 flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}><p className="text-[11px] text-stone-400">{formatConversationTime(event.created_at)}</p>{canDelete && <button type="button" onClick={() => onDelete?.(event)} disabled={deleting === key} aria-label={event.type === "video" ? "이 영상 편지 지우기" : "이 답글 지우기"} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-stone-400 hover:bg-[#f6efe9] hover:text-[#b1543d] disabled:opacity-50"><Trash2 size={12} />{deleting === key ? "지우는 중…" : "지우기"}</button>}</div>;
 }
 
 function VideoMessage({ message }: { message: ConversationMessage }) {

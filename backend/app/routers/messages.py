@@ -5,7 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from .. import serialize
@@ -293,3 +293,22 @@ def mark_sent(message_id: int, body: SentIn, user: User = Depends(current_user),
         m.sent_at = utcnow()
         db.commit()
     return serialize.message(db, m)
+
+
+@router.delete("/{message_id}")
+def delete_message(message_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """대화방에서 영상 편지 하나를 지운다. 동의 철회와 같은 기준으로 영상·음성은 지우고 대본은 생성 기록으로 남긴다."""
+    # 대상자 쪽 시청 기록·답글 저장과 순서를 맞춘다 (지운 영상이 '봤어요'로 되살아나지 않게)
+    conversations.lock_owner(db, user.id)
+    db.expire_all()
+    m = _get(db, user, message_id)
+    if m.status == "generating":
+        raise HTTPException(409, "영상을 만드는 중이에요. 다 만든 뒤에 지워 주세요.")
+    _clear_render(m)
+    storage.delete_tree(storage.message_dir(user.id, m.id))
+    m.status = "deleted"
+    # 이 영상의 공유 링크로는 대화방에 더 들어올 수 없다. 이 영상에 남긴 답글은 남기고 영상 연결만 끊는다
+    db.execute(update(ShareLink).where(ShareLink.message_id == m.id).values(revoked=True))
+    db.execute(update(SeniorReply).where(SeniorReply.message_id == m.id).values(message_id=None))
+    db.commit()
+    return {"ok": True}

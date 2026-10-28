@@ -102,6 +102,13 @@ def get_conversation(recipient_id: int, response: Response, date: str | None = N
     return service.conversation(db, recipient, date, before=before, limit=limit)
 
 
+@router.delete("/recipients/{recipient_id}/replies/{reply_id}")
+def delete_reply(recipient_id: int, reply_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    recipient = service.owned_recipient(db, user, recipient_id)
+    service.delete_reply(db, recipient, reply_id)
+    return {"ok": True}
+
+
 @router.get("/recipients/{recipient_id}/portfolio")
 def get_portfolio(recipient_id: int, response: Response, month: str | None = None,
                   user: User = Depends(current_user), db: Session = Depends(get_db)):

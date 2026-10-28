@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..db import iso, utcnow
-from ..models import Message, MonthlyPortfolio, ParentProfile, Recipient, SeniorReply, User
+from ..models import Message, MonthlyPortfolio, Notification, ParentProfile, Recipient, SeniorReply, User
 
 KOREA = timezone(timedelta(hours=9), "Asia/Seoul")
 WATCHABLE = ("approved", "sent", "viewed")
@@ -407,6 +407,38 @@ def portfolio_state(db: Session, recipient: Recipient, month: str | None = None,
         "stale": bool(row and row.source_fingerprint != fingerprint),
         "portfolio": {**row.report, "id": row.id, "generated_at": iso(row.generated_at)} if row else None,
     }
+
+
+def delete_reply(db: Session, recipient: Recipient, reply_id: int) -> None:
+    """Remove one reply with its notification preview and any saved report quoting it."""
+    lock_owner(db, recipient.user_id)
+    reply = db.get(SeniorReply, reply_id)
+    if not reply or reply.user_id != recipient.user_id or reply.recipient_id != recipient.id:
+        raise HTTPException(404, "답글을 찾을 수 없어요.")
+    # The notification has no reply id; it was written with the reply and quotes its first 60 characters.
+    note = db.scalar(select(Notification).where(
+        Notification.user_id == reply.user_id, Notification.recipient_id == recipient.id,
+        Notification.kind == "senior_reply", Notification.created_at >= reply.created_at,
+        Notification.text.endswith(f": {reply.text[:60]}", autoescape=True),
+    ).order_by(Notification.created_at, Notification.id).limit(1))
+    if note:
+        db.delete(note)
+    month = korea_date(reply.created_at)[:7]
+    db.delete(reply)
+    db.flush()
+    saved = db.scalar(select(MonthlyPortfolio).where(
+        MonthlyPortfolio.recipient_id == recipient.id, MonthlyPortfolio.month == month,
+    ))
+    if saved:
+        _month, start, end = month_bounds(month)
+        remaining = db.scalar(select(func.count()).select_from(SeniorReply).where(
+            SeniorReply.recipient_id == recipient.id, SeniorReply.created_at >= start, SeniorReply.created_at < end,
+        ))
+        if remaining:
+            portfolio_state(db, recipient, month, generate=True)
+        else:
+            db.delete(saved)
+    db.commit()
 
 
 def refresh_closed_portfolios(db: Session, limit: int = 25) -> int:

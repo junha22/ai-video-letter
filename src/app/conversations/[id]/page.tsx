@@ -9,7 +9,7 @@ import { MonthlyPortfolio } from "@/components/conversations/MonthlyPortfolio";
 import { RecipientForm } from "@/components/conversations/RecipientForm";
 import { Button, Card, LinkButton, Notice, Spinner } from "@/components/ui";
 import { api, errorText } from "@/lib/api";
-import { formatConversationDate, kstDate, mergeConversationEvents, type ConversationThread, type Recipient } from "@/lib/conversations";
+import { formatConversationDate, kstDate, mergeConversationEvents, type ConversationEvent, type ConversationThread, type Recipient } from "@/lib/conversations";
 import { useMe } from "@/lib/useMe";
 
 export default function ConversationPage() {
@@ -28,6 +28,10 @@ export default function ConversationPage() {
   const [rollover, setRollover] = useState(false);
   const refreshRef = useRef<(() => Promise<void>) | null>(null);
   const loadedOlder = useRef(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  // 지운 항목은 지우기 전에 출발한 새로고침 응답에 섞여 와도 다시 보이지 않게 한다
+  const deleted = useRef(new Set<string>());
+  const visible = (events: ConversationEvent[]) => events.filter((event) => !deleted.current.has(`${event.type}-${event.id}`));
   const selectedRef = useRef(`${recipientId}:${date}`);
   selectedRef.current = `${recipientId}:${date}`;
   const current = thread?.selected_date === date && thread.recipient.id === recipientId ? thread : null;
@@ -70,8 +74,8 @@ export default function ConversationPage() {
         const next = await api<ConversationThread>(`/api/conversations/${recipientId}?date=${encodeURIComponent(date)}`);
         if (!active) return;
         setThread((previous) => {
-          if (previous?.selected_date !== date || previous.recipient.id !== recipientId) return next;
-          return { ...next, events: mergeConversationEvents(previous.events, next.events), ...(loadedOlder.current ? { has_more: previous.has_more, next_before: previous.next_before } : {}) };
+          if (previous?.selected_date !== date || previous.recipient.id !== recipientId) return { ...next, events: visible(next.events) };
+          return { ...next, events: visible(mergeConversationEvents(previous.events, next.events)), ...(loadedOlder.current ? { has_more: previous.has_more, next_before: previous.next_before } : {}) };
         });
         setToday(next.today);
         setError(null);
@@ -98,7 +102,7 @@ export default function ConversationPage() {
       const next = await api<ConversationThread>(`/api/conversations/${recipientId}?date=${encodeURIComponent(selected)}&before=${encodeURIComponent(current.next_before)}`);
       if (selectedRef.current !== `${recipientId}:${selected}`) return;
       loadedOlder.current = true;
-      setThread((previous) => previous?.selected_date === selected && previous.recipient.id === recipientId ? { ...previous, events: mergeConversationEvents(next.events, previous.events), has_more: next.has_more, next_before: next.next_before } : previous);
+      setThread((previous) => previous?.selected_date === selected && previous.recipient.id === recipientId ? { ...previous, events: visible(mergeConversationEvents(next.events, previous.events)), has_more: next.has_more, next_before: next.next_before } : previous);
       setError(null);
     } catch (e) {
       if (selectedRef.current === `${recipientId}:${selected}`) setError(errorText(e));
@@ -106,6 +110,26 @@ export default function ConversationPage() {
       if (selectedRef.current === `${recipientId}:${selected}`) setLoadingOlder(false);
     }
   }, [current, date, loadingOlder, recipientId]);
+
+  const deleteEvent = async (event: ConversationEvent) => {
+    const video = event.type === "video";
+    if (!confirm(video
+      ? "이 영상 편지를 지울까요?\n영상은 다시 볼 수 없고, 이 영상으로 보낸 링크로는 대화방에 들어올 수 없어요. 이 영상에 남긴 답글은 그대로 남아요."
+      : "이 답글을 지울까요?\n지운 답글은 되돌릴 수 없어요.")) return;
+    const key = `${event.type}-${event.id}`;
+    setDeleting(key);
+    try {
+      await api(video ? `/api/messages/${event.id}` : `/api/recipients/${recipientId}/replies/${event.id}`, { method: "DELETE" });
+      deleted.current.add(key);
+      setThread((previous) => previous ? { ...previous, events: previous.events.filter((item) => `${item.type}-${item.id}` !== key) } : previous);
+      setError(null);
+      void refreshRef.current?.();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   const selectDate = (next: string) => { setDate(next); setRollover(false); };
   const openDate = (next: string) => { selectDate(next); setTab("conversation"); };
@@ -141,7 +165,7 @@ export default function ConversationPage() {
             <section aria-label="선택한 날짜의 대화" className="min-w-0">
               <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-[#3f553e]">{formatConversationDate(date)} {isToday && <span className="ml-1 text-xs font-normal text-[#879b79]">오늘</span>}</h2><p className="mt-1.5 text-xs text-stone-400">{isToday ? "답글은 자동으로 새로 불러와요." : "이날 주고받은 영상 편지와 답글이에요."}</p></div><button type="button" onClick={() => { void refreshRef.current?.(); }} disabled={refreshing} className="inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold text-[#899c7c] hover:bg-[#edf2e6] disabled:opacity-50"><RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />새로고침</button></div>
               {error && <div role="alert" className="mb-5"><Notice tone="error">{error}<button type="button" onClick={() => { void refreshRef.current?.(); }} className="ml-3 font-bold underline">다시 시도</button></Notice></div>}
-              {loading && !current ? <Spinner label="그날의 이야기를 불러오고 있어요" /> : current && current.events.length === 0 ? <Card className="py-12 text-center"><MessageCircle size={34} className="mx-auto text-[#a1b394]" /><h3 className="mt-4 font-bold text-[#58734f]">{isToday ? "오늘은 어떤 안부를 전할까요?" : "이날 나눈 대화가 없어요"}</h3><p className="mx-auto mt-3 max-w-md text-sm leading-7 text-stone-500">{isToday ? "영상 편지를 만들고 대화방 링크를 공유해 보세요. 상대는 로그인 없이 영상을 보고 답글을 남길 수 있어요." : "다른 날짜를 선택하거나 오늘의 대화로 돌아가 보세요."}</p>{isToday ? <LinkButton href={`/messages/new?recipient_id=${recipientId}`} className="mt-6"><PenLine size={17} />영상 편지 쓰기</LinkButton> : <Button variant="secondary" onClick={() => selectDate(today)} className="mt-6"><ChevronLeft size={16} />오늘의 대화 보기</Button>}</Card> : current ? <>{current.has_more && <div className="mb-6 text-center"><Button variant="secondary" loading={loadingOlder} onClick={() => { void loadOlder(); }} className="!text-xs">이날의 이전 대화 더 보기</Button></div>}<ConversationEvents events={current.events} recipientName={recipient?.nickname ?? "상대"} childName={thread?.child_name || me.user.name} /><div className="mt-8 border-t border-[#e4e9dc] pt-6 text-center"><p className="mb-4 text-xs leading-6 text-stone-400">새 영상 편지는 보낸 날짜의 대화에 이어져요.</p><LinkButton href={`/messages/new?recipient_id=${recipientId}`}><PenLine size={17} />답글에 영상 편지로 답하기</LinkButton></div></> : null}
+              {loading && !current ? <Spinner label="그날의 이야기를 불러오고 있어요" /> : current && current.events.length === 0 ? <Card className="py-12 text-center"><MessageCircle size={34} className="mx-auto text-[#a1b394]" /><h3 className="mt-4 font-bold text-[#58734f]">{isToday ? "오늘은 어떤 안부를 전할까요?" : "이날 나눈 대화가 없어요"}</h3><p className="mx-auto mt-3 max-w-md text-sm leading-7 text-stone-500">{isToday ? "영상 편지를 만들고 대화방 링크를 공유해 보세요. 상대는 로그인 없이 영상을 보고 답글을 남길 수 있어요." : "다른 날짜를 선택하거나 오늘의 대화로 돌아가 보세요."}</p>{isToday ? <LinkButton href={`/messages/new?recipient_id=${recipientId}`} className="mt-6"><PenLine size={17} />영상 편지 쓰기</LinkButton> : <Button variant="secondary" onClick={() => selectDate(today)} className="mt-6"><ChevronLeft size={16} />오늘의 대화 보기</Button>}</Card> : current ? <>{current.has_more && <div className="mb-6 text-center"><Button variant="secondary" loading={loadingOlder} onClick={() => { void loadOlder(); }} className="!text-xs">이날의 이전 대화 더 보기</Button></div>}<ConversationEvents events={current.events} recipientName={recipient?.nickname ?? "상대"} childName={thread?.child_name || me.user.name} onDelete={(event) => { void deleteEvent(event); }} deleting={deleting} /><div className="mt-8 border-t border-[#e4e9dc] pt-6 text-center"><p className="mb-4 text-xs leading-6 text-stone-400">새 영상 편지는 보낸 날짜의 대화에 이어져요.</p><LinkButton href={`/messages/new?recipient_id=${recipientId}`}><PenLine size={17} />답글에 영상 편지로 답하기</LinkButton></div></> : null}
             </section>
           </div>
         </>
