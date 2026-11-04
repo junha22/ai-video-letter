@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import SessionLocal, init_db, iso, utcnow
 from .models import Job, Message, Notification, Photo, VoiceProfile, VoiceSample
-from .services import audio, jobs, korean, s3gen, storage, tts, video, wemeet_tts
+from .services import audio, jobs, korean, s3gen, s3gen_remote, storage, tts, video, wemeet_tts
 
 log = logging.getLogger("ongi.worker")
 
@@ -242,8 +242,10 @@ def run_voice_train(db: Session, job: Job) -> None:
         else {"id": f"s{s.index:02d}", "audio": str(reference), "duration": round(audio.wav_duration(reference), 2)}
         for s in samples
     ]
+    # GPU가 없는 곳(Azure)에서는 GPU PC의 학습 서버에 맡긴다. 돌려받는 결과 형식은 같다
+    runner = s3gen_remote.run if settings.s3gen_remote_url else s3gen.run
     try:
-        outcome = s3gen.run(clips, f"s{ref.index:02d}", reference, voice_id, work, still_current)
+        outcome = runner(clips, f"s{ref.index:02d}", reference, voice_id, work, still_current)
     finally:
         if not s3gen.delete_candidate(voice_id):
             jobs.enqueue_voice_delete(db, job.user_id, f"{voice_id}_cand")

@@ -188,8 +188,10 @@ var backendEnv = concat(naverEnv, [
   { name: 'HTTPS_PROXY', value: 'http://127.0.0.1:1055' }
   { name: 'HTTP_PROXY', value: 'http://127.0.0.1:1055' }
   { name: 'NO_PROXY', value: 'clovastudio.stream.ntruss.com,localhost,127.0.0.1' }
-  // 음색 학습은 워커가 같은 기계에서 GPU로 돌리는 구조라 클라우드 워커에서는 끈다
-  { name: 'S3GEN_TRAINING', value: 'false' }
+  // 음색 학습: 워커에 GPU가 없어서 GPU PC의 학습 서버(gpu_worker/trainer.py)에 맡긴다 (step·적용 기준은 GPU PC .env)
+  { name: 'S3GEN_TRAINING', value: 'true' }
+  { name: 'S3GEN_REMOTE_URL', value: '${gpuGatewayUrl}/train' }
+  { name: 'S3GEN_REMOTE_KEY', secretRef: 'gpu-token' }
   { name: 'VOICE_TARGET_SECONDS', value: '135' }
   { name: 'CONSENT_VERSION', value: consentVersion }
   { name: 'DATA_PROCESSING_NOTICE', value: dataProcessingNotice }

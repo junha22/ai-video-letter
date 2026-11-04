@@ -711,6 +711,81 @@ class ConversationIntegrationTests(unittest.TestCase):
             self.assertIsNone(session.get(Message, mid).viewed_at)
             self.assertEqual(session.scalar(select(func.count()).select_from(Notification).where(Notification.user_id == uid)), 0)
 
+    def test_owner_deletes_one_video_letter_and_its_link_but_keeps_replies(self):
+        uid, rid = self.owner()
+        mid = self.message(uid, rid, token="room-token")
+        kept = self.message(uid, rid, token="kept-token", created_at=NOW + timedelta(minutes=5))
+        busy = self.message(uid, rid, status="generating", created_at=NOW + timedelta(minutes=10))
+        self.client.cookies.clear()
+        with self.clock():
+            reply = self.assert_ok(self.client.post("/api/watch/room-token/replies", json={
+                "text": "잘 봤어", "client_id": "reply-to-deleted", "message_id": mid,
+            }))
+        media = storage.message_dir(uid, mid)
+        self.assertTrue((media / "video.mp4").exists())
+
+        self.login("intruder")
+        self.assertEqual(self.client.delete(f"/api/messages/{mid}").status_code, 404)
+        self.login()
+        self.assertEqual(self.client.delete(f"/api/messages/{busy}").status_code, 409)
+        self.assert_ok(self.client.delete(f"/api/messages/{mid}"))
+        self.assertEqual(self.client.delete(f"/api/messages/{mid}").status_code, 404)
+
+        self.assertFalse(media.exists())
+        with self.clock():
+            events = self.room(rid)["events"]
+            self.assertEqual([e["id"] for e in events if e["type"] == "video"], [kept, busy])
+            self.assertEqual([(e["id"], e["message_id"]) for e in events if e["type"] == "reply"], [(reply["id"], None)])
+            self.client.cookies.clear()
+            self.assertEqual(self.client.get("/api/watch/room-token/conversation").status_code, 410)
+            self.assertEqual(self.client.post(f"/api/watch/kept-token/messages/{mid}/viewed").status_code, 404)
+            self.assertEqual([e["id"] for e in self.public_room("kept-token")["events"] if e["type"] == "video"], [kept])
+        with db.SessionLocal() as session:
+            deleted = session.get(Message, mid)
+            self.assertEqual(deleted.status, "deleted")
+            self.assertIsNone(deleted.video_path)
+            self.assertTrue(session.scalar(select(ShareLink.revoked).where(ShareLink.message_id == mid)))
+            self.assertFalse(session.scalar(select(ShareLink.revoked).where(ShareLink.message_id == kept)))
+
+    def test_owner_deletes_one_reply_with_its_notification_and_report_quote(self):
+        uid, rid = self.owner()
+        second = self.recipient()
+        self.message(uid, rid, token="room-token")
+        self.message(uid, second, token="second-token")
+        self.client.cookies.clear()
+        with self.clock():
+            gone = self.assert_ok(self.client.post("/api/watch/room-token/replies", json={
+                "text": "100%_비밀 산책 이야기", "client_id": "reply-to-remove",
+            }))
+            kept = self.assert_ok(self.client.post("/api/watch/room-token/replies", json={
+                "text": "밥 잘 먹었어", "client_id": "reply-to-keep",
+            }))
+            other = self.assert_ok(self.client.post("/api/watch/second-token/replies", json={
+                "text": "다른 방 답글", "client_id": "other-room-reply",
+            }))
+        self.login()
+        portfolio = f"/api/recipients/{rid}/portfolio?month=2026-10"
+        with self.clock():
+            report_id = self.assert_ok(self.client.post(portfolio))["portfolio"]["id"]
+            self.assertIn("100%_비밀", str(self.assert_ok(self.client.get(portfolio))["portfolio"]))
+            self.assertEqual(self.client.delete(f"/api/recipients/{rid}/replies/{other['id']}").status_code, 404)
+            self.assert_ok(self.client.delete(f"/api/recipients/{rid}/replies/{gone['id']}"))
+            self.assertEqual(self.client.delete(f"/api/recipients/{rid}/replies/{gone['id']}").status_code, 404)
+            self.assertEqual([e["id"] for e in self.room(rid)["events"] if e["type"] == "reply"], [kept["id"]])
+            after = self.assert_ok(self.client.get(portfolio))
+            self.assertEqual(after["portfolio"]["id"], report_id)
+            self.assertFalse(after["stale"])
+            self.assertEqual(after["portfolio"]["reply_count"], 1)
+            self.assertNotIn("100%_비밀", str(after["portfolio"]))
+            self.assert_ok(self.client.delete(f"/api/recipients/{rid}/replies/{kept['id']}"))
+            self.assertIsNone(self.assert_ok(self.client.get(portfolio))["portfolio"])
+        with db.SessionLocal() as session:
+            notes = session.scalars(select(Notification.text).where(Notification.kind == "senior_reply")).all()
+            self.assertEqual(len(notes), 1)
+            self.assertIn("다른 방 답글", notes[0])
+        self.login("intruder")
+        self.assertEqual(self.client.delete(f"/api/recipients/{second}/replies/{other['id']}").status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

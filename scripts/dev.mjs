@@ -2,7 +2,7 @@
 // backend/.env가 TTS_PROVIDER=wemeet이면 TTS 서버(C:\WE_MEET\tts_server)도 같이 띄운다. 이미 떠 있으면 그대로 쓴다
 // VIDEO_PROVIDER=runpod이고 RUNPOD_VIDEO_ENDPOINT_ID가 이 PC 주소면 영상 서버(FLOAT, gpu_worker/video_handler.py)도 같이 띄운다
 // 포트 바꾸기: WEB_PORT=3001 API_PORT=8001 npm run dev:all
-// npm run gpu (--gpu-only): 웹·API·워커 없이 TTS·영상 서버와 게이트웨이(gpu_worker/gateway.py)만 띄운다.
+// npm run gpu (--gpu-only): 웹·API·워커 없이 TTS·영상 서버, 음색 학습 서버(gpu_worker/trainer.py)와 게이트웨이(gpu_worker/gateway.py)만 띄운다.
 //   Azure에 배포한 백엔드가 Tailscale(tailnet 안)로 이 PC의 GPU를 쓸 때 (docs/DEPLOY_AZURE.md)
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -55,7 +55,8 @@ function portFree(port, host) {
 }
 const busy = [];
 const gatewayPort = setting("GPU_GATEWAY_PORT", "8200");
-for (const [name, port] of gpuOnly ? [["게이트웨이", gatewayPort]] : [["웹", webPort], ["API", apiPort]]) {
+const trainerPort = setting("GPU_TRAINER_PORT", "8300");
+for (const [name, port] of gpuOnly ? [["게이트웨이", gatewayPort], ["학습 서버", trainerPort]] : [["웹", webPort], ["API", apiPort]]) {
   if (!(await portFree(port, "127.0.0.1")) || !(await portFree(port, "::"))) busy.push(`${name} ${port}`);
 }
 
@@ -157,8 +158,16 @@ const procs = gpuOnly
         cmd: python,
         args: [join(backend, "gpu_worker", "gateway.py"), "--port", gatewayPort],
         cwd: backend,
-        env: { ...env, GPU_GATEWAY_TOKEN: gatewayToken, GATEWAY_TTS_URL: ttsUrl.origin, GATEWAY_VIDEO_URL: videoUrl.origin },
+        env: {
+          ...env,
+          GPU_GATEWAY_TOKEN: gatewayToken,
+          GATEWAY_TTS_URL: ttsUrl.origin,
+          GATEWAY_VIDEO_URL: videoUrl.origin,
+          GATEWAY_TRAIN_URL: `http://127.0.0.1:${trainerPort}`,
+        },
       },
+      // Azure 워커가 맡기는 S3Gen 음색 학습 (backend/.env의 WEMEET_TRAIN_PYTHON·S3GEN_* 설정을 따른다)
+      { name: "trainer", color: 32, cmd: python, args: [join(backend, "gpu_worker", "trainer.py"), "--port", trainerPort], cwd: backend },
     ]
   : [
       // 코드를 고치면 다시 뜨는데, 웹(next dev)이 API 연결을 계속 열어 두어서 종료를 무한정 기다리지 않게 3초로 끊는다
@@ -252,7 +261,7 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 if (gpuOnly) {
-  console.log(`[dev] GPU 모드: 게이트웨이 http://127.0.0.1:${gatewayPort} (/tts → ${ttsUrl.origin}, /video → ${videoUrl.origin})`);
+  console.log(`[dev] GPU 모드: 게이트웨이 http://127.0.0.1:${gatewayPort} (/tts → ${ttsUrl.origin}, /video → ${videoUrl.origin}, /train → 학습 서버 :${trainerPort})`);
   console.log(`[dev] Azure에서 쓰려면 다른 창에서: tailscale serve --bg ${gatewayPort}  (tailnet 안에서만. 상태: https://<PC>.<tailnet>.ts.net/health)`);
 } else {
   console.log(`[dev] 웹 http://localhost:${webPort}  ·  API http://127.0.0.1:${apiPort}/docs`);

@@ -4,6 +4,7 @@ Azure의 API·워커가 Tailscale(tailnet 안, https://<PC 이름>.<tailnet>.ts.
 이 PC에서 `tailscale serve --bg 8200`으로 tailnet 안에만 연다 (공개하는 Funnel은 쓰지 않는다).
   /tts/...    → TTS 서버   (기본 http://127.0.0.1:8100)
   /video/...  → 영상 서버  (기본 http://127.0.0.1:8010, RunPod 로컬 테스트 서버라 자체 인증이 없다)
+  /train/...  → 음색 학습 서버 (기본 http://127.0.0.1:8300, gpu_worker/trainer.py)
   /health     → 토큰 없이 두 서버 상태만 알려 준다 (/tts/health도 TTS 서버처럼 토큰 없이 연다)
 
 토큰은 X-API-Key 또는 Authorization: Bearer로 받는다. 백엔드(Azure) 설정:
@@ -32,8 +33,9 @@ TOKEN = os.environ.get("GPU_GATEWAY_TOKEN", "")
 UPSTREAMS = {
     "tts": os.environ.get("GATEWAY_TTS_URL", "http://127.0.0.1:8100").rstrip("/"),
     "video": os.environ.get("GATEWAY_VIDEO_URL", "http://127.0.0.1:8010").rstrip("/"),
+    "train": os.environ.get("GATEWAY_TRAIN_URL", "http://127.0.0.1:8300").rstrip("/"),
 }
-HEALTH_PATHS = {"tts": "/health", "video": "/openapi.json"}  # 영상 서버(RunPod)에는 상태 확인 경로가 없다
+HEALTH_PATHS = {"tts": "/health", "video": "/openapi.json", "train": "/health"}  # 영상 서버(RunPod)에는 상태 확인 경로가 없다
 # 영상 생성(/runsync)은 긴 대본이면 1분 가까이, GPU를 다른 작업과 나눠 쓰면 몇 분 걸린다
 TIMEOUT = httpx.Timeout(connect=5, read=900, write=60, pool=5)
 HOP_BY_HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
