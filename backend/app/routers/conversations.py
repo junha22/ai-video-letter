@@ -102,6 +102,16 @@ def get_conversation(recipient_id: int, response: Response, date: str | None = N
     return service.conversation(db, recipient, date, before=before, limit=limit)
 
 
+@router.get("/conversations/{recipient_id}/feed")
+def get_conversation_feed(recipient_id: int, response: Response, before: str | None = None, after: str | None = None,
+                          user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """대화방 채팅: 대화가 있는 날 며칠씩 (처음엔 최근 며칠, before=그 앞 며칠, after=그 뒤 며칠)."""
+    recipient = service.owned_recipient(db, user, recipient_id)
+    db.commit()
+    response.headers["Cache-Control"] = "private, no-store"
+    return service.conversation_feed(db, recipient, before=before, after=after)
+
+
 @router.delete("/recipients/{recipient_id}/replies/{reply_id}")
 def delete_reply(recipient_id: int, reply_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     recipient = service.owned_recipient(db, user, recipient_id)

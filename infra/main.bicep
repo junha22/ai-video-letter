@@ -47,6 +47,9 @@ param tailscaleAuthKey string
 @description('게이트웨이 토큰 (GPU PC backend/.env의 GPU_GATEWAY_TOKEN과 같은 값)')
 param gpuGatewayToken string
 
+@description('카카오톡 공유 버튼의 JavaScript 키 (카카오 콘솔 [앱] > [플랫폼 키]). 공개용 키라 브라우저에 보인다. 비우면 버튼 대신 휴대폰 공유 창')
+param kakaoJsKey string = ''
+
 @description('동의 화면에 보이는 저장·처리 장소 안내')
 param dataProcessingNotice string = '목소리·사진·영상은 Microsoft Azure 클라우드에 저장되고, 음성과 영상은 연구팀 GPU 컴퓨터에서 만들어요.'
 @description('동의 문구를 바꾸면 같이 바꾼다')
@@ -239,7 +242,11 @@ resource web 'Microsoft.App/containerApps@2026-07-01' = {
           name: 'web'
           image: webImage
           // /api/* 프록시(src/app/api/[...path]/route.ts)가 넘길 곳. 같은 환경 안에서는 앱 이름으로 부른다
-          env: [ { name: 'BACKEND_URL', value: 'http://${apiName}' } ]
+          // KAKAO_JS_KEY는 화면이 실행할 때 /web-config로 받는다 (src/app/web-config/route.ts)
+          env: [
+            { name: 'BACKEND_URL', value: 'http://${apiName}' }
+            { name: 'KAKAO_JS_KEY', value: kakaoJsKey }
+          ]
           resources: { cpu: json('0.5'), memory: '1Gi' }
         }
       ]

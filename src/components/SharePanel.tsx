@@ -7,8 +7,20 @@ import { formatDate, nameSubject } from "@/lib/format";
 import type { Message } from "@/lib/types";
 import { Button, Notice } from "./ui";
 
-const KAKAO_JS_KEY = process.env.NEXT_PUBLIC_KAKAO_JS_KEY;
 const KAKAO_SDK = "https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js";
+
+// 카카오 JavaScript 키는 실행할 때 웹 서버(/web-config)에서 받는다. 빈 값이면 카카오톡 버튼 대신 휴대폰 공유 창을 보인다
+let kakaoKeyRequest: Promise<string> | null = null;
+function kakaoJsKey(): Promise<string> {
+  kakaoKeyRequest ??= fetch("/web-config", { cache: "no-store" })
+    .then((res) => (res.ok ? res.json() : {}))
+    .then((config: { kakao_js_key?: string }) => config.kakao_js_key || "")
+    .catch(() => {
+      kakaoKeyRequest = null; // 다음에 다시 시도한다
+      return "";
+    });
+  return kakaoKeyRequest;
+}
 
 type KakaoSDK = {
   isInitialized(): boolean;
@@ -43,7 +55,13 @@ export function SharePanel({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canNativeShare, setCanNativeShare] = useState(false);
-  useEffect(() => { setCanNativeShare("share" in navigator); }, []);
+  const [kakaoKey, setKakaoKey] = useState<string | null>(null);
+  useEffect(() => {
+    setCanNativeShare("share" in navigator);
+    let active = true;
+    void kakaoJsKey().then((key) => { if (active) setKakaoKey(key); });
+    return () => { active = false; };
+  }, []);
   const share = message.share!;
   const title = `${nameSubject(childName)} 영상 편지를 보냈어요`;
   const text = `${title}\n아래 링크로 들어와 영상을 보고 답글을 남겨 주세요. 로그인 없이 대화를 이어갈 수 있어요.\n${share.url}`;
@@ -57,7 +75,7 @@ export function SharePanel({
     setError(null);
     try {
       const Kakao = await loadKakao();
-      if (!Kakao.isInitialized()) Kakao.init(KAKAO_JS_KEY!);
+      if (!Kakao.isInitialized()) Kakao.init(kakaoKey!);
       Kakao.Share.sendDefault({
         objectType: "text",
         text: `${title}\n눌러서 영상을 보고 답글을 남겨 주세요.`,
@@ -101,7 +119,7 @@ export function SharePanel({
       )}
       {error && <Notice tone="error">{error}</Notice>}
 
-      {KAKAO_JS_KEY ? (
+      {kakaoKey === null ? null : kakaoKey ? (
         <button
           onClick={kakao}
           className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FEE500] py-4 text-[17px] font-bold text-[#191919]"

@@ -78,13 +78,12 @@ main에 푸시하면 GitHub Actions가 테스트(SQLite·PostgreSQL) 후 이미�
 - `ghcr.io/<저장소 주인>/ongi-backend:<커밋>` / `:latest`
 - `ghcr.io/<저장소 주인>/ongi-web:<커밋>` / `:latest` (`BACKEND_URL=http://ongi-api`)
 
-카카오톡 공유 버튼은 웹 이미지를 만들 때 들어가는 카카오 JavaScript 키가 있어야 보인다 (`NEXT_PUBLIC_` 값이라 컨테이너 환경 변수로는 바꿀 수 없다).
+카카오톡 공유 버튼은 카카오 JavaScript 키가 있어야 보인다. 키는 이미지에 넣지 않고, 웹 컨테이너 환경 변수 `KAKAO_JS_KEY`를 화면이 실행할 때 `/web-config`로 받는다.
 1. [developers.kakao.com](https://developers.kakao.com) → 앱 선택 → **[앱] > [플랫폼 키] > [JavaScript 키]**에서 키를 복사한다. 브라우저에 그대로 보이는 공개용 키다.
 2. 웹 주소(`https://ongi-web.<임의>.koreacentral.azurecontainerapps.io`, 경로 없이)를 두 곳에 등록한다.
    - 같은 JavaScript 키를 눌러 **JavaScript SDK 도메인**에 추가한다. 없으면 버튼을 누를 때 domain mismatched 오류가 난다.
    - **[앱] > [제품 링크 관리] > 웹 도메인**에 추가한다. 공유 메시지의 '대화방 열기' 링크가 이 도메인이라 등록하지 않으면 열리지 않는다.
-3. 저장소 관리자가 Settings → Secrets and variables → Actions → **Variables**에 `KAKAO_JS_KEY`를 추가한다.
-4. 다음 main 푸시(또는 Actions에서 deploy를 수동 실행)로 만든 웹 이미지부터 버튼이 보인다. 그 커밋 태그로 4단계 `deploy.ps1`을 다시 실행한다.
+3. `infra/params.local.json`의 `kakaoJsKey`에 키를 넣고 4단계 `deploy.ps1`을 다시 실행한다. 이미지를 다시 만들 필요는 없다.
 
 키가 없으면 버튼 대신 휴대폰 공유 창·문자 보내기·링크 복사가 보인다.
 

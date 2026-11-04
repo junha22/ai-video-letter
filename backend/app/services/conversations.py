@@ -19,6 +19,10 @@ from ..models import Message, MonthlyPortfolio, Notification, ParentProfile, Rec
 KOREA = timezone(timedelta(hours=9), "Asia/Seoul")
 WATCHABLE = ("approved", "sent", "viewed")
 PROFILE_FIELDS = ("nickname", "relation", "phone", "child_call_name", "speech_level", "tone_examples")
+# Owner chat feed: the first screen and each "earlier" page hold this many days that have chat,
+# capped by event count (a single day is never split, so one busy day can exceed the cap).
+FEED_DAYS = 3
+FEED_MAX_EVENTS = 150
 
 
 def korea_date(value: datetime | None = None) -> str:
@@ -28,19 +32,25 @@ def korea_date(value: datetime | None = None) -> str:
     return value.astimezone(KOREA).date().isoformat()
 
 
-def day_bounds(value: str | None = None) -> tuple[str, datetime, datetime]:
-    value = value or korea_date()
+def _day_start(value: str) -> datetime:
+    """UTC (naive) instant of Korea midnight for YYYY-MM-DD; 422 on a malformed date."""
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         raise HTTPException(422, "날짜는 YYYY-MM-DD 형식이어야 해요.")
     try:
         parsed = date.fromisoformat(value)
         start = datetime(parsed.year, parsed.month, parsed.day, tzinfo=KOREA).astimezone(timezone.utc).replace(tzinfo=None)
-        end = start + timedelta(days=1)
+        start + timedelta(days=1)  # the next midnight must be representable too
     except (ValueError, OverflowError):
         raise HTTPException(422, "올바른 날짜를 선택해 주세요.")
+    return start
+
+
+def day_bounds(value: str | None = None) -> tuple[str, datetime, datetime]:
+    value = value or korea_date()
+    start = _day_start(value)
     if value > korea_date():
         raise HTTPException(422, "오늘 이후의 대화는 아직 없어요.")
-    return value, start, end
+    return value, start, start + timedelta(days=1)
 
 
 def month_bounds(value: str | None = None) -> tuple[str, datetime, datetime]:
@@ -234,15 +244,19 @@ def _parse_cursor(value: str) -> tuple[str, str, int]:
         raise HTTPException(422, "대화 페이지 정보가 올바르지 않아요.")
 
 
-def conversation(db: Session, recipient: Recipient, selected_date: str | None = None,
-                 token: str | None = None, before: str | None = None, limit: int = 100) -> dict:
-    selected_date, start, end = day_bounds(selected_date)
-    timestamp = func.coalesce(Message.approved_at, Message.created_at)
+def _room_queries(recipient: Recipient, token: str | None = None):
+    """Videos and replies of one room: the public link sees only watchable videos, the owner every kept one."""
     query = select(Message).where(Message.user_id == recipient.user_id, Message.recipient_id == recipient.id)
     query = query.where(Message.status.in_(WATCHABLE)) if token else query.where(Message.status != "deleted")
     reply_query = select(SeniorReply).where(
         SeniorReply.user_id == recipient.user_id, SeniorReply.recipient_id == recipient.id,
     )
+    return query, reply_query
+
+
+def _day_counts(db: Session, query, reply_query) -> dict[str, dict]:
+    """Korea calendar days that have chat, with video and reply counts."""
+    timestamp = func.coalesce(Message.approved_at, Message.created_at)
     days = defaultdict(lambda: {"video_count": 0, "reply_count": 0})
     video_day = _day_sql(db, timestamp)
     reply_day = _day_sql(db, SeniorReply.created_at)
@@ -250,6 +264,15 @@ def conversation(db: Session, recipient: Recipient, selected_date: str | None = 
         days[str(day)]["video_count"] = count
     for day, count in db.execute(reply_query.with_only_columns(reply_day, func.count()).group_by(reply_day)):
         days[str(day)]["reply_count"] = count
+    return days
+
+
+def conversation(db: Session, recipient: Recipient, selected_date: str | None = None,
+                 token: str | None = None, before: str | None = None, limit: int = 100) -> dict:
+    selected_date, start, end = day_bounds(selected_date)
+    timestamp = func.coalesce(Message.approved_at, Message.created_at)
+    query, reply_query = _room_queries(recipient, token)
+    days = _day_counts(db, query, reply_query)
     query = query.where(timestamp >= start, timestamp < end)
     reply_query = reply_query.where(SeniorReply.created_at >= start, SeniorReply.created_at < end)
     if before:
@@ -279,6 +302,57 @@ def conversation(db: Session, recipient: Recipient, selected_date: str | None = 
         "days": [{"date": day, **days[day]} for day in sorted(days, reverse=True)],
         "events": events, "has_more": has_more,
         "next_before": _cursor(events[0]) if has_more and events else None,
+    }
+
+
+def conversation_feed(db: Session, recipient: Recipient, before: str | None = None, after: str | None = None,
+                      page_days: int = FEED_DAYS, max_events: int = FEED_MAX_EVENTS) -> dict:
+    """Owner chat feed paged by whole days that have chat.
+
+    No bound: the latest days. before=D: the days just before D (scrolling up). after=D: the days just
+    after D (jumping to a date passes the day before it, then reading on). Days without chat are skipped.
+    """
+    if before and after:
+        raise HTTPException(422, "before와 after는 함께 쓸 수 없어요.")
+    if before:
+        _day_start(before)
+    if after:
+        _day_start(after)
+    query, reply_query = _room_queries(recipient)
+    counts = _day_counts(db, query, reply_query)
+    active = sorted(counts)
+    if after:
+        candidates = [day for day in active if day > after]
+    else:
+        candidates = [day for day in reversed(active) if before is None or day < before]
+    picked, total = [], 0
+    for day in candidates:
+        size = counts[day]["video_count"] + counts[day]["reply_count"]
+        if picked and (len(picked) >= page_days or total + size > max_events):
+            break
+        picked.append(day)
+        total += size
+    picked.sort()
+
+    events = []
+    if picked:
+        start, end = _day_start(picked[0]), _day_start(picked[-1]) + timedelta(days=1)
+        timestamp = func.coalesce(Message.approved_at, Message.created_at)
+        messages = db.scalars(query.where(timestamp >= start, timestamp < end)).all()
+        replies = db.scalars(reply_query.where(SeniorReply.created_at >= start, SeniorReply.created_at < end)).all()
+        events = [video_event(db, message) for message in messages] + [reply_event(reply) for reply in replies]
+        events.sort(key=_event_key)
+        has_older, has_newer = active[0] < picked[0], active[-1] > picked[-1]
+    else:
+        # Nothing on this side of the bound: say whether the other side still has chat.
+        has_older = bool(after) and bool(active) and active[0] <= after
+        has_newer = bool(before) and bool(active) and active[-1] >= before
+    return {
+        "recipient": recipient_dict(db, recipient), "child_name": recipient.child_name,
+        "today": korea_date(), "timezone": "Asia/Seoul",
+        "days": [{"date": day, **counts[day]} for day in reversed(active)],
+        "events": events, "start": picked[0] if picked else None, "end": picked[-1] if picked else None,
+        "has_older": has_older, "has_newer": has_newer,
     }
 
 

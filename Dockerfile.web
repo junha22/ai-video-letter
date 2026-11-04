@@ -1,5 +1,5 @@
 # 온기 웹(Next.js) 이미지. 저장소 루트에서:
-#   docker build -f Dockerfile.web --build-arg BACKEND_URL=http://ongi-api --build-arg NEXT_PUBLIC_KAKAO_JS_KEY=<JavaScript 키> -t ongi-web .
+#   docker build -f Dockerfile.web --build-arg BACKEND_URL=http://ongi-api -t ongi-web .
 # /api/* 요청은 src/app/api/[...path]/route.ts가 BACKEND_URL로 넘긴다. 실행할 때 읽으므로 컨테이너 환경 변수로 바꿀 수 있다
 # (Azure: 같은 Container Apps 환경의 api 앱 이름. 브라우저는 웹 주소 하나만 보므로 세션 쿠키가 그대로 동작한다)
 FROM node:20-alpine AS build
@@ -8,9 +8,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-# 카카오톡 공유 버튼의 JavaScript 키 (공개용 키). NEXT_PUBLIC_ 값은 빌드할 때 화면 코드에 들어가서 실행할 때는 바꿀 수 없다.
-# 비어 있으면 버튼 대신 휴대폰 공유 창·문자·링크 복사만 보인다
-ARG NEXT_PUBLIC_KAKAO_JS_KEY=
+# 카카오 JavaScript 키 등 배포마다 다른 값은 이미지에 넣지 않고 실행할 때 환경 변수로 읽는다 (src/app/web-config/route.ts)
 RUN npm run build
 
 FROM node:20-alpine

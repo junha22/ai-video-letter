@@ -170,7 +170,7 @@ cd backend; python -m app.worker                              # 워커
 | `VOICE_TARGET_SECONDS` | 135초(2분 15초) | 목소리 사전 녹음의 완료 기준. S3Gen 음색 학습이 돌 수 있는 최소 길이 (비교 30초 + 검증 20초 + 학습 60초, 대본 단위로 나눠서 약 130초) |
 
 카카오톡 공유 버튼은 프론트엔드 `.env.local`에 `NEXT_PUBLIC_KAKAO_JS_KEY`를 넣으면 켜진다 (`.env.local.example` 참고).
-Azure 배포에서는 저장소 변수 `KAKAO_JS_KEY`가 웹 이미지 빌드에 들어간다 (`docs/DEPLOY_AZURE.md` '3. 이미지 만들기').
+Azure 배포에서는 `infra/params.local.json`의 `kakaoJsKey`가 웹 컨테이너 환경 변수 `KAKAO_JS_KEY`로 들어가고, 화면이 실행할 때 `/web-config`로 받는다 (`docs/DEPLOY_AZURE.md` '3. 이미지 만들기').
 없으면 휴대폰 공유 창, 문자 보내기, 링크 복사로 보낸다.
 
 부모님 휴대폰에서 시청 링크를 열어 보려면 터널을 쓴다:

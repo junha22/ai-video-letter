@@ -66,6 +66,20 @@ export type ConversationThread = {
   linked_date?: string;
 };
 
+/** 대화방 채팅: 대화가 있는 날 며칠씩. start~end가 이번에 받은 날짜 범위다 (대화가 없으면 null) */
+export type ConversationFeed = {
+  recipient: Recipient;
+  child_name: string;
+  today: string;
+  timezone: "Asia/Seoul";
+  days: ConversationDay[];
+  events: ConversationEvent[];
+  start: string | null;
+  end: string | null;
+  has_older: boolean;
+  has_newer: boolean;
+};
+
 export type PublicConversationThread = ConversationThread;
 export type PortfolioEvidence = { reply_id: number; text: string; date: string };
 export type MonthlyPortfolio = {
@@ -104,6 +118,11 @@ export function kstDate(date: Date = new Date()): string {
   }).formatToParts(date);
   const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
   return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+/** YYYY-MM-DD에서 며칠 앞뒤 날짜 (달력 날짜 계산이라 시간대와 무관하다) */
+export function shiftDate(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 export function kstMonth(date: Date = new Date()): string {

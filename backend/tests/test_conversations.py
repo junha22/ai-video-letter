@@ -786,6 +786,56 @@ class ConversationIntegrationTests(unittest.TestCase):
         self.login("intruder")
         self.assertEqual(self.client.delete(f"/api/recipients/{second}/replies/{other['id']}").status_code, 404)
 
+    def test_owner_feed_pages_by_days_with_chat_and_jumps_to_a_date(self):
+        def kst(day, hour, minute=0):
+            return datetime(2026, 10, day, hour, minute) - timedelta(hours=9)
+
+        with self.clock():  # NOW = 2026-10-26 12:00 KST
+            uid, rid = self.owner()
+            other_rid = self.recipient()
+            self.message(uid, rid, created_at=kst(20, 10))
+            self.reply(uid, rid, "20일 답글", kst(20, 21), "feed-20")
+            self.reply(uid, rid, "21일 답글", kst(21, 9), "feed-21")
+            self.reply(uid, other_rid, "다른 방", kst(22, 9), "feed-other")
+            self.reply(uid, rid, "23일 자정", kst(23, 0), "feed-23")
+            self.message(uid, rid, status="deleted", created_at=kst(24, 12))
+            self.message(uid, rid, created_at=kst(25, 8))
+            self.reply(uid, rid, "25일 답글", kst(25, 8, 30), "feed-25")
+            self.reply(uid, rid, "26일 답글", kst(26, 11), "feed-26")
+
+            def feed(**params):
+                return self.assert_ok(self.client.get(f"/api/conversations/{rid}/feed", params=params))
+
+            def page(result):
+                return (result["start"], result["end"], sorted({e["date"] for e in result["events"]}),
+                        result["has_older"], result["has_newer"])
+
+            latest = feed()
+            self.assertEqual([d["date"] for d in latest["days"]], ["2026-10-26", "2026-10-25", "2026-10-23", "2026-10-21", "2026-10-20"])
+            self.assertEqual(page(latest), ("2026-10-23", "2026-10-26", ["2026-10-23", "2026-10-25", "2026-10-26"], True, False))
+            self.assertEqual([e["created_at"] for e in latest["events"]], sorted(e["created_at"] for e in latest["events"]))
+            self.assertEqual(len(latest["events"]), 4)
+            older = feed(before=latest["start"])
+            self.assertEqual(page(older), ("2026-10-20", "2026-10-21", ["2026-10-20", "2026-10-21"], False, True))
+            self.assertEqual(len(older["events"]), 3)
+            # 22일로 찾기: 그 전날 뒤부터 읽는다. 대화가 없는 22·24일은 건너뛴다
+            self.assertEqual(page(feed(after="2026-10-21")), ("2026-10-23", "2026-10-26", ["2026-10-23", "2026-10-25", "2026-10-26"], True, False))
+            self.assertEqual(page(feed(after="2026-10-19")), ("2026-10-20", "2026-10-23", ["2026-10-20", "2026-10-21", "2026-10-23"], False, True))
+            self.assertEqual(page(feed(before="2026-10-20")), (None, None, [], False, True))
+            self.assertEqual(page(feed(after="2026-10-26")), (None, None, [], True, False))
+
+            # 한 번에 보내는 개수 상한: 날짜는 나누지 않고, 첫날은 상한을 넘어도 통째로 보낸다
+            with db.SessionLocal() as session:
+                recipient = session.get(Recipient, rid)
+                self.assertEqual(page(conversations.conversation_feed(session, recipient, max_events=2))[:2], ("2026-10-26", "2026-10-26"))
+                busy = conversations.conversation_feed(session, recipient, before="2026-10-26", max_events=1)
+                self.assertEqual((busy["start"], busy["end"], len(busy["events"])), ("2026-10-25", "2026-10-25", 2))
+
+            for bad in ({"before": "2026-10-23", "after": "2026-10-20"}, {"before": "2026-13-01"}, {"after": "x"}, {"after": "0001-01-01"}):
+                self.assertEqual(self.client.get(f"/api/conversations/{rid}/feed", params=bad).status_code, 422, bad)
+            self.login("intruder")
+            self.assertEqual(self.client.get(f"/api/conversations/{rid}/feed").status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()
