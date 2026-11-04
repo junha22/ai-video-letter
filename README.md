@@ -297,7 +297,8 @@ backend/gpu_worker/
   s3gen_user.py            음색 학습의 GPU 단계 (Wemeet-cb 환경에서 실행: 분할·특징값, 유사도)
   tts_handler.py           RunPod용 Chatterbox TTS 핸들러 초안 (GPU에서 아직 실행 안 해 봄)
   video_handler.py         RunPod용 영상 핸들러: FLOAT + 입 모양 LoRA
-  weights/float_lora_best.pt   입 모양 LoRA 가중치 (rank 16, 8MB)
+  weights/lora_v2_B_best.pt    입 모양 LoRA 가중치 (rank 16, FMT 32층 + 음성 투영 1층, 9MB, 기본)
+  weights/float_lora_best.pt   이전 LoRA (FMT 32층). FLOAT_LORA_PATH로 지정하면 쓴다
 ```
 
 ## 영상 모델 (FLOAT + 입 모양 LoRA)

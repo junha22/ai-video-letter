@@ -34,7 +34,8 @@
     float.pth                                   (cd gpu_worker/float && sh download_checkpoints.sh)
     wav2vec2-base-960h/                         (huggingface.co/facebook/wav2vec2-base-960h)
     wav2vec-english-speech-emotion-recognition/ (huggingface.co/r-f/wav2vec-english-speech-emotion-recognition)
-  LoRA: gpu_worker/weights/float_lora_best.pt (이 저장소에 포함)
+  LoRA: gpu_worker/weights/lora_v2_B_best.pt (이 저장소에 포함. FMT 32층 + 음성 투영 1층)
+        예전 LoRA(float_lora_best.pt, FMT 32층)도 FLOAT_LORA_PATH로 지정하면 그대로 읽는다
   얼굴 검출 가중치(face_alignment)는 처음 실행할 때 자동으로 받는다. 이미지로 만들 때는 빌드 중에 한 번 실행해 둔다.
   경로는 환경변수 FLOAT_ROOT, FLOAT_CKPT_DIR, FLOAT_LORA_PATH로 바꿀 수 있다.
 
@@ -55,13 +56,14 @@ import os
 import sys
 import tempfile
 import time
+from collections import Counter
 from fractions import Fraction
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 FLOAT_ROOT = Path(os.getenv("FLOAT_ROOT") or HERE / "float").resolve()
 CKPT_DIR = Path(os.getenv("FLOAT_CKPT_DIR") or FLOAT_ROOT / "checkpoints")
-LORA_PATH = Path(os.getenv("FLOAT_LORA_PATH") or HERE / "weights" / "float_lora_best.pt")
+LORA_PATH = Path(os.getenv("FLOAT_LORA_PATH") or HERE / "weights" / "lora_v2_B_best.pt")
 # FLOAT의 styledecoder.py가 .cuda()를 직접 부르기 때문에 실제로는 GPU가 필요하다. 0 = 첫 번째 GPU
 _device = os.getenv("FLOAT_DEVICE", "0")
 DEVICE = int(_device) if _device.isdigit() else _device
@@ -91,37 +93,51 @@ EMOTIONS = ("angry", "disgust", "fear", "happy", "neutral", "sad", "surprise")
 
 
 class LoRA:
-    """FLOAT FMT의 Linear 32개에 LoRA를 forward hook으로 붙인다.
+    """FLOAT의 Linear에 LoRA를 가중치 병합으로 붙인다: W = W0 + strength * scale * (B @ A), bias는 그대로.
 
-    W x + b + strength * scale * B (A x). strength는 요청마다 바꿀 수 있어서
-    같은 엔드포인트로 원본(0)과 파인튜닝(1)을 비교할 수 있다.
+    키는 FLOAT 모델(AGENT.G) 기준 모듈 경로다 (fmt.blocks.N.* 32개 + audio_encoder.audio_projection.0).
+    예전 파일(float_lora_best.pt)의 'blocks.N.*'(FMT 기준)는 앞에 'fmt.'를 붙여 읽는다.
+    음성 특징 wa는 G.sample 안에서 audio_encoder.inference → audio_projection으로 계산되므로 병합된 가중치가 그대로 쓰인다.
+    원래 가중치 W0를 CPU에 두고 강도가 바뀔 때마다 W0에서 다시 계산해서, 요청마다 강도를 바꿔도 LoRA가 겹쳐 더해지지 않는다.
+    float.pth를 불러온 뒤에 만들어야 한다.
     """
 
-    def __init__(self, fmt: torch.nn.Module, path: Path):
+    def __init__(self, model: torch.nn.Module, path: Path, strength: float = 1.0):
         state = torch.load(path, map_location="cpu", weights_only=True)
-        modules = dict(fmt.named_modules())
-        self.strength = 1.0
-        self.layers = 0
-        for name, entry in state.items():
+        modules = dict(model.named_modules())
+        self._entries = []  # (Linear, W0(CPU), A, B, scale)
+        names = []
+        for key, entry in state.items():
+            name = "fmt." + key if key.startswith("blocks.") else key
+            if name in names:
+                raise KeyError(f"LoRA 키가 겹칩니다: {name}")
             layer = modules.get(name)
+            if layer is None:
+                raise KeyError(f"LoRA 키 '{key}'에 맞는 모듈이 FLOAT에 없습니다 ({name})")
             if not isinstance(layer, torch.nn.Linear):
-                raise KeyError(f"LoRA 키 '{name}'에 맞는 Linear가 FLOAT FMT에 없습니다")
-            A, B = entry["A"], entry["B"]
-            if A.shape[1] != layer.in_features or B.shape[0] != layer.out_features:
-                raise ValueError(f"LoRA 크기가 맞지 않습니다: {name} A={tuple(A.shape)} B={tuple(B.shape)}")
+                raise TypeError(f"LoRA 대상이 nn.Linear가 아닙니다: {name} ({type(layer).__name__})")
+            A, B, w = entry["A"].float(), entry["B"].float(), layer.weight
+            if A.dim() != 2 or B.dim() != 2 or A.shape[0] != B.shape[1] or (B.shape[0], A.shape[1]) != tuple(w.shape):
+                raise ValueError(f"LoRA 크기가 맞지 않습니다: {name} A={tuple(A.shape)} B={tuple(B.shape)} W={tuple(w.shape)}")
+            self._entries.append((layer, w.detach().cpu().clone(), A.to(w.device), B.to(w.device),
+                                  float(entry.get("scale", 1.0))))
+            names.append(name)
+        self.layers = len(names)
+        self.counts = Counter(name.split(".")[0] for name in names)
+        self.strength = None  # 지금 가중치에 들어가 있는 강도 (None = 알 수 없음, 다음 set_strength에서 다시 계산)
+        self.set_strength(strength)
+
+    @torch.no_grad()
+    def set_strength(self, strength: float) -> None:
+        strength = float(strength)
+        if strength == self.strength:
+            return
+        self.strength = None  # 도중에 실패하면 다음 요청에서 처음부터 다시 계산한다
+        for layer, w0, A, B, scale in self._entries:
             w = layer.weight
-            layer.register_forward_hook(
-                self._hook(A.to(w.device, w.dtype), B.to(w.device, w.dtype), float(entry.get("scale", 1.0)))
-            )
-            self.layers += 1
-
-    def _hook(self, A: torch.Tensor, B: torch.Tensor, scale: float):
-        def hook(module, inputs, output):
-            if self.strength == 0.0:
-                return output
-            return output + (inputs[0] @ A.t() @ B.t()) * (scale * self.strength)
-
-        return hook
+            delta = (B @ A).mul_(strength * scale)  # float32로 계산하고 원래 가중치의 dtype/device로 맞춘다
+            w.copy_(w0.to(w.device) + delta.to(w.dtype))
+        self.strength = strength
 
 
 def _options() -> argparse.Namespace:
@@ -137,9 +153,10 @@ def _options() -> argparse.Namespace:
 _started = time.monotonic()
 OPT = _options()
 AGENT = InferenceAgent(OPT)
-ADAPTER = LoRA(AGENT.G.fmt, LORA_PATH)
+ADAPTER = LoRA(AGENT.G, LORA_PATH)  # InferenceAgent가 float.pth를 이미 불러온 뒤
 REF_GUIDANCE = tuning.RefGuidance(AGENT.G.fmt)
-print(f"[video_handler] FLOAT + LoRA({LORA_PATH.name}, {ADAPTER.layers}층) 준비 {time.monotonic() - _started:.1f}초", flush=True)
+print(f"[video_handler] FLOAT + LoRA({LORA_PATH.name}, {ADAPTER.layers}층 = fmt {ADAPTER.counts['fmt']} + "
+      f"audio_encoder {ADAPTER.counts['audio_encoder']}) 준비 {time.monotonic() - _started:.1f}초", flush=True)
 
 
 def _crop_box(img: np.ndarray, face: list, size: int) -> np.ndarray:
@@ -242,7 +259,7 @@ def handler(job):
         raise ValueError("사진을 열 수 없습니다")
     crop, how = _crop(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), inp.get("face"))
 
-    ADAPTER.strength = float(inp.get("lora_strength", 1.0))
+    ADAPTER.set_strength(inp.get("lora_strength", 1.0))
     try:
         with tempfile.TemporaryDirectory() as tmp:
             audio_path = os.path.join(tmp, "audio.wav")
