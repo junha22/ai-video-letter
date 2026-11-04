@@ -89,7 +89,10 @@ jobs:
           context: .
           file: Dockerfile.web
           push: true
-          build-args: BACKEND_URL=http://${{ env.PREFIX }}-api
+          # 카카오톡 공유 버튼: 저장소 변수 KAKAO_JS_KEY (없으면 버튼이 숨는다)
+          build-args: |
+            BACKEND_URL=http://${{ env.PREFIX }}-api
+            NEXT_PUBLIC_KAKAO_JS_KEY=${{ vars.KAKAO_JS_KEY }}
           tags: ${{ steps.names.outputs.web }}:${{ github.sha }},${{ steps.names.outputs.web }}:latest
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web

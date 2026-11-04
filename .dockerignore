@@ -6,6 +6,7 @@ node_modules
 .next-dev
 **/__pycache__
 **/*.pyc
+.env*.local
 backend/.env
 backend/.env.*
 !backend/.env.example

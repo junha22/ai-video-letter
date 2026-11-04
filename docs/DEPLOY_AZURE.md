@@ -78,6 +78,16 @@ main에 푸시하면 GitHub Actions가 테스트(SQLite·PostgreSQL) 후 이미�
 - `ghcr.io/<저장소 주인>/ongi-backend:<커밋>` / `:latest`
 - `ghcr.io/<저장소 주인>/ongi-web:<커밋>` / `:latest` (`BACKEND_URL=http://ongi-api`)
 
+카카오톡 공유 버튼은 웹 이미지를 만들 때 들어가는 카카오 JavaScript 키가 있어야 보인다 (`NEXT_PUBLIC_` 값이라 컨테이너 환경 변수로는 바꿀 수 없다).
+1. [developers.kakao.com](https://developers.kakao.com) → 앱 선택 → **[앱] > [플랫폼 키] > [JavaScript 키]**에서 키를 복사한다. 브라우저에 그대로 보이는 공개용 키다.
+2. 웹 주소(`https://ongi-web.<임의>.koreacentral.azurecontainerapps.io`, 경로 없이)를 두 곳에 등록한다.
+   - 같은 JavaScript 키를 눌러 **JavaScript SDK 도메인**에 추가한다. 없으면 버튼을 누를 때 domain mismatched 오류가 난다.
+   - **[앱] > [제품 링크 관리] > 웹 도메인**에 추가한다. 공유 메시지의 '대화방 열기' 링크가 이 도메인이라 등록하지 않으면 열리지 않는다.
+3. 저장소 관리자가 Settings → Secrets and variables → Actions → **Variables**에 `KAKAO_JS_KEY`를 추가한다.
+4. 다음 main 푸시(또는 Actions에서 deploy를 수동 실행)로 만든 웹 이미지부터 버튼이 보인다. 그 커밋 태그로 4단계 `deploy.ps1`을 다시 실행한다.
+
+키가 없으면 버튼 대신 휴대폰 공유 창·문자 보내기·링크 복사가 보인다.
+
 저장소가 공개라 이미지도 공개로 올라간다 (로그인 없이 받을 수 있음). 그래서 `registryUsername`·`registryPassword`는 비워 둔다.
 이미지에는 저장소에 이미 공개된 코드만 들어간다 (`.dockerignore`가 `.env`·데이터·모델을 뺀다).
 저장소를 비공개로 바꾸면 GitHub **classic 토큰(read:packages)**을 만들어 두 값을 채운다.
