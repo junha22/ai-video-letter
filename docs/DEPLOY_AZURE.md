@@ -118,6 +118,8 @@ az account show --query "{AZURE_TENANT_ID:tenantId, AZURE_SUBSCRIPTION_ID:id}"; 
 .\infra\ops.ps1 stop   -ResourceGroup rg-ongi-poc   # 앱 0개, Postgres 정지
 ```
 
+`stop` 뒤 웹·api는 요청이 없으면 몇 분 안에 0개가 된다. 꺼 둔 동안 누가 주소에 들어오면 웹·api가 잠깐 켜지지만(그동안만 요금), DB가 꺼져 있어서 화면은 오류가 난다. 워커는 받는 요청이 없어 최소 0개로는 꺼지지 않으므로 `stop`이 실행 중인 버전을 비활성화하고, `start`가 다시 켠다.
+
 GPU PC는 따로 켠다 (2단계 3번). Azure는 정지한 Postgres를 7일 뒤 자동으로 다시 켜므로, 오래 안 쓸 때는 `status`로 확인하고 다시 `stop`한다.
 
 ## 7. 확인 목록 (휴대폰)
