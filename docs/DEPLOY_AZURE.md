@@ -17,7 +17,8 @@ Azure for Students 구독으로 웹·API·워커·DB·파일은 Azure에, GPU �
                       [GPU PC]  gpu_worker/gateway.py :8200
                                   ├ /tts   → TTS 서버 :8100
                                   ├ /video → 영상 서버(FLOAT) :8010
-                                  └ /train → 음색 학습 서버 :8300 (gpu_worker/trainer.py)
+                                  ├ /train → 음색 학습 서버 :8300 (gpu_worker/trainer.py)
+                                  └ /comfy → ComfyUI :8188 (어린 시절 모드 사진, 따로 실행)
 ```
 
 GPU PC가 꺼져 있으면 로그인·대화방·답글·이미 만든 영상 보기는 되고, 목소리 등록과 영상 생성만 실패한다.
@@ -65,6 +66,7 @@ az postgres flexible-server list-skus -l koreacentral --query "[].supportedServe
    npm run gpu                      # TTS·영상 서버 + 음색 학습 서버 :8300 + 게이트웨이 :8200 (창을 닫으면 같이 꺼진다)
    tailscale serve --bg 8200        # 다른 창에서. tailnet 안에서만 https://<PC>.<tailnet>.ts.net
    ```
+   어린 시절 모드를 시연할 때는 ComfyUI도 따로 켠다 (`npm run gpu`가 띄우지 않는다, docs/YOUNG_MODE.md). 꺼져 있으면 어린 시절 모드로 만드는 영상만 실패한다.
 5. 전원 옵션에서 절전·최대 절전을 끈다.
 
 공개 주소를 여는 **Funnel은 쓰지 않는다.** Funnel 주소가 공개 DNS에 등록되지 않아 Azure에서 찾지 못한 적이 있고 (2026-10-27), tailnet 안에서만 열면 GPU 서버가 인터넷에 드러나지 않는다.

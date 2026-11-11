@@ -195,6 +195,9 @@ var backendEnv = concat(naverEnv, [
   { name: 'S3GEN_TRAINING', value: 'true' }
   { name: 'S3GEN_REMOTE_URL', value: '${gpuGatewayUrl}/train' }
   { name: 'S3GEN_REMOTE_KEY', secretRef: 'gpu-token' }
+  // 어린 시절 모드 사진: GPU PC의 ComfyUI (docs/YOUNG_MODE.md). ComfyUI가 꺼져 있으면 어린 시절 모드로 만드는 영상만 실패한다
+  { name: 'COMFYUI_URL', value: '${gpuGatewayUrl}/comfy' }
+  { name: 'COMFYUI_API_KEY', secretRef: 'gpu-token' }
   { name: 'VOICE_TARGET_SECONDS', value: '135' }
   { name: 'CONSENT_VERSION', value: consentVersion }
   { name: 'DATA_PROCESSING_NOTICE', value: dataProcessingNotice }
