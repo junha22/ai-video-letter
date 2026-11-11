@@ -5,11 +5,13 @@ Azure의 API·워커가 Tailscale(tailnet 안, https://<PC 이름>.<tailnet>.ts.
   /tts/...    → TTS 서버   (기본 http://127.0.0.1:8100)
   /video/...  → 영상 서버  (기본 http://127.0.0.1:8010, RunPod 로컬 테스트 서버라 자체 인증이 없다)
   /train/...  → 음색 학습 서버 (기본 http://127.0.0.1:8300, gpu_worker/trainer.py)
+  /comfy/...  → ComfyUI (기본 http://127.0.0.1:8188, 어린 시절 모드 사진. docs/YOUNG_MODE.md)
   /health     → 토큰 없이 두 서버 상태만 알려 준다 (/tts/health도 TTS 서버처럼 토큰 없이 연다)
 
 토큰은 X-API-Key 또는 Authorization: Bearer로 받는다. 백엔드(Azure) 설정:
   WEMEET_TTS_URL=https://<PC>.<tailnet>.ts.net/tts        WEMEET_TTS_API_KEY=<토큰>
   RUNPOD_VIDEO_ENDPOINT_ID=https://<PC>.<tailnet>.ts.net/video   RUNPOD_API_KEY=<토큰>
+  COMFYUI_URL=https://<PC>.<tailnet>.ts.net/comfy          COMFYUI_API_KEY=<토큰>
 
 실행: npm run gpu (TTS·영상 서버와 같이 띄운다). 직접 띄울 때:
   GPU_GATEWAY_TOKEN=<토큰> python gpu_worker/gateway.py --port 8200
@@ -34,8 +36,10 @@ UPSTREAMS = {
     "tts": os.environ.get("GATEWAY_TTS_URL", "http://127.0.0.1:8100").rstrip("/"),
     "video": os.environ.get("GATEWAY_VIDEO_URL", "http://127.0.0.1:8010").rstrip("/"),
     "train": os.environ.get("GATEWAY_TRAIN_URL", "http://127.0.0.1:8300").rstrip("/"),
+    "comfy": os.environ.get("GATEWAY_COMFY_URL", "http://127.0.0.1:8188").rstrip("/"),
 }
-HEALTH_PATHS = {"tts": "/health", "video": "/openapi.json", "train": "/health"}  # 영상 서버(RunPod)에는 상태 확인 경로가 없다
+# 영상 서버(RunPod)에는 상태 확인 경로가 없다
+HEALTH_PATHS = {"tts": "/health", "video": "/openapi.json", "train": "/health", "comfy": "/system_stats"}
 # 영상 생성(/runsync)은 긴 대본이면 1분 가까이, GPU를 다른 작업과 나눠 쓰면 몇 분 걸린다
 TIMEOUT = httpx.Timeout(connect=5, read=900, write=60, pool=5)
 HOP_BY_HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",

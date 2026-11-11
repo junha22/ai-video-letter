@@ -46,6 +46,9 @@ def upload_photo(file: UploadFile = File(...), user: User = Depends(current_user
     photo.width, photo.height = result.image.size
     photo.face = result.face
     photo.created_at = utcnow()
+    # 어린 시절 모드 사진은 예전 사진으로 만든 것이라 지운다. 다음에 어린 시절 모드로 만들 때 새 사진으로 다시 만든다
+    storage.delete_file(photo.young_path)
+    photo.young_path = photo.young_face = None
     db.add(photo)
     db.commit()
     return {"ok": True, "problems": [], "photo": serialize.photo(photo)}

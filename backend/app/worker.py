@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import SessionLocal, init_db, iso, utcnow
 from .models import Job, Message, Notification, Photo, VoiceProfile, VoiceSample
-from .services import audio, jobs, korean, s3gen, s3gen_remote, storage, tts, video, wemeet_tts
+from .services import audio, face, jobs, korean, s3gen, s3gen_remote, storage, tts, video, wemeet_tts, young
 
 log = logging.getLogger("ongi.worker")
 
@@ -153,6 +153,28 @@ def _synthesize(db: Session, m: Message, profile: VoiceProfile, wav) -> tts.TTSR
         return tts.synthesize(m.script, reference, wav, voice_id=profile.tts_voice_id, seed=m.tts_seed)
 
 
+def _young_photo(db: Session, photo: Photo) -> tuple[Path, list[int]]:
+    """어린 시절 모드 사진과 얼굴 위치. 사용자당 한 번 만들어 두고 다음 영상부터 그대로 쓴다.
+    COMFYUI_URL이 없으면 원본 사진을 쓴다 (GPU 없이 목소리 변환과 흐름만 확인할 때)."""
+    if photo.young_path and photo.young_face:
+        return storage.abs_path(photo.young_path), photo.young_face
+    if not settings.comfyui_url:
+        log.warning("COMFYUI_URL이 없어서 어린 시절 모드에 원본 사진을 씁니다.")
+        return storage.abs_path(photo.path), photo.face
+    data = young.generate(storage.abs_path(photo.path).read_bytes(), f"ongi_user_{photo.user_id}.jpg", settings.young_age)
+    result = face.check(data)
+    if not result.face:
+        raise young.YoungPhotoError("어린 시절 사진에서 얼굴을 찾지 못했습니다.", retryable=False)
+    # 만든 사진은 매끈해서 '흐림'에, 멀리서 찍은 구도라 '얼굴이 작음'에 걸릴 수 있다. 영상에는 얼굴 위치만 있으면 된다
+    if result.problems:
+        log.info("어린 시절 사진 검사 참고: %s", result.problems)
+    path = storage.user_dir(photo.user_id, "photo") / "young.png"
+    result.image.save(path)
+    photo.young_path, photo.young_face = storage.rel_path(path), result.face
+    db.commit()
+    return path, result.face
+
+
 def run_video(db: Session, job: Job) -> None:
     m = db.get(Message, job.message_id)
     if not m or m.status != "generating":
@@ -171,12 +193,16 @@ def run_video(db: Session, job: Job) -> None:
     # 영상 단계에서 실패해 작업이 다시 돌 때 같은 음성이 나오도록 seed를 바로 저장한다
     m.tts_seed = t.seed
     db.commit()
+    # 입 모양이 바뀐 목소리에 맞도록 영상(FLOAT)에 넣기 전에 바꾼다. 다시 돌 때는 TTS부터 새로 만들어서 두 번 바뀌지 않는다
+    if m.young and settings.young_voice_pitch != 1:
+        audio.make_younger(wav, settings.young_voice_pitch)
 
     job.stage = "video"
     job.video_provider = settings.video_provider
     db.commit()
+    photo_path, face_box = _young_photo(db, photo) if m.young else (storage.abs_path(photo.path), photo.face)
     mp4, poster = out_dir / "video.mp4", out_dir / "poster.jpg"
-    v = video.render(storage.abs_path(photo.path), photo.face, wav, mp4, poster, emotion=m.emotion or video.DEFAULT_EMOTION)
+    v = video.render(photo_path, face_box, wav, mp4, poster, emotion=m.emotion or video.DEFAULT_EMOTION)
 
     job.gpu_seconds = t.gpu_seconds + v.gpu_seconds
     job.cost_usd = round(t.cost_usd + v.cost_usd, 6)

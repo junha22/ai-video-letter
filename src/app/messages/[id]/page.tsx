@@ -33,16 +33,20 @@ export default function MessagePage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [emotion, setEmotion] = useState<Emotion>("neutral");
+  const [young, setYoung] = useState(false);
 
   const apply = useCallback((next: Message) => {
     setM(next);
     setDraft(next.script);
   }, []);
 
-  // 다시 만들 때는 지난번에 고른 표정을 기본으로 둔다
+  // 다시 만들 때는 지난번에 고른 표정·어린 시절 모드를 기본으로 둔다
   useEffect(() => {
     if (m?.emotion) setEmotion(m.emotion);
   }, [m?.emotion]);
+  useEffect(() => {
+    setYoung(m?.young ?? false);
+  }, [m?.young]);
 
   const load = useCallback(async () => {
     try {
@@ -106,7 +110,7 @@ export default function MessagePage() {
   const save = () => api<Message>(`/api/messages/${m.id}`, { method: "PATCH", json: { script: draft.trim() } });
   const render = async () => {
     if (dirty) await save();
-    return api<Message>(`/api/messages/${m.id}/render`, { json: { emotion } });
+    return api<Message>(`/api/messages/${m.id}/render`, { json: { emotion, young } });
   };
 
   return (
@@ -206,6 +210,7 @@ export default function MessagePage() {
                 <>
                   {m.status === "failed" && <Notice tone="error">{m.error ?? "영상을 만들지 못했어요."}</Notice>}
                   <EmotionPicker value={emotion} onChange={setEmotion} disabled={!!busy} />
+                  <YoungToggle value={young} onChange={setYoung} disabled={!!busy} />
                   <Button
                     onClick={() => run("render", render)}
                     loading={busy === "render"}
@@ -240,6 +245,7 @@ export default function MessagePage() {
                 <p className="mt-2 text-center text-sm text-stone-500">
                   미리보기 · {formatSeconds(m.duration ?? 0)}
                   {m.emotion && ` · 표정 ${EMOTIONS.find((e) => e.key === m.emotion)?.label ?? m.emotion}`}
+                  {m.young && " · 어린 시절 모습"}
                 </p>
               </Card>
             )}
@@ -256,6 +262,7 @@ export default function MessagePage() {
                   <Send className="h-5 w-5" /> 승인하고 보내기
                 </Button>
                 <EmotionPicker value={emotion} onChange={setEmotion} disabled={!!busy} />
+                <YoungToggle value={young} onChange={setYoung} disabled={!!busy} />
                 <Button
                   variant="secondary"
                   onClick={() => run("render", render)}
@@ -264,7 +271,13 @@ export default function MessagePage() {
                   className="w-full"
                 >
                   <RefreshCw className="h-5 w-5" />{" "}
-                  {dirty ? "고친 대본으로 다시 만들기" : emotion !== m.emotion ? "이 표정으로 다시 만들기" : "다시 만들기"}
+                  {dirty
+                    ? "고친 대본으로 다시 만들기"
+                    : young !== m.young
+                      ? "이 설정으로 다시 만들기"
+                      : emotion !== m.emotion
+                        ? "이 표정으로 다시 만들기"
+                        : "다시 만들기"}
                 </Button>
               </div>
             )}
@@ -319,6 +332,25 @@ function EmotionPicker({ value, onChange, disabled }: { value: Emotion; onChange
         ))}
       </div>
     </div>
+  );
+}
+
+// 어린 시절 모습·목소리로 만들기 (테스트 기능). 사진은 사용자당 처음 한 번만 만들어서 첫 영상은 더 오래 걸린다
+function YoungToggle({ value, onChange, disabled }: { value: boolean; onChange: (v: boolean) => void; disabled: boolean }) {
+  return (
+    <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-2xl border border-[#e5eadf] bg-[#fafbf7] px-4 py-3">
+      <input
+        type="checkbox"
+        checked={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-5 w-5 accent-[#315d4b]"
+      />
+      <span>
+        <span className="block text-[15px] font-semibold text-[#3e5541]">어린 시절 모습으로 만들기 (테스트)</span>
+        <span className="block text-[12px] text-[#8a9681]">사진과 목소리를 어린 시절처럼 바꿔요. 처음 한 번은 사진을 만드느라 더 걸려요.</span>
+      </span>
+    </label>
   );
 }
 

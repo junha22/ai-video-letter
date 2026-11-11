@@ -195,6 +195,7 @@ def rewrite_script(
 
 class RenderIn(BaseModel):
     emotion: str = video_service.DEFAULT_EMOTION
+    young: bool = False  # 어린 시절 모습·목소리로 만들기 (services/young.py)
 
 
 @router.post("/{message_id}/render")
@@ -223,6 +224,7 @@ def render(
     m.error = None
     m.voice_profile_id = voice.id
     m.emotion = emotion
+    m.young = body.young if body else False
     # 사용자가 누른 생성·다시 만들기는 새 seed로 만들고, 작업 자동 재시도는 저장된 seed로 같은 음성을 만든다
     m.tts_seed = None
     jobs.enqueue(db, "video", user.id, m.id)

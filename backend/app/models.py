@@ -166,6 +166,9 @@ class Photo(Base):
     height: Mapped[int] = mapped_column(Integer)
     face: Mapped[list] = mapped_column(JSON)  # [x, y, w, h]
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # 어린 시절 모드 사진(services/young.py). 처음 쓸 때 한 번 만들고, 사진을 새로 올리면 지운다
+    young_path: Mapped[str | None] = mapped_column(String(500))
+    young_face: Mapped[list | None] = mapped_column(JSON)
 
 
 class Message(Base):
@@ -194,6 +197,8 @@ class Message(Base):
     audio_path: Mapped[str | None] = mapped_column(String(500))
     tts_seed: Mapped[int | None] = mapped_column(Integer)  # 같은 seed로 다시 만들면 같은 음성이 나온다
     emotion: Mapped[str | None] = mapped_column(String(20))  # 영상 만들 때 사용자가 고른 표정 (video.EMOTIONS)
+    # 어린 시절 모습·목소리로 만들었는지. 기본값을 두지 않는다: PostgreSQL은 기존 표에 Boolean 칸을 DEFAULT 0으로 못 붙인다
+    young: Mapped[bool | None] = mapped_column(Boolean)
     video_path: Mapped[str | None] = mapped_column(String(500))
     poster_path: Mapped[str | None] = mapped_column(String(500))
     captions: Mapped[list | None] = mapped_column(JSON)

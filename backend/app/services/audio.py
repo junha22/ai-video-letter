@@ -55,6 +55,17 @@ def wav_duration(path: Path) -> float:
         return w.getnframes() / w.getframerate()
 
 
+def make_younger(path: Path, factor: float) -> None:
+    """어린 시절 모드: 음높이와 목소리 울림(포먼트)을 factor배로 올린다. 아이는 목소리가 높고 성도가 짧아 울림도 높다.
+    빠르게 재생해서(음높이·울림이 같이 오른다) 원래 속도로 되돌리므로 길이는 그대로라 립싱크가 어긋나지 않는다"""
+    with wave.open(str(path), "rb") as w:
+        rate = w.getframerate()
+    tmp = path.with_name(path.stem + ".young.wav")
+    run_ffmpeg(["-y", "-i", str(path), "-af", f"asetrate={round(rate * factor)},aresample={rate},atempo={1 / factor:.6f}",
+                "-ac", "1", str(tmp)])
+    tmp.replace(path)
+
+
 def _frame_db(samples: np.ndarray) -> np.ndarray:
     n = len(samples) // FRAME
     if n == 0:

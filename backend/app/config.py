@@ -102,6 +102,14 @@ class Settings:
     s3gen_remote_url = os.getenv("S3GEN_REMOTE_URL", "").rstrip("/")
     s3gen_remote_key = os.getenv("S3GEN_REMOTE_KEY", "")
 
+    # 어린 시절 모드 (영상 만들 때 고른다). 사진은 GPU PC의 ComfyUI에서 Qwen-Image-2.1 Turbo로 어리게 바꾼다 (docs/YOUNG_MODE.md).
+    # 비워 두면 원본 사진을 그대로 쓰고 목소리만 바꾼다 (GPU 없이 흐름을 확인할 때)
+    comfyui_url = os.getenv("COMFYUI_URL", "").rstrip("/")
+    comfyui_api_key = os.getenv("COMFYUI_API_KEY", "")  # 게이트웨이(/comfy)를 거칠 때 GPU_GATEWAY_TOKEN
+    young_age = int(os.getenv("YOUNG_AGE", "6"))
+    # 음높이와 목소리 울림을 이 배율로 올린다. 1이면 목소리는 그대로 둔다
+    young_voice_pitch = _float("YOUNG_VOICE_PITCH", 1.25)
+
     # 기본 등록: 이만큼 넘게 읽은 녹음이 하나 있으면 등록해서 바로 zero-shot으로 영상을 만든다 (대본 1문장이 약 8초)
     voice_basic_seconds = _float("VOICE_BASIC_SECONDS", 6.0)
     # 음색 학습(선택)에 필요한 누적 녹음 길이
