@@ -48,7 +48,7 @@ export function VoiceCategoryOverview({ sentences }: { sentences: readonly Guide
   return (
     <section aria-label="녹음 대본 종류" className="mb-6">
       <h2 className="mb-2 text-sm font-bold text-[#3b5341]">여러 모습의 내 목소리를 담아요</h2>
-      <p className="mb-4 text-xs leading-6 text-[#6b7767]">한 대본은 약 10초예요. 종류를 번갈아 읽고, 목표 시간을 채우면 마무리해요.</p>
+      <p className="mb-4 text-xs leading-6 text-[#6b7767]">한 대본은 약 10초예요. 한 문장이면 기본 목소리로 등록할 수 있고, 종류를 번갈아 더 읽으면 음색 학습(선택)에 쓰여요.</p>
       <div className="grid gap-3 sm:grid-cols-3">
         {(Object.keys(CATEGORIES) as VoiceCategory[]).map((category) => {
           const count = sentences.filter((sentence) => voiceCategory(sentence) === category).length;

@@ -25,14 +25,23 @@ export function formatDate(iso: string | null): string {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${time}`;
 }
 
-/** S3Gen 음색 학습 상태. 학습 결과가 나쁘거나 실패해도 기본 목소리로 계속 쓸 수 있다 */
+/** S3Gen 음색 학습 상태 (선택). 학습 결과가 나쁘거나 실패해도 기본 목소리로 계속 쓸 수 있다 */
 export const TUNING_LABEL: Record<string, string> = {
   queued: "목소리를 더 닮게 다듬는 중이에요 (5분쯤 걸려요)",
   training: "목소리를 더 닮게 다듬는 중이에요 (5분쯤 걸려요)",
   applied: "내 목소리에 맞게 다듬었어요",
-  skipped: "기본 목소리를 쓰고 있어요",
-  failed: "기본 목소리를 쓰고 있어요",
+  skipped: "기본 목소리를 유지하고 있어요",
+  failed: "기본 목소리를 유지하고 있어요",
 };
+
+/** 음색 학습이 기본 목소리 유지·실패로 끝났을 때의 안내 (워커가 보내는 알림과 같은 내용) */
+export function tuningNotice(tuning: string | null, report: Record<string, unknown> | null): string | null {
+  if (tuning === "failed") return "목소리를 다듬다가 문제가 생겨서 기본 목소리를 그대로 쓰고 있어요.";
+  if (tuning !== "skipped") return null;
+  return report?.result === "not_enough_audio"
+    ? "잡음이나 다른 소리가 섞인 녹음을 빼고 나니 음색 학습에 쓸 녹음이 모자라서 기본 목소리를 그대로 쓰고 있어요."
+    : "이번 음색 학습으로는 기본 목소리보다 더 닮게 만들지 못해서 기본 목소리를 그대로 쓰고 있어요.";
+}
 
 export const STATUS_LABEL: Record<string, string> = {
   draft: "대본 작성 중",

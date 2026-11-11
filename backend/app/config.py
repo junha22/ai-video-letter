@@ -102,6 +102,9 @@ class Settings:
     s3gen_remote_url = os.getenv("S3GEN_REMOTE_URL", "").rstrip("/")
     s3gen_remote_key = os.getenv("S3GEN_REMOTE_KEY", "")
 
+    # 기본 등록: 이만큼 넘게 읽은 녹음이 하나 있으면 등록해서 바로 zero-shot으로 영상을 만든다 (대본 1문장이 약 8초)
+    voice_basic_seconds = _float("VOICE_BASIC_SECONDS", 6.0)
+    # 음색 학습(선택)에 필요한 누적 녹음 길이
     voice_target_seconds = int(os.getenv("VOICE_TARGET_SECONDS", "135"))
     reference_seconds = 12
     share_link_days = int(os.getenv("SHARE_LINK_DAYS", "30"))

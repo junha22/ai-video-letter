@@ -102,14 +102,45 @@ def queue_wait(db: Session, j: Job | None, user_id: int) -> dict | None:
     }
 
 
+def tuning_available() -> bool:
+    """이 서버에서 음색 학습을 고를 수 있는지: wemeet TTS + S3GEN_TRAINING + 학습 환경(또는 GPU PC에 맡기기)"""
+    return settings.tts_provider == "wemeet" and settings.s3gen_training and s3gen.unavailable_reason() is None
+
+
+def has_basic_take(db: Session, user_id: int) -> bool:
+    """기본 등록 조건: 대본 한 문장을 끝까지 읽은 녹음(VOICE_BASIC_SECONDS 이상)이 하나라도 있는지"""
+    return bool(db.scalar(
+        select(func.count()).select_from(VoiceSample)
+        .where(VoiceSample.user_id == user_id, VoiceSample.ok, VoiceSample.duration >= settings.voice_basic_seconds)
+    ))
+
+
+def voice_progress(db: Session, user_id: int, profile: VoiceProfile | None) -> dict:
+    """녹음 진행: 대본 한 문장이면 기본 등록, VOICE_TARGET_SECONDS까지 녹음하면 음색 학습(선택)"""
+    total = voice_seconds(db, user_id)
+    available = tuning_available()
+    tuning = profile.s3gen_status if profile else None
+    return {
+        "total_seconds": total,
+        "basic_seconds": settings.voice_basic_seconds,
+        "basic_ready": has_basic_take(db, user_id),
+        "target_seconds": settings.voice_target_seconds,
+        "tuning_available": available,
+        # 등록을 마친 목소리를 다듬을 수 있는지: 처음 학습하거나, 지난 학습이 기본 목소리 유지·실패로 끝났을 때 (재학습)
+        "can_tune": bool(
+            available and profile and profile.status == "ready" and profile.tts_voice_id
+            and total >= settings.voice_target_seconds and tuning in (None, "skipped", "failed")
+        ),
+    }
+
+
 def voice_summary(db: Session, user_id: int) -> dict:
     profile = db.scalar(select(VoiceProfile).where(VoiceProfile.user_id == user_id))
     return {
         "status": profile.status if profile else "none",
         # S3Gen 음색 학습: queued | training | applied | skipped | failed | None(학습 안 함)
         "tuning": profile.s3gen_status if profile else None,
-        "total_seconds": voice_seconds(db, user_id),
-        "target_seconds": settings.voice_target_seconds,
+        **voice_progress(db, user_id, profile),
         "error": profile.error if profile else None,
     }
 

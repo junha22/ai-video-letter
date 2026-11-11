@@ -41,6 +41,16 @@ def _pick_reference(samples: list[VoiceSample], sentences: list[dict]) -> VoiceS
     return min(usable, key=rank) if usable else None
 
 
+def _registered_reference(samples: list[VoiceSample], profile: VoiceProfile) -> VoiceSample | None:
+    """TTS 서버에 등록한 참조 문장. 등록 뒤 음색 학습용으로 더 녹음해도 다른 문장으로 바뀌지 않게 저장한 번호를 쓴다.
+    번호가 없는 예전 프로필은 지금처럼 고른다."""
+    if profile.reference_index is not None:
+        for s in samples:
+            if s.index == profile.reference_index and s.duration >= MIN_REFERENCE_SECONDS:
+                return s
+    return _pick_reference(samples, profile.sentences)
+
+
 def _reference_file(sample: VoiceSample) -> Path:
     """TTS 서버에 올리는 참조 음성. 10초보다 길면 10초 안쪽의 쉼에서 자른 파일을 만든다 (audio.trim_reference).
     음색 학습도 이 파일을 참조로 써서 실제로 등록된 목소리와 조건을 맞춘다."""
@@ -49,11 +59,12 @@ def _reference_file(sample: VoiceSample) -> Path:
     return path
 
 
-def _register_voice(db: Session, profile: VoiceProfile) -> None:
-    """녹음 중 참조 문장 1개를 골라 TTS 서버에 등록한다.
+def _register_voice(db: Session, profile: VoiceProfile, repick: bool = False) -> None:
+    """녹음 중 참조 문장 1개를 골라 TTS 서버에 등록한다. 새로 등록할 때(repick)만 고르고,
+    다시 올릴 때는 처음 등록한 문장을 그대로 쓴다 (붙여 둔 음색 어댑터가 그 문장 기준이라서).
     voice_id를 먼저 저장해 두므로, 등록하는 사이에 동의를 철회해도 삭제 작업이 이 id를 지운다."""
     samples = db.scalars(select(VoiceSample).where(VoiceSample.user_id == profile.user_id, VoiceSample.ok)).all()
-    sample = _pick_reference(samples, profile.sentences)
+    sample = _pick_reference(samples, profile.sentences) if repick else _registered_reference(samples, profile)
     if not sample:
         raise wemeet_tts.TTSRejected(
             f"참조 음성으로 쓸 {MIN_REFERENCE_SECONDS}초 이상 녹음이 없습니다.",
@@ -61,6 +72,7 @@ def _register_voice(db: Session, profile: VoiceProfile) -> None:
         )
     if not profile.tts_voice_id:
         profile.tts_voice_id = f"user_{profile.user_id}_{secrets.token_hex(4)}"
+    profile.reference_index = sample.index
     profile.tts_registered_at = None
     db.commit()
     reference = _reference_file(sample)
@@ -89,7 +101,7 @@ def _register_voice(db: Session, profile: VoiceProfile) -> None:
 
 def run_voice(db: Session, job: Job) -> None:
     """녹음 정리: 품질 좋은 문장으로 zero-shot용 참조 음성을 만들고, 전체 녹음을 학습용으로 이어 붙인다.
-    TTS_PROVIDER=wemeet이면 참조 문장 1개를 TTS 서버에 등록하고, S3GEN_TRAINING이면 음색 학습 작업을 뒤에 넣는다.
+    TTS_PROVIDER=wemeet이면 참조 문장 1개를 TTS 서버에 등록하고, 사용자가 음색 학습을 골랐으면(payload tune) 학습 작업을 뒤에 넣는다.
     등록이 끝나면 바로 zero-shot으로 영상을 만들 수 있다."""
     profile = db.scalar(select(VoiceProfile).where(VoiceProfile.user_id == job.user_id))
     if not profile:
@@ -110,13 +122,18 @@ def run_voice(db: Session, job: Job) -> None:
     audio.write_wav(voice_dir / "all.wav", audio.concat([storage.abs_path(s.path) for s in sorted(samples, key=lambda s: s.index)]))
     profile.reference_path = storage.rel_path(reference)
 
+    tune = bool((job.payload or {}).get("tune"))
     if settings.tts_provider == "wemeet":
-        _register_voice(db, profile)
-        _queue_training(db, profile)
+        _register_voice(db, profile, repick=True)
+        if tune:
+            _queue_training(db, profile)
 
     profile.status = "ready"
     profile.error = None
-    db.add(Notification(user_id=job.user_id, kind="voice_ready", text="목소리 등록이 끝났어요. 이제 영상을 만들 수 있어요."))
+    text = "목소리 등록이 끝났어요. 이제 영상을 만들 수 있어요."
+    if profile.s3gen_status == "queued":
+        text += " 목소리를 더 닮게 다듬는 동안에도 기본 목소리로 영상을 만들 수 있어요."
+    db.add(Notification(user_id=job.user_id, kind="voice_ready", text=text))
     db.commit()
 
 
@@ -181,16 +198,28 @@ def run_voice_delete(db: Session, job: Job) -> None:
 
 
 def _queue_training(db: Session, profile: VoiceProfile) -> None:
+    """등록할 때 음색 학습까지 고른 경우. 그사이 학습을 끌 수 없게 됐으면 기본 목소리로만 둔다 (나중에 다시 고를 수 있다)."""
     if not settings.s3gen_training:
+        log.warning("S3GEN_TRAINING이 꺼져 있어서 음색 학습을 건너뜁니다.")
         return
     reason = s3gen.unavailable_reason()
     if reason:
         log.warning("S3Gen 음색 학습을 건너뜁니다: %s", reason)
         return
-    jobs.enqueue_voice_train(db, profile.user_id, profile.tts_voice_id)
-    profile.s3gen_status = "queued"
-    profile.s3gen_adapter_path = None
-    profile.s3gen_report = None
+    jobs.enqueue_voice_train(db, profile)
+
+
+# 음색 학습 결과 알림. 기본 목소리 유지·실패면 다시 학습할 수 있다고 알린다 (녹음 화면에서 고른다)
+TUNE_APPLIED_TEXT = "목소리를 내 목소리에 더 닮게 다듬었어요. 이제부터 영상에 다듬은 목소리가 쓰여요."
+TUNE_SKIPPED_TEXT = (
+    "이번 음색 학습으로는 기본 목소리보다 더 닮게 만들지 못해서 기본 목소리를 그대로 쓰고 있어요. "
+    "원하면 몇 문장 더 녹음하고 다시 학습해 볼 수 있어요."
+)
+TUNE_NOISY_TEXT = (
+    "잡음이나 다른 소리가 섞인 녹음을 빼고 나니 음색 학습에 쓸 녹음이 모자라서 기본 목소리를 그대로 쓰고 있어요. "
+    "원하면 조용한 곳에서 몇 문장 더 녹음하고 다시 학습해 볼 수 있어요."
+)
+TUNE_FAILED_TEXT = "목소리를 다듬다가 문제가 생겨서 기본 목소리를 그대로 쓰고 있어요. 원하면 다시 학습해 볼 수 있어요."
 
 
 def _train_dir(user_id: int, voice_id: str) -> Path:
@@ -224,7 +253,7 @@ def run_voice_train(db: Session, job: Job) -> None:
     if reason:
         raise s3gen.TrainingError(reason, retryable=False)
     samples = db.scalars(select(VoiceSample).where(VoiceSample.user_id == job.user_id, VoiceSample.ok)).all()
-    ref = _pick_reference(samples, profile.sentences)  # TTS 서버에 등록한 문장과 같은 것이 골라진다
+    ref = _registered_reference(samples, profile)  # TTS 서버에 등록한 문장
     if not ref:
         raise s3gen.TrainingError("참조 문장이 없습니다.", retryable=False)
     profile.s3gen_status = "training"
@@ -266,6 +295,8 @@ def run_voice_train(db: Session, job: Job) -> None:
         profile.s3gen_adapter_path = storage.rel_path(adapter)
     profile.s3gen_status = "applied" if outcome.applied else "skipped"
     profile.s3gen_report = {**outcome.report, "result": outcome.reason, "finished_at": iso(utcnow())}
+    text = TUNE_APPLIED_TEXT if outcome.applied else TUNE_NOISY_TEXT if outcome.reason == "not_enough_audio" else TUNE_SKIPPED_TEXT
+    db.add(Notification(user_id=job.user_id, kind="voice_tuned" if outcome.applied else "voice_tune_skipped", text=text))
     db.commit()
     storage.delete_tree(work)  # 특징값·비교 음성 같은 중간 파일은 남기지 않는다
     score = outcome.report.get("score", {})
@@ -294,7 +325,7 @@ def _on_final_failure(db: Session, job: Job, user_message: str | None = None) ->
     elif job.type == "voice_delete":
         log.error("TTS 목소리 %s를 지우지 못했습니다. TTS 서버에서 직접 지워야 합니다 (작업 #%s).", (job.payload or {}).get("voice_id"), job.id)
     elif job.type == "voice_train":
-        # 음색 학습이 끝내 실패해도 기본 목소리로 계속 쓰므로 사용자에게 알리지 않는다
+        # 음색 학습이 끝내 실패해도 기본 목소리로 계속 쓴다. 사용자가 고른 학습이라 결과를 알리고 다시 학습할 수 있게 둔다
         voice_id = (job.payload or {}).get("voice_id")
         if voice_id:
             storage.delete_tree(_train_dir(job.user_id, voice_id))
@@ -302,6 +333,7 @@ def _on_final_failure(db: Session, job: Job, user_message: str | None = None) ->
         if profile:
             profile.s3gen_status = "failed"
             profile.s3gen_report = {"result": "failed", "error": (job.last_error or "")[:500], "finished_at": iso(utcnow())}
+            db.add(Notification(user_id=job.user_id, kind="voice_tune_failed", text=TUNE_FAILED_TEXT))
     db.commit()
 
 

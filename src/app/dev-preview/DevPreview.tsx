@@ -146,7 +146,7 @@ export function DevPreview() {
           </>}
 
           {screen === "register" && <>
-            {heading("VOICE & FACE", "목소리와 사진을 준비해 주세요", "음성 사전 녹음은 총 2분 15초를 목표로 합니다. 이 화면은 샘플이며 마이크·카메라·파일에 접근하지 않습니다.")}
+            {heading("VOICE & FACE", "목소리와 사진을 준비해 주세요", "대본 한 문장이면 기본 목소리로 등록하고, 2분 15초까지 녹음하면 음색 학습(선택)을 고를 수 있습니다. 이 화면은 샘플이며 마이크·카메라·파일에 접근하지 않습니다.")}
             <VoiceCategoryOverview sentences={voiceSentences} />
             <VoiceWorkspace
               reading={<><p className="mb-3 text-xs text-[#6b7767]">읽기 연습 · 샘플 대본 {sentenceIndex + 1} / {voiceSentences.length}</p><VoiceScriptLabel sentence={voiceSentences[sentenceIndex]} /><blockquote className="text-[25px] font-semibold leading-[1.8] tracking-tight text-[#344a38] sm:text-[30px]">“{voiceSentences[sentenceIndex].text}”</blockquote><div className="mt-5 flex justify-between gap-3"><button type="button" disabled={sentenceIndex === 0} onClick={() => setSentenceIndex(sentenceIndex - 1)} className="min-h-11 text-xs font-semibold text-[#52705c] disabled:opacity-30">이전 대본</button><button type="button" disabled={sentenceIndex === voiceSentences.length - 1} onClick={() => setSentenceIndex(sentenceIndex + 1)} className="min-h-11 text-xs font-semibold text-[#52705c] disabled:opacity-30">다음 대본</button></div><div role="progressbar" aria-label="샘플 녹음 진행률" aria-valuemin={0} aria-valuemax={100} aria-valuenow={voiceReady ? 100 : 0} className="mt-7 h-1.5 overflow-hidden rounded-full bg-[#e7ebe4]"><div className={`h-full rounded-full bg-[#315d4b] ${voiceReady ? "w-full" : "w-0"}`} /></div><p className="mt-3 text-[11px] text-[#98a18e]">샘플 상태: {voiceReady ? "등록 완료 · 100%" : "등록 전 · 0%"}</p></>}

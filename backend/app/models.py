@@ -129,7 +129,10 @@ class VoiceProfile(Base):
     # TTS_PROVIDER=wemeet: TTS 서버에 등록한 목소리. 다시 녹음할 때마다 새 id를 쓴다
     tts_voice_id: Mapped[str | None] = mapped_column(String(64))
     tts_registered_at: Mapped[datetime | None] = mapped_column(DateTime)
-    # S3GEN_TRAINING: queued -> training -> applied(어댑터 사용) / skipped(기본 목소리가 같거나 나음, 녹음 부족) / failed
+    # TTS 서버에 등록한 참조 문장 번호. 등록 뒤 추가로 녹음해도 다시 등록·음색 학습에 같은 문장을 쓴다
+    reference_index: Mapped[int | None] = mapped_column(Integer)
+    # 음색 학습은 사용자가 고를 때만 한다 (VOICE_TARGET_SECONDS 이상 녹음). None이면 학습 안 함
+    # queued -> training -> applied(어댑터 사용) / skipped(기본 목소리가 같거나 나음, 녹음 부족) / failed
     s3gen_status: Mapped[str | None] = mapped_column(String(20))
     s3gen_adapter_path: Mapped[str | None] = mapped_column(String(500))  # 적용한 어댑터. TTS 서버에 다시 등록할 때 같이 올린다
     s3gen_report: Mapped[dict | None] = mapped_column(JSON)  # 분할, 학습 결과, 유사도 비교, 판단 이유
@@ -247,7 +250,7 @@ class Job(Base):
     type: Mapped[str] = mapped_column(String(20))  # video | voice | voice_delete | voice_train
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
-    payload: Mapped[dict | None] = mapped_column(JSON)  # voice_delete, voice_train: {"voice_id": ...}
+    payload: Mapped[dict | None] = mapped_column(JSON)  # voice: {"tune": bool}, voice_delete·voice_train: {"voice_id": ...}
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued | running | done | failed | canceled
     stage: Mapped[str | None] = mapped_column(String(20))  # tts | video | encode
     attempts: Mapped[int] = mapped_column(Integer, default=0)
@@ -285,7 +288,8 @@ class Notification(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
     recipient_id: Mapped[int | None] = mapped_column(ForeignKey("recipients.id", ondelete="SET NULL"))
-    kind: Mapped[str] = mapped_column(String(20))  # viewed | voice_ready | voice_failed
+    # viewed | senior_reply | voice_ready | voice_failed | voice_tuned | voice_tune_skipped | voice_tune_failed
+    kind: Mapped[str] = mapped_column(String(20))
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     read_at: Mapped[datetime | None] = mapped_column(DateTime)

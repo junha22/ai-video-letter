@@ -147,9 +147,13 @@ export default function HomePage() {
 function Checklist({ me }: { me: Me }) {
   const voiceLabel = {
     none: "아직 안 했어요",
-    recording: `${formatSeconds(me.voice.total_seconds)} / ${formatSeconds(me.voice.target_seconds)} 녹음함`,
+    recording: me.voice.basic_ready
+      ? "한 문장 녹음 완료 · 등록 버튼을 눌러 주세요"
+      : me.voice.total_seconds > 0
+        ? `${formatSeconds(me.voice.total_seconds)} 녹음함 · 대본 한 문장이면 돼요`
+        : "대본 한 문장이면 돼요",
     processing: "등록하는 중이에요 (끝나면 알려 드려요)",
-    ready: me.voice.tuning ? `등록 완료 · ${TUNING_LABEL[me.voice.tuning]}` : "등록 완료",
+    ready: me.voice.tuning ? `등록 완료 · ${TUNING_LABEL[me.voice.tuning]}` : "등록 완료 · 기본 목소리",
     failed: "다시 등록이 필요해요",
   }[me.voice.status];
 

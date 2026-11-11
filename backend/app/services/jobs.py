@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import utcnow
-from ..models import Job
+from ..models import Job, VoiceProfile
 
 STALE_AFTER = timedelta(minutes=20)
 # TTS 서버가 꺼져 있어도 목소리 삭제는 끝까지 해야 해서 오래 재시도한다 (10초부터 두 배씩, 약 1시간 반)
@@ -54,9 +54,13 @@ def enqueue_voice_delete(db: Session, user_id: int, voice_id: str) -> Job:
     )
 
 
-def enqueue_voice_train(db: Session, user_id: int, voice_id: str) -> Job:
-    """S3Gen 음색 학습. 실패해도 기본 목소리로 계속 쓰므로 한 번만 다시 시도한다."""
-    return enqueue(db, "voice_train", user_id, payload={"voice_id": voice_id}, max_attempts=2)
+def enqueue_voice_train(db: Session, profile: VoiceProfile) -> Job:
+    """S3Gen 음색 학습 (사용자가 고른 경우). 실패해도 기본 목소리로 계속 쓰므로 한 번만 다시 시도한다.
+    지난 학습이 기본 목소리 유지·실패로 끝났으면 그 결과를 지우고 다시 학습한다."""
+    profile.s3gen_status = "queued"
+    profile.s3gen_adapter_path = None
+    profile.s3gen_report = None
+    return enqueue(db, "voice_train", profile.user_id, payload={"voice_id": profile.tts_voice_id}, max_attempts=2)
 
 
 def claim(db: Session) -> Job | None:

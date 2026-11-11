@@ -10,14 +10,24 @@ export type Parent = {
   tone_examples: string;
 };
 
-// S3Gen 음색 학습 (S3GEN_TRAINING). null이면 학습하지 않음
+// S3Gen 음색 학습 (선택). null이면 학습하지 않음, skipped·failed면 기본 목소리 유지 (다시 학습할 수 있음)
 export type VoiceTuning = "queued" | "training" | "applied" | "skipped" | "failed" | null;
 
-export type VoiceSummary = {
+/** 녹음 진행: 대본 한 문장(basic_seconds 넘게)이면 기본 등록, target_seconds까지 녹음하면 음색 학습(선택) */
+export type VoiceProgress = {
+  total_seconds: number;
+  basic_seconds: number;
+  basic_ready: boolean;
+  target_seconds: number;
+  /** 이 서버에서 음색 학습을 고를 수 있는지 */
+  tuning_available: boolean;
+  /** 등록한 목소리로 지금 음색 학습(또는 재학습)을 시작할 수 있는지 */
+  can_tune: boolean;
+};
+
+export type VoiceSummary = VoiceProgress & {
   status: "none" | "recording" | "processing" | "ready" | "failed";
   tuning: VoiceTuning;
-  total_seconds: number;
-  target_seconds: number;
   error: string | null;
 };
 
@@ -130,13 +140,11 @@ export type Sentence = {
   sample: { duration: number; ok: boolean } | null;
 };
 
-export type VoiceState = {
+export type VoiceState = VoiceProgress & {
   status: VoiceSummary["status"];
   tuning: VoiceTuning;
   tuning_report: Record<string, unknown> | null;
   error: string | null;
-  total_seconds: number;
-  target_seconds: number;
   sentences: Sentence[];
   job: Job | null;
 };
