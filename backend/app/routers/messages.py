@@ -284,7 +284,7 @@ def approve(message_id: int, user: User = Depends(current_user), db: Session = D
 
 
 class SentIn(BaseModel):
-    channel: str = Field(default="link", max_length=20)  # kakao | share | copy
+    channel: str = Field(default="link", max_length=20)  # kakao | share | sms | copy
 
 
 @router.post("/{message_id}/sent")
