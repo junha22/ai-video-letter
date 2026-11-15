@@ -81,6 +81,8 @@ export type ConversationFeed = {
 };
 
 export type PublicConversationThread = ConversationThread;
+/** 시니어 링크의 채팅 피드: 승인된 영상만, 대상자 정보는 공개해도 되는 것만 */
+export type PublicConversationFeed = Omit<ConversationFeed, "recipient"> & { recipient: PublicRecipient; expires_at: string };
 export type PortfolioEvidence = { reply_id: number; text: string; date: string };
 export type MonthlyPortfolio = {
   id: number;

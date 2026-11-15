@@ -68,6 +68,18 @@ def get_conversation(token: str, response: Response, date: str | None = None, be
     return result
 
 
+@router.get("/{token}/feed")
+def get_feed(token: str, response: Response, before: str | None = None, after: str | None = None,
+             db: Session = Depends(get_db)):
+    """Recipient chat: whole days that have chat, a few at a time (latest first, before/after to page)."""
+    link = _link(db, token)
+    result = conversations.conversation_feed(db, link.message.recipient, before=before, after=after, token=token)
+    result["expires_at"] = iso(link.expires_at)
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return result
+
+
 def _file(rel: str | None, media_type: str) -> FileResponse:
     if not rel or not storage.abs_path(rel).exists():
         raise HTTPException(404)

@@ -307,7 +307,7 @@ class ConversationIntegrationTests(unittest.TestCase):
         for token, revoked, expires_at, status in cases:
             mid = self.message(uid, rid, token=token, revoked=revoked, expires_at=expires_at, status=status)
             with self.clock(), self.subTest(token=token):
-                for suffix in ("", "/conversation", "/video", "/poster", f"/messages/{active}/video", f"/messages/{mid}/poster"):
+                for suffix in ("", "/conversation", "/feed", "/video", "/poster", f"/messages/{active}/video", f"/messages/{mid}/poster"):
                     response = self.client.get(f"/api/watch/{token}{suffix}")
                     self.assertEqual(response.status_code, 410, response.text)
                 response = self.client.post(f"/api/watch/{token}/replies", json={"text": "접근 불가", "client_id": "invalid-link-reply"})
@@ -835,6 +835,59 @@ class ConversationIntegrationTests(unittest.TestCase):
                 self.assertEqual(self.client.get(f"/api/conversations/{rid}/feed", params=bad).status_code, 422, bad)
             self.login("intruder")
             self.assertEqual(self.client.get(f"/api/conversations/{rid}/feed").status_code, 404)
+
+    def test_link_feed_pages_like_owner_chat_but_shows_only_watchable_videos(self):
+        def kst(day, hour, minute=0):
+            return datetime(2026, 10, day, hour, minute) - timedelta(hours=9)
+
+        with self.clock():  # NOW = 2026-10-26 12:00 KST
+            uid, rid = self.owner()
+            other_rid = self.recipient()
+            first = self.message(uid, rid, created_at=kst(20, 10))
+            self.reply(uid, rid, "20일 답글", kst(20, 21), "link-20")
+            # 대화방에 보이면 안 되는 영상만 있는 날(21~23일)은 날짜 목록에도 없어야 한다
+            for day, status in ((21, "draft"), (22, "generating"), (23, "failed")):
+                self.message(uid, rid, status=status, created_at=kst(day, 9))
+            self.message(uid, rid, status="deleted", created_at=kst(24, 9))
+            self.message(uid, other_rid, created_at=kst(24, 10), token="other-token")
+            self.reply(uid, other_rid, "다른 방", kst(24, 11), "link-other")
+            sent = self.message(uid, rid, status="sent", created_at=kst(25, 8))
+            self.reply(uid, rid, "25일 답글", kst(25, 8, 30), "link-25")
+            latest_id = self.message(uid, rid, created_at=kst(26, 9), token="room-token")
+            self.reply(uid, rid, "26일 답글", kst(26, 11), "link-26")
+            self.client.cookies.clear()
+
+            def feed(token="room-token", **params):
+                return self.assert_ok(self.client.get(f"/api/watch/{token}/feed", params=params))
+
+            latest = feed()
+            self.assertEqual([d["date"] for d in latest["days"]], ["2026-10-26", "2026-10-25", "2026-10-20"])
+            self.assertEqual((latest["start"], latest["end"], latest["has_older"], latest["has_newer"]),
+                             ("2026-10-20", "2026-10-26", False, False))
+            self.assertEqual([(e["type"], e["id"]) for e in latest["events"] if e["type"] == "video"],
+                             [("video", first), ("video", sent), ("video", latest_id)])
+            self.assertEqual(len(latest["events"]), 6)
+            self.assertIn("expires_at", latest)
+            video = next(e["message"] for e in latest["events"] if e["type"] == "video" and e["id"] == sent)
+            self.assertEqual(video["video_url"], f"/api/watch/room-token/messages/{sent}/video")
+            self.assertEqual(self.client.get(video["video_url"]).status_code, 200)
+            public_text = str(latest)
+            for private in ("private owner memo", "01012345678", "tone_examples", "is_primary", "다른 방"):
+                self.assertNotIn(private, public_text)
+            self.assertEqual(set(latest["recipient"]), {"id", "nickname", "relation", "child_name"})
+            self.assertEqual(latest["recipient"]["id"], rid)
+
+            # 위로 올리기·날짜로 찾기도 대화방에 보이는 날만 센다
+            older = feed(before="2026-10-25")
+            self.assertEqual((older["start"], older["end"], older["has_older"], older["has_newer"]),
+                             ("2026-10-20", "2026-10-20", False, True))
+            jumped = feed(after="2026-10-21")
+            self.assertEqual((jumped["start"], jumped["end"], jumped["has_older"]), ("2026-10-25", "2026-10-26", True))
+            for bad in ({"before": "2026-10-23", "after": "2026-10-20"}, {"before": "2026-13-01"}, {"after": "x"}):
+                self.assertEqual(self.client.get("/api/watch/room-token/feed", params=bad).status_code, 422, bad)
+            self.assertEqual(self.client.get("/api/watch/missing-token/feed").status_code, 404)
+            response = self.client.get("/api/watch/room-token/feed")
+            self.assertEqual(response.headers["cache-control"], "private, no-store")
 
 
 if __name__ == "__main__":
