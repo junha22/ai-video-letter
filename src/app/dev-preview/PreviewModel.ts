@@ -54,7 +54,7 @@ export function usePreviewModel(onWithdraw?:()=>void){
  useEffect(()=>{if(status!=="generating")return;const timer=window.setTimeout(()=>setStatus("ready"),1800);return()=>window.clearTimeout(timer);},[status]);
  useEffect(()=>()=>{if(photoUrl.startsWith("blob:"))URL.revokeObjectURL(photoUrl);},[photoUrl]);
  function navigate(next:Screen){setScreen(next);setNotice("");}
- function openPerson(id:number){setPersonId(id);setDate("2026-11-11");setRecordTab("chat");navigate("conversation");}
+ function openPerson(id:number){setPersonId(id);setDate("");setRecordTab("chat");navigate("conversation");}
  function compose(){setStatus("draft");navigate("compose");}
  function generate(){if(!ready){navigate("prepare");return;}setStatus("generating");navigate("review");}
  function approve(){if(status!=="approved")setLetters(rows=>[{id:Date.now(),personId:selected?.id||0,title,text:message,date:"2026-11-11"},...rows]);setStatus("approved");navigate("share");}

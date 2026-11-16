@@ -73,3 +73,5 @@
 .family-directory article .recipient-photo-hint,.family-directory article .recipient-photo-notice { font-size:10px; }
 .family-directory article .recipient-photo-error { color:#a8321e; font-size:11px; }
 @media(max-width:500px) { .album-app .family-directory article { grid-template-columns:53px minmax(0,1fr) 33px; gap:14px; } }
+
+.preview-album-day-records{display:flex;flex-direction:column;gap:20px}.preview-album-day-label{text-align:center;color:var(--muted);font-size:11px;margin:5px 0 22px}.preview-album-day+.preview-album-day{margin-top:15px}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, ChevronRight, CircleCheck, PenLine, Mail, Mic, Image as ImageIcon } from "lucide-react";
@@ -13,30 +13,30 @@ import { DashboardShell } from "@/components/DashboardShell";
 import { Card, Notice, Spinner } from "@/components/ui";
 import { useAlbumCover } from "@/components/album/useAlbumCover";
 import { AlbumCoverEditor } from "@/components/album/AlbumCoverEditor";
-import { FamilyPortrait } from "@/components/album/FamilyPortrait";
+import { FamilyAlbumCard } from "@/components/album/FamilyAlbumCard";
+import { RecipientPhotoEditor } from "@/components/album/RecipientPhotoEditor";
 import { AlbumCover, AlbumClosing } from "@/components/album/AlbumCover";
-import { AlbumMemoryCard } from "@/components/album/AlbumMemoryCard";
-import { kstDate } from "@/lib/conversations";
 
 export default function HomePage() {
   const router = useRouter();
-  const [familyFilter, setFamilyFilter] = useState("all");
-  const [monthFilter, setMonthFilter] = useState("all");
   const { me, reload } = useMe();
   const cover = useAlbumCover({ enabled: !!me });
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [recipients, setRecipients] = useState<Recipient[] | null>(null);
   const [inboxError, setInboxError] = useState<string | null>(null);
+  const recipientVersion = useRef(0);
 
   const loadMessages = useCallback(() => {
     api<Message[]>("/api/messages")
       .then(setMessages)
       .catch(() => setMessages([]));
-    api<Recipient[]>("/api/recipients").then((rows) => { setRecipients(rows); setInboxError(null); }).catch((e) => setInboxError(errorText(e)));
+    const version = ++recipientVersion.current;
+    api<Recipient[]>("/api/recipients").then((rows) => { if (version !== recipientVersion.current) return; setRecipients(rows); setInboxError(null); }).catch((e) => { if (version === recipientVersion.current) setInboxError(errorText(e)); });
   }, []);
 
   useEffect(() => {
     loadMessages();
+    return () => { recipientVersion.current += 1; };
   }, [loadMessages]);
 
   // 처음 가입했거나 동의를 철회한 상태면 동의 화면부터
@@ -77,9 +77,9 @@ export default function HomePage() {
       <Checklist me={me} />
 
       <section id="album-records" className="album-record-section" aria-labelledby="album-record-title">
-        <div className="album-section-head"><div><span className="album-eyebrow">PAGE BY PAGE</span><h2 id="album-record-title">차곡차곡, 우리의 안부</h2></div><Link href="/letters" className="album-text-link">가족 사진·편지함 <ArrowRight size={16}/></Link></div>
-        <div className="album-filters"><div role="group" aria-label="가족별 편지 필터"><button aria-pressed={familyFilter==="all"} onClick={()=>setFamilyFilter("all")}>우리 가족 모두</button>{recipients?.map(r=><button key={r.id} aria-pressed={familyFilter===String(r.id)} onClick={()=>setFamilyFilter(String(r.id))}>{r.nickname}께</button>)}</div><label htmlFor="album-month">기록한 달 <select aria-label="기록한 달" id="album-month" value={monthFilter} onChange={e=>setMonthFilter(e.target.value)}><option value="all">모든 달</option>{Array.from(new Set((messages||[]).map(m=>kstDate(new Date(m.approved_at||m.created_at)).slice(0,7)))).sort().reverse().map(month=><option key={month} value={month}>{month.replace("-","년 ")}월</option>)}</select></label></div>
-        {messages===null?<Spinner label="가족의 편지를 모으고 있어요"/>:(messages||[]).filter(m=>(familyFilter==="all"||String(m.recipient_id)===familyFilter)&&(monthFilter==="all"||kstDate(new Date(m.approved_at||m.created_at)).startsWith(monthFilter))).length===0?<div className="album-empty"><Mail size={31}/><h3>아직 펼치지 않은 한 페이지</h3><p>이 조건에 맞는 편지가 없어요. 오늘의 안부로 다음 이야기를 시작해 보세요.</p><Link href={me.can_write?"/messages/new":"/onboarding/consent"} className="album-primary">첫 편지 쓰기 <ArrowRight size={16}/></Link></div>:<div className="album-records">{(messages||[]).filter(m=>(familyFilter==="all"||String(m.recipient_id)===familyFilter)&&(monthFilter==="all"||kstDate(new Date(m.approved_at||m.created_at)).startsWith(monthFilter))).map(m=><AlbumMemoryCard key={m.id} entry={{id:String(m.id),title:m.memo.trim()||m.template_label||"가족에게 전하는 안부",recipient:m.recipient?.nickname||m.parent_nickname||"가족",date:formatDate(m.approved_at||m.created_at),summary:m.script||"전하고 싶은 이야기를 다듬고 있어요.",status:({draft:"작성 중",generating:"영상 만드는 중",ready:"영상 확인하기",failed:"다시 확인이 필요해요",approved:"승인 완료",sent:"마음을 전했어요",viewed:"가족이 확인했어요"})[m.status],state:m.status,recipientPhoto:recipients?.find(r=>r.id===m.recipient_id)?.photo?.url,href:`/messages/${m.id}`}}/>)}</div>}
+        <div className="album-section-head"><div><span className="album-eyebrow">ONE ALBUM, ONE SPECIAL PERSON</span><h2 id="album-record-title">차곡차곡, 우리 이야기</h2><p className="family-album-intro">가족마다 한 권씩, 함께 쌓아 가는 마음의 앨범.</p></div><Link href="/letters" className="album-text-link">가족 추가·관리 <ArrowRight size={16}/></Link></div>
+        {inboxError && <div role="alert"><Notice tone="error">{inboxError} <button type="button" onClick={loadMessages} className="ml-2 underline">다시 불러오기</button></Notice></div>}
+        {recipients === null ? (!inboxError && <Spinner label="가족 앨범을 불러오고 있어요"/>) : recipients.length === 0 ? <div className="album-empty"><Mail size={31}/><h3>우리 가족의 첫 앨범을 펼쳐 볼까요?</h3><p>가족을 추가하면 그 사람과 주고받은 편지가 한 권의 앨범에 모여요.</p><Link href="/letters" className="album-primary">가족 앨범 만들기 <ArrowRight size={16}/></Link></div> : <div className={`family-album-grid ${recipients.length > 2 ? "family-album-grid-many" : ""}`}>{recipients.map(r=><FamilyAlbumCard key={r.id} album={{id:r.id,name:r.nickname,relation:r.relation,photoUrl:r.photo?.url,letterCount:r.video_count,replyCount:r.reply_count,latest:r.last_activity_at?formatDate(r.last_activity_at):null,href:`/conversations/${r.id}`}} editor={<RecipientPhotoEditor variant="album-cover" recipientId={r.id} name={r.nickname} photoUrl={r.photo?.url} onChange={photo=>{recipientVersion.current+=1;setInboxError(null);setRecipients(rows=>rows?.map(person=>person.id===r.id?{...person,photo}:person)??null);}}/>}/>)}</div>}
       </section>
 
       <h2 className="mb-4 mt-9 text-lg font-bold">마음을 전할 준비</h2>
@@ -108,29 +108,6 @@ export default function HomePage() {
         ))}
       </div>
 
-      <div id="letters" className="mb-4 mt-9 flex scroll-mt-24 items-center justify-between gap-3">
-        <h2 className="text-lg font-bold">대상자별 영상 편지함</h2>
-        <Link href="/letters" className="inline-flex min-h-11 items-center gap-1 text-sm font-bold text-[#c8493c]">전체 보기·대상 추가 <ChevronRight size={16} /></Link>
-      </div>
-      <p className="mb-4 text-sm leading-7 text-stone-500">대상자를 누르면 오늘의 대화와 날짜별 지난 편지, 월간 답글 포트폴리오를 볼 수 있어요.</p>
-      {inboxError && <Notice tone="error">{inboxError} <button onClick={loadMessages} className="ml-2 underline">다시 불러오기</button></Notice>}
-      {recipients === null && !inboxError ? (
-        <Spinner />
-      ) : recipients?.length === 0 ? (
-        <div className="rounded-[22px] border border-[#ead9cd] bg-white px-4 py-12 text-center"><Mail className="mx-auto mb-4 h-8 w-8 text-[#81645d]" /><p className="text-sm text-stone-500">편지를 주고받을 분을 등록해 주세요.</p><Link href="/letters" className="mt-4 inline-block font-bold text-[#c8493c] underline">대상자 등록하기</Link></div>
-      ) : (
-        <ul className="grid gap-4 sm:grid-cols-2">
-          {recipients?.map((r) => (
-            <li key={r.id}>
-              <Link href={`/conversations/${r.id}`} className="album-recipient-link block h-full rounded-[22px] border border-[#ead9cd] bg-white p-5 shadow-sm transition-colors hover:border-[#ead9cd]">
-                <div className="mb-4 flex items-center gap-3"><FamilyPortrait relation={r.relation} name={r.nickname} photoUrl={r.photo?.url} className="family-home-portrait"/><div className="min-w-0 flex-1"><h3 className="font-bold">{r.nickname}</h3><p className="text-xs text-stone-500">{r.relation} · 영상 {r.video_count}개 · 답글 {r.reply_count}개</p></div></div>
-                <p className="line-clamp-2 min-h-12 text-sm leading-6 text-stone-600">{r.last_preview || "첫 영상 편지를 보내고 대화를 시작해 보세요."}</p>
-                <div className="mt-4 flex items-center justify-between gap-2"><span className="text-xs text-stone-500">{r.last_activity_at ? formatDate(r.last_activity_at) : "아직 대화가 없어요"}</span><span className="inline-flex items-center gap-1 text-xs font-bold text-[#c8493c]">대화 보기 <ChevronRight size={14} /></span></div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
       <AlbumClosing action={<Link href={me.can_write?"/messages/new":"/onboarding/consent"} className="album-text-link">다음 페이지에 마음 남기기 <ArrowRight size={18}/></Link>}/>
     </DashboardShell>
   );

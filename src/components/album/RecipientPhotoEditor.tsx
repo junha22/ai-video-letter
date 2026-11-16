@@ -10,11 +10,14 @@ type Props = {
   recipientId: number;
   name: string;
   photoUrl?: string | null;
+  variant?: "photo" | "album-cover";
   onChange?: (photo: RecipientPhoto | null) => void;
   preview?: { upload: (file: File) => Promise<void>; reset: () => void };
 };
 
-export function RecipientPhotoEditor({ recipientId, name, photoUrl, onChange, preview }: Props) {
+export function RecipientPhotoEditor({ recipientId, name, photoUrl, onChange, preview, variant = "photo" }: Props) {
+  const albumCover = variant === "album-cover";
+  const label = albumCover ? `${name} 앨범 표지` : `${name} 사진`;
   const input = useRef<HTMLInputElement>(null);
   const lock = useRef(false);
   const mounted = useRef(true);
@@ -40,7 +43,7 @@ export function RecipientPhotoEditor({ recipientId, name, photoUrl, onChange, pr
         await api(`/api/recipients/${recipientId}/photo`, { method: "DELETE" });
         if (mounted.current) onChange?.(null);
       }
-      if (mounted.current) setNotice(file ? `${name}의 편지 카드에 사진을 적용했어요.` : "기본 일러스트로 돌아왔어요.");
+      if (mounted.current) setNotice(file ? `${name} 앨범의 표지를 저장했어요.` : "기본 일러스트 표지로 돌아왔어요.");
     } catch (e) {
       if (mounted.current) setError(errorText(e));
     } finally {
@@ -50,17 +53,17 @@ export function RecipientPhotoEditor({ recipientId, name, photoUrl, onChange, pr
   };
 
   return <div className="recipient-photo-editor">
-    <input ref={input} type="file" className="sr-only" tabIndex={-1} accept={COVER_ACCEPT} aria-label={`${name} 사진 선택`} disabled={busy} onChange={(event) => {
+    <input ref={input} type="file" className="sr-only" tabIndex={-1} accept={COVER_ACCEPT} aria-label={`${label} 선택`} disabled={busy} onChange={(event) => {
       const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
       if (file) void run(file);
     }} />
     <div className="recipient-photo-actions">
-      <button type="button" aria-label={`${name} 사진 ${photoUrl ? "변경" : "등록"}`} disabled={busy} onClick={() => input.current?.click()}>
-        {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Camera size={14} />}{busy ? "저장 중…" : photoUrl ? "사진 변경" : "사진 등록"}
+      <button type="button" aria-label={`${label} ${photoUrl ? "변경" : "등록"}`} disabled={busy} onClick={() => input.current?.click()}>
+        {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Camera size={14} />}{busy ? "저장 중…" : photoUrl ? (albumCover ? "표지 변경" : "사진 변경") : (albumCover ? "표지 등록" : "사진 등록")}
       </button>
-      {photoUrl && <button type="button" aria-label={`${name} 사진 삭제`} disabled={busy} onClick={() => { void run(); }}><RotateCcw size={13} />일러스트로</button>}
+      {photoUrl && <button type="button" aria-label={`${label} 삭제`} disabled={busy} onClick={() => { void run(); }}><RotateCcw size={13} />{albumCover ? "기본 표지로" : "일러스트로"}</button>}
     </div>
-    <p className="recipient-photo-hint">이 가족에게 보낸 모든 편지 카드에 적용돼요. · 15MB 이하</p>
+    <p className="recipient-photo-hint">{name} 앨범의 표지로만 사용해요. · 15MB 이하</p>
     {error && <p className="recipient-photo-error" role="alert">{error}</p>}
     <p className="recipient-photo-notice" role="status" aria-live="polite">{notice}</p>
   </div>;

@@ -67,3 +67,17 @@ button,input,textarea,select { -webkit-tap-highlight-color:transparent; }
 .recipient-photo-notice { font-size:10px; line-height:1.8; color:var(--album-primary); margin-top:4px; }
 .album-recipient-grid .album-recipient-link { border-radius:20px 20px 0 0; border-bottom:0; }
 .album-recipient-photo-tools { border:1px solid var(--album-line); border-top:1px dashed var(--album-line); border-radius:0 0 20px 20px; background:#fffdf9; padding:17px 23px; }
+
+/* Home cover and person-specific album covers form two distinct levels. */
+.family-album-intro { margin-top:10px; color:var(--album-muted); font-size:12px; line-height:1.8; }
+.family-album-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:26px; padding:5px 0 25px; align-items:start; }
+.family-album { min-width:0; overflow:hidden; border:1px solid #e6d4c4; background:#fffdf7; box-shadow:0 10px 25px #6a432908; }
+.family-album:nth-child(3n+2) { background:#fae8de; }.family-album:nth-child(3n+3){background:#fff0c9}
+.family-album-open { display:block; width:100%; text-align:left; padding:16px 16px 0; }
+.family-album-cover { position:relative; padding-left:16px; background:#eddbc1; box-shadow:0 5px 12px #70543c0d; }
+.family-album-cover-art { position:relative; aspect-ratio:1.5; overflow:hidden; background:#f5ebda; }.family-album-cover-art img{object-fit:contain}.family-album-cover.has-custom-cover img{object-fit:cover;object-position:50% 35%}
+.family-album-spine { position:absolute; left:1px; top:0; bottom:0; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; font-size:7px; letter-spacing:.18em; color:#936b4b; width:15px; background:linear-gradient(90deg,#c9ac8370,#f6e8d2); }
+.family-album-cover-label { position:absolute; right:13px; bottom:13px; display:inline-flex; align-items:center; gap:6px; border-radius:30px; background:#fffdf2e8; color:#996044; padding:6px 10px; font-size:10px; }
+.family-album-info { padding:24px 12px 22px; }.family-album-title{display:flex;align-items:center;justify-content:space-between;gap:15px;color:var(--album-primary)}.family-album-title h3{font:28px/1.5 Georgia,'Batang',serif;color:var(--album-ink);letter-spacing:-.045em;overflow-wrap:anywhere}.family-album-relation{font-size:11px;color:var(--album-muted);margin-top:6px}.family-album-counts{display:flex;flex-wrap:wrap;gap:20px;margin:19px 0 12px;color:#98644f;font-size:12px}.family-album-counts span{display:inline-flex;align-items:center;gap:6px}.family-album-latest{font-size:11px;line-height:1.8;color:var(--album-muted)}.family-album-open-label{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--album-primary);font-weight:700;margin-top:17px}.family-album-editor{margin:0 27px;padding:19px 0 18px;border-top:1px dashed #ddc4b1}.family-album .recipient-photo-hint{font-size:10px;line-height:1.9}.family-album .recipient-photo-notice{font-size:10px;line-height:1.8}
+@media(min-width:1100px){.family-album-grid-many{grid-template-columns:repeat(3,minmax(0,1fr))}.family-album-grid-many .family-album-title h3{font-size:24px}}
+@media(max-width:650px){.family-album-grid{grid-template-columns:1fr;gap:25px}.family-album-open{padding:12px 12px 0}.family-album-info{padding:20px 8px}.family-album-title h3{font-size:25px}.family-album-editor{margin:0 20px;padding:17px 0}.family-album-intro{font-size:11px;max-width:230px}.family-album-cover-label{font-size:9px;right:10px;bottom:10px}.family-album-counts{font-size:11px;margin-top:17px}.family-album-latest{font-size:10px}}
