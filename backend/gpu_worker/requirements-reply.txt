@@ -1,0 +1,13 @@
+# 답장 분석 서버(gpu_worker/reply_analysis_server.py, 받아쓰기·운율) 전용 환경 Wemeet-reply (docs/REPLY_ANALYSIS.md 6절)
+# 영상(Wemeet-float: torch 2.0.1, transformers 4.46.3 고정)·TTS(Wemeet-cb) 환경과 버전이 겹치지 않게 따로 쓴다.
+# torch는 CUDA판을 먼저 따로 설치한다: pip install torch --index-url https://download.pytorch.org/whl/cu124
+# LLM은 CLOVA Studio API라 이 환경에 필요 없다. 설치한 뒤 실제 버전을 docs/REPLY_ANALYSIS.md 12절에 적는다
+transformers>=4.40      # BuzzASR/korean (Whisper-large-v3 기반)
+librosa>=0.10           # 운율 측정 (pyin)
+soundfile
+numpy
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+httpx                   # gpu_worker/reply_demo_upload.py (시험용 업로드)

@@ -4,6 +4,8 @@
 // 포트 바꾸기: WEB_PORT=3001 API_PORT=8001 npm run dev:all
 // npm run gpu (--gpu-only): 웹·API·워커 없이 TTS·영상 서버, 음색 학습 서버(gpu_worker/trainer.py)와 게이트웨이(gpu_worker/gateway.py)만 띄운다.
 //   Azure에 배포한 백엔드가 Tailscale(tailnet 안)로 이 PC의 GPU를 쓸 때 (docs/DEPLOY_AZURE.md)
+//   REPLY_ANALYSIS_PYTHON(Wemeet-reply 환경)이 있으면 답장 분석 서버(gpu_worker/reply_analysis_server.py, 받아쓰기·운율)도 띄운다 (docs/REPLY_ANALYSIS.md)
+// dev:all: REPLY_ANALYSIS_ENABLED=true이고 REPLY_ANALYSIS_URL이 이 PC 주소면 답장 분석 서버도 같이 띄운다
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -110,6 +112,33 @@ if (videoUrl) {
   }
 }
 
+// 답장 분석 서버(받아쓰기·운율): 받아쓰기 모델은 요청마다 올렸다 내리므로 대기 중에는 GPU를 쓰지 않는다.
+// LLM 판단은 워커가 CLOVA Studio를 바로 부른다. 선택 기능이라 없으면 경고만 한다
+const analysisPython = setting("REPLY_ANALYSIS_PYTHON", "");
+const analysisPort = setting("REPLY_ANALYSIS_PORT", "8400");
+const analysisUrl = gpuOnly
+  ? new URL(`http://127.0.0.1:${analysisPort}`)
+  : new URL(setting("REPLY_ANALYSIS_URL", `http://127.0.0.1:${analysisPort}`));
+const analysisHealthy = () =>
+  fetch(`${analysisUrl.origin}/health`, { signal: AbortSignal.timeout(2000) })
+    .then((r) => r.ok)
+    .catch(() => false);
+const analysisWanted = gpuOnly || /^(1|true|yes|on)$/i.test(setting("REPLY_ANALYSIS_ENABLED", "false").trim());
+let startAnalysis = false;
+if (analysisWanted) {
+  if (!["127.0.0.1", "localhost"].includes(analysisUrl.hostname)) {
+    console.log(`[dev] 답장 분석 서버(${analysisUrl.origin})가 다른 머신에 있어서 여기서 띄우지 않습니다.`);
+  } else if (await analysisHealthy()) {
+    console.log(`[dev] 답장 분석 서버가 이미 떠 있어서 그대로 씁니다 (${analysisUrl.origin}).`);
+  } else if (!analysisPython || !existsSync(analysisPython)) {
+    console.warn("[dev] REPLY_ANALYSIS_PYTHON(Wemeet-reply 환경의 python)이 없어서 답장 분석 서버를 띄우지 않습니다. docs/REPLY_ANALYSIS.md의 설치 순서를 보세요.");
+  } else if (!(await portFree(analysisUrl.port || "80", "127.0.0.1"))) {
+    busy.push(`답장 분석 ${analysisUrl.port} (응답 없는 다른 프로그램)`);
+  } else {
+    startAnalysis = true;
+  }
+}
+
 const gatewayToken = setting("GPU_GATEWAY_TOKEN", "");
 if (gpuOnly) {
   const missing = [
@@ -164,6 +193,7 @@ const procs = gpuOnly
           GATEWAY_TTS_URL: ttsUrl.origin,
           GATEWAY_VIDEO_URL: videoUrl.origin,
           GATEWAY_TRAIN_URL: `http://127.0.0.1:${trainerPort}`,
+          GATEWAY_ANALYSIS_URL: analysisUrl.origin,
         },
       },
       // Azure 워커가 맡기는 S3Gen 음색 학습 (backend/.env의 WEMEET_TRAIN_PYTHON·S3GEN_* 설정을 따른다)
@@ -188,6 +218,17 @@ if (startTts) {
     cmd: "powershell",
     args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ttsScript, "-Port", ttsPort],
     cwd: ttsDir,
+    env: serverEnv(),
+  });
+}
+if (startAnalysis) {
+  // Wemeet-reply 환경의 python. 영상·TTS 환경과 패키지 버전이 겹치지 않게 따로 쓴다
+  procs.unshift({
+    name: "analysis",
+    color: 36,
+    cmd: analysisPython,
+    args: [join(backend, "gpu_worker", "reply_analysis_server.py"), "--port", analysisUrl.port || "80"],
+    cwd: backend,
     env: serverEnv(),
   });
 }
@@ -261,7 +302,7 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 if (gpuOnly) {
-  console.log(`[dev] GPU 모드: 게이트웨이 http://127.0.0.1:${gatewayPort} (/tts → ${ttsUrl.origin}, /video → ${videoUrl.origin}, /train → 학습 서버 :${trainerPort})`);
+  console.log(`[dev] GPU 모드: 게이트웨이 http://127.0.0.1:${gatewayPort} (/tts → ${ttsUrl.origin}, /video → ${videoUrl.origin}, /train → 학습 서버 :${trainerPort}, /analysis → 답장 분석 ${analysisUrl.origin})`);
   console.log(`[dev] Azure에서 쓰려면 다른 창에서: tailscale serve --bg ${gatewayPort}  (tailnet 안에서만. 상태: https://<PC>.<tailnet>.ts.net/health)`);
 } else {
   console.log(`[dev] 웹 http://localhost:${webPort}  ·  API http://127.0.0.1:${apiPort}/docs`);
@@ -269,3 +310,4 @@ if (gpuOnly) {
 const after = gpuOnly ? "" : " 준비되면 워커가 뜹니다.";
 if (startTts) console.log(`[dev] TTS 서버 ${ttsUrl.origin} 띄우는 중 (약 15초).${after}`);
 if (startVideo) console.log(`[dev] 영상 서버 ${videoUrl.origin} 띄우는 중 (약 5초).${after}`);
+if (startAnalysis) console.log(`[dev] 답장 분석 서버 ${analysisUrl.origin} 띄우는 중 (모델은 분석할 때마다 올리고 내립니다).`);

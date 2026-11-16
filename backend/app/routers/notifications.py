@@ -34,6 +34,18 @@ def list_notifications(user: User = Depends(current_user), db: Session = Depends
     }
 
 
+@router.post("/{notification_id}/read")
+def mark_read(notification_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """알림 하나 읽음 (화면 맨 위 '바로 연락해 보세요' 띠에서 확인을 누를 때)"""
+    db.execute(
+        update(Notification)
+        .where(Notification.id == notification_id, Notification.user_id == user.id, Notification.read_at.is_(None))
+        .values(read_at=utcnow())
+    )
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/read")
 def mark_all_read(user: User = Depends(current_user), db: Session = Depends(get_db)):
     db.execute(

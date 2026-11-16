@@ -18,7 +18,9 @@ Azure for Students 구독으로 웹·API·워커·DB·파일은 Azure에, GPU �
                                   ├ /tts   → TTS 서버 :8100
                                   ├ /video → 영상 서버(FLOAT) :8010
                                   ├ /train → 음색 학습 서버 :8300 (gpu_worker/trainer.py)
-                                  └ /comfy → ComfyUI :8188 (어린 시절 모드 사진, 따로 실행)
+                                  ├ /comfy → ComfyUI :8188 (어린 시절 모드 사진, 따로 실행)
+                                  └ /analysis → 답장 받아쓰기·운율 서버 :8400 (gpu_worker/reply_analysis_server.py, 선택)
+   (답장 분석의 판단은 워커가 CLOVA Studio HCX-007을 바로 부른다. 대본 생성처럼 프록시를 거치지 않는다)
 ```
 
 GPU PC가 꺼져 있으면 로그인·대화방·답글·이미 만든 영상 보기는 되고, 목소리 등록과 영상 생성만 실패한다.
@@ -33,6 +35,7 @@ GPU PC가 꺼져 있으면 로그인·대화방·답글·이미 만든 영상 �
 | `infra/params.example.json` | 비밀값 양식 → `infra/params.local.json`으로 복사 (git 제외) |
 | `.github/workflows/deploy.yml` | main 푸시 → 테스트 → 이미지 빌드 → Azure 이미지 교체 |
 | `backend/gpu_worker/gateway.py` | GPU PC의 TTS·영상·학습 서버를 주소 하나로 묶고 토큰으로 막는다 (`npm run gpu`) |
+| `backend/gpu_worker/reply_analysis_server.py` | GPU PC 답장 분석 서버. 워커가 보낸 음성 답장을 받아쓰고 목소리를 잰다 (판단은 워커가 CLOVA Studio로). 받은 음성은 요청이 끝나면 지운다 (docs/REPLY_ANALYSIS.md) |
 | `backend/gpu_worker/trainer.py` | GPU PC 음색 학습 서버. Azure 워커가 보낸 녹음으로 S3Gen 학습 → 비교 → 더 닮았을 때만 어댑터를 돌려준다 (녹음은 끝나면 지운다) |
 
 ## 1. 사전 확인 (로그인 필요)
@@ -66,6 +69,7 @@ az postgres flexible-server list-skus -l koreacentral --query "[].supportedServe
    npm run gpu                      # TTS·영상 서버 + 음색 학습 서버 :8300 + 게이트웨이 :8200 (창을 닫으면 같이 꺼진다)
    tailscale serve --bg 8200        # 다른 창에서. tailnet 안에서만 https://<PC>.<tailnet>.ts.net
    ```
+   답장 분석을 시연할 때는 `backend/.env`에 `REPLY_ANALYSIS_PYTHON`(Wemeet-reply 환경)을 넣으면 `npm run gpu`가 받아쓰기 서버도 띄운다 (설치는 docs/REPLY_ANALYSIS.md 7절). Azure 쪽은 `infra/params.local.json`의 `replyAnalysisEnabled`를 `true`로 바꾸고, CLOVA 키는 `naverApiKey`를 같이 쓰거나 `replyLlmApiKey`에 따로 넣은 뒤 `deploy.ps1`을 다시 실행한다. 답장 글이 CLOVA Studio로 나가므로 동의 문구가 바뀌었고, 예전 동의는 다시 받는다.
    어린 시절 모드를 시연할 때는 ComfyUI도 따로 켠다 (`npm run gpu`가 띄우지 않는다, docs/YOUNG_MODE.md). 꺼져 있으면 어린 시절 모드로 만드는 영상만 실패한다.
 5. 전원 옵션에서 절전·최대 절전을 끈다.
 

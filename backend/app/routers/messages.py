@@ -91,9 +91,10 @@ def _conversation_context(db: Session, m: Message) -> dict | None:
     since = utcnow() - timedelta(days=CONTEXT_DAYS)
     if prev:
         since = max(since, prev.approved_at or prev.created_at)
+    # 음성 답장은 받아쓰기가 확실할 때만 text가 채워진다 (받아쓰는 중·불확실이면 빈 글이라 뺀다). 분석 결과는 넣지 않는다
     replies = db.scalars(
         select(SeniorReply)
-        .where(SeniorReply.recipient_id == m.recipient_id, SeniorReply.created_at > since)
+        .where(SeniorReply.recipient_id == m.recipient_id, SeniorReply.created_at > since, SeniorReply.text != "")
         .order_by(SeniorReply.created_at.desc(), SeniorReply.id.desc())
         .limit(CONTEXT_REPLIES)
     ).all()

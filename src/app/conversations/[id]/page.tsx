@@ -2,17 +2,18 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { CalendarDays, ChevronDown, FileText, MessageCircle, Pencil, PenLine, RefreshCw } from "lucide-react";
+import { CalendarDays, ChevronDown, FileText, MessageCircle, Pencil, PenLine, RefreshCw, Sparkles } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { ChatCalendar } from "@/components/conversations/ChatCalendar";
 import { ConversationEvents } from "@/components/conversations/ConversationEvents";
 import { MonthlyPortfolio } from "@/components/conversations/MonthlyPortfolio";
 import { RecipientForm } from "@/components/conversations/RecipientForm";
+import { ReplyAnalysisSettings } from "@/components/conversations/ReplyAnalysis";
 import { Button, Card, LinkButton, Notice, Spinner } from "@/components/ui";
 import { api, errorText } from "@/lib/api";
 import {
   formatConversationDate, kstDate, mergeConversationEvents, shiftDate,
-  type ConversationDay, type ConversationEvent, type ConversationFeed, type Recipient,
+  type ConversationDay, type ConversationEvent, type ConversationFeed, type ConversationReplyEvent, type Recipient,
 } from "@/lib/conversations";
 import { useMe } from "@/lib/useMe";
 
@@ -54,6 +55,8 @@ export default function ConversationPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [retrying, setRetrying] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [scrollTick, setScrollTick] = useState(0);
@@ -292,6 +295,20 @@ export default function ConversationPage() {
     }
   };
 
+  /** 정리하지 못한 답장 다시 정리하기 (GPU PC가 꺼져 있었을 때 등) */
+  const retryAnalysis = async (event: ConversationReplyEvent) => {
+    setRetrying(event.id);
+    try {
+      await api(`/api/recipients/${recipientId}/replies/${event.id}/analysis`, { method: "POST" });
+      setError(null);
+      void refresh();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setRetrying(null);
+    }
+  };
+
   const showLatest = () => {
     setTab("conversation");
     setCalendarOpen(false);
@@ -315,9 +332,11 @@ export default function ConversationPage() {
     <DashboardShell back="/letters" onNotification={() => { void refresh(); }}>
       <div className="flex flex-wrap items-start justify-between gap-5">
         <div><p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">A LITTLE CLOSER EVERY DAY</p><h1 className="mt-3 text-[27px] font-bold tracking-tight text-[#2b3d30] sm:text-[34px]">{recipient ? `${recipient.nickname}와 나눈 이야기` : "우리의 대화"}</h1><p className="mt-3 text-sm leading-7 text-[#7c8775]">영상에 담은 마음과 돌아온 안부를 하루하루 이어가요.</p></div>
-        <div className="flex flex-wrap gap-2">{editRecipient && <Button variant="secondary" onClick={() => setEditing((value) => !value)} aria-expanded={editing} aria-controls="edit-recipient" className="!text-xs"><Pencil size={15} />대상자 정보</Button>}{recipient && <LinkButton href={`/messages/new?recipient_id=${recipientId}`}><PenLine size={17} />영상 편지 쓰기</LinkButton>}</div>
+        <div className="flex flex-wrap gap-2">{editRecipient?.reply_analysis && <Button variant="secondary" onClick={() => setAnalysisOpen((value) => !value)} aria-expanded={analysisOpen} aria-controls="reply-analysis-settings" className="!text-xs"><Sparkles size={15} />답장 살펴보기 {editRecipient.reply_analysis.enabled ? "켜짐" : "꺼짐"}</Button>}{editRecipient && <Button variant="secondary" onClick={() => setEditing((value) => !value)} aria-expanded={editing} aria-controls="edit-recipient" className="!text-xs"><Pencil size={15} />대상자 정보</Button>}{recipient && <LinkButton href={`/messages/new?recipient_id=${recipientId}`}><PenLine size={17} />영상 편지 쓰기</LinkButton>}</div>
       </div>
       {editing && editRecipient && <Card className="mt-6 !border-[#cfdcc7] sm:p-7"><div id="edit-recipient"><h2 className="mb-6 text-lg font-bold text-[#315d4b]">대화 대상자 정보</h2><RecipientForm recipient={editRecipient as Recipient} onCancel={() => setEditing(false)} onSaved={(updated) => { setRecipient(updated); setEditing(false); void refresh(); }} /></div></Card>}
+
+      {analysisOpen && editRecipient?.reply_analysis && <ReplyAnalysisSettings recipientId={recipientId} recipientName={editRecipient.nickname} state={editRecipient.reply_analysis} onChange={(state) => { setRecipient((prev) => prev && "is_primary" in prev ? { ...prev, reply_analysis: state } : prev); void refresh(); }} />}
 
       <div className="mb-7 mt-8 flex gap-1 border-b border-[#e1e6d9]" aria-label="대화방 보기 선택"><button type="button" aria-pressed={tab === "conversation"} onClick={() => setTab("conversation")} className={`inline-flex min-h-12 items-center gap-2 border-b-2 px-4 text-sm font-bold ${tab === "conversation" ? "border-[#315d4b] text-[#315d4b]" : "border-transparent text-[#93a087]"}`}><MessageCircle size={17} />날짜별 대화</button><button type="button" aria-pressed={tab === "portfolio"} onClick={() => setTab("portfolio")} className={`inline-flex min-h-12 items-center gap-2 border-b-2 px-4 text-sm font-bold ${tab === "portfolio" ? "border-[#315d4b] text-[#315d4b]" : "border-transparent text-[#93a087]"}`}><FileText size={17} />월간 포트폴리오</button></div>
 
@@ -348,7 +367,7 @@ export default function ConversationPage() {
                       : <p className="pt-6 text-center text-[11px] text-stone-400">{recipientName}와 나눈 첫 대화예요</p>}
                     {byDay(chat.events).map(([day, items]) => <section key={day} data-day={day} aria-label={formatConversationDate(day)}>
                       <div className="sticky top-0 z-10 flex justify-center py-3"><span className={`rounded-full px-3 py-1 text-[11px] font-semibold shadow-sm ring-1 ${focusDate === day ? "bg-[#315d4b] text-white ring-[#315d4b]" : "bg-white/95 text-[#6f7f66] ring-[#e4e9dc]"}`}>{formatConversationDate(day)}{day === today ? " · 오늘" : ""}</span></div>
-                      <ConversationEvents events={items} recipientName={recipientName} childName={childName || me.user.name} onDelete={(event) => { void deleteEvent(event); }} deleting={deleting} />
+                      <ConversationEvents events={items} recipientName={recipientName} childName={childName || me.user.name} onDelete={(event) => { void deleteEvent(event); }} deleting={deleting} onRetryAnalysis={(event) => { void retryAnalysis(event); }} retrying={retrying} />
                     </section>)}
                     {chat.hasNewer && <div className="flex flex-wrap justify-center gap-2 pt-7"><Button variant="secondary" loading={loadingNewer} onClick={() => { void loadNewer(); }} className="!text-xs">이후 대화 보기</Button><Button variant="secondary" onClick={showLatest} className="!text-xs">최근 대화로</Button></div>}
                   </>}

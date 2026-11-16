@@ -119,7 +119,7 @@ export type Message = {
   young: boolean; // 어린 시절 모습·목소리로 만들었는지
   job: Job | null;
   // 대기 중인 이유: 워커가 음색 학습(약 5분)을 처리하는 중. own_voice_train이면 내 목소리 학습
-  wait: { reason: "own_voice_train" | "voice_train"; seconds: number } | null;
+  wait: { reason: "own_voice_train" | "voice_train" | "reply_analysis"; seconds: number } | null;
   share: { url: string; expires_at: string; view_count: number; first_viewed_at: string | null } | null;
   parent_nickname: string | null;
   created_at: string;

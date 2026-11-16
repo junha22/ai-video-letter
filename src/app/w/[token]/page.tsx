@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { Heart, Play, RotateCcw, Send } from "lucide-react";
 import { api, ApiError, errorText } from "@/lib/api";
 import { Button, Notice, Spinner } from "@/components/ui";
+import { SeniorVoiceComposer, VoiceClip, formatClipLength } from "@/components/conversations/VoiceReply";
 import { formatConversationDate, formatConversationTime, kstDate, mergeConversationEvents } from "@/lib/conversations";
 import type { ConversationReplyEvent, ConversationVideoEvent, PublicConversationThread } from "@/lib/conversations";
 
@@ -102,15 +103,31 @@ export default function WatchPage() {
     try {
       const reply = await api<ConversationReplyEvent>(`/api/watch/${encodeURIComponent(token)}/replies`, { json: { text: value, client_id: submission.current.clientId, message_id: replyTo } });
       if (!mounted.current || roomRef.current !== token) return;
-      setText(""); setReplyTo(null); submission.current = null; setToday(reply.date);
-      if (!selectedDate || selectedDate === reply.date) {
-        setThread((old) => old?.selected_date === reply.date ? { ...old, events: mergeConversationEvents(old.events, [reply]) } : old);
-        await load(true);
-      } else { setSelectedDate(""); setThread(null); }
-      setNotice("답글을 보냈어요. 보낸 분이 확인할 수 있어요.");
+      setText(""); submission.current = null;
+      await showSent(reply, "답글을 보냈어요. 보낸 분이 확인할 수 있어요.");
     } catch (e) { handleError(e); }
     finally { sendingRef.current = false; if (mounted.current) setSending(false); }
   };
+
+  const showSent = async (reply: ConversationReplyEvent, message: string) => {
+    if (!mounted.current || roomRef.current !== token) return;
+    setReplyTo(null); setToday(reply.date);
+    if (!selectedDate || selectedDate === reply.date) {
+      setThread((old) => old?.selected_date === reply.date ? { ...old, events: mergeConversationEvents(old.events, [reply]) } : old);
+      await load(true);
+    } else { setSelectedDate(""); setThread(null); }
+    setNotice(message);
+  };
+
+  // 답장 살펴보기가 켜진 대화방: 처음 한 번 안내를 확인하면 녹음 버튼을 바로 쓴다
+  const voice = thread?.voice_reply?.available ? thread.voice_reply : null;
+  const acceptNotice = async () => {
+    try {
+      await api(`/api/watch/${encodeURIComponent(token)}/voice-notice`, { method: "POST" });
+      noticeAccepted();
+    } catch (e) { handleError(e); }
+  };
+  const noticeAccepted = () => setThread((old) => old?.voice_reply ? { ...old, voice_reply: { ...old.voice_reply, notice_needed: false } } : old);
 
   if (blocked) return <Shell><h1 className="text-3xl font-extrabold">대화방에 들어갈 수 없어요</h1><p role="alert" className="mt-5 text-xl leading-9">{error}<br />보낸 분께 새 영상 편지 링크를 부탁해 주세요.</p></Shell>;
 
@@ -126,12 +143,12 @@ export default function WatchPage() {
     {!thread ? <Spinner label="대화를 불러오고 있어요" /> : <>
       <p className="mb-5 text-center text-base text-stone-500">{formatConversationDate(thread.selected_date)}{isToday ? " · 오늘" : " · 지난 대화"}</p>
       <ol aria-label="영상과 답글" className="space-y-6">{thread.events.map((event) => <li key={`${event.type}-${event.id}`}>
-        {event.type === "video" ? <SeniorVideo event={event} token={token} childName={thread.child_name} onReply={() => { if (sending) return; setReplyTo(event.id); composer.current?.focus(); }} /> : <article className="ml-6 rounded-[24px] rounded-br-md border border-[#d8e3d2] bg-[#e9f0e2] p-5"><p className="mb-2 text-base font-bold text-[#315d4b]">내가 남긴 답글{event.message_id ? " · 영상에 대한 답글" : ""}</p><p className="whitespace-pre-wrap break-words text-[22px] leading-9 [overflow-wrap:anywhere]">{event.text}</p><time dateTime={event.created_at} className="mt-3 block text-sm text-stone-500">{formatConversationTime(event.created_at)}</time></article>}
+        {event.type === "video" ? <SeniorVideo event={event} token={token} childName={thread.child_name} onReply={() => { if (sending) return; setReplyTo(event.id); composer.current?.focus(); }} /> : <article className="ml-6 rounded-[24px] rounded-br-md border border-[#d8e3d2] bg-[#e9f0e2] p-5"><p className="mb-2 text-base font-bold text-[#315d4b]">{event.kind === "voice" ? `내가 남긴 음성 답장 · ${formatClipLength(event.audio_seconds)}` : "내가 남긴 답글"}{event.message_id ? " · 영상에 대한 답글" : ""}</p>{event.kind === "voice" && event.audio_url ? <VoiceClip src={event.audio_url} seconds={event.audio_seconds} big label="내 음성 답장 듣기" /> : <p className="whitespace-pre-wrap break-words text-[22px] leading-9 [overflow-wrap:anywhere]">{event.text}</p>}<time dateTime={event.created_at} className="mt-3 block text-sm text-stone-500">{formatConversationTime(event.created_at)}</time></article>}
       </li>)}</ol>
       {!thread.events.length && <div className="rounded-3xl border border-dashed border-[#d8dfd0] bg-white px-5 py-9 text-center"><p className="text-xl leading-9">{isToday ? "오늘은 아직 영상 편지가 없어요. 먼저 안부를 남겨 보세요." : "이 날짜에는 대화가 없어요."}</p>{thread.days.some((d) => d.date !== today && d.video_count > 0) && <button disabled={sending} onClick={() => selectDay(thread.days.find((d) => d.video_count > 0 && d.date !== today)!.date)} className="mt-5 min-h-14 rounded-2xl bg-[#315d4b] px-5 py-3 text-xl font-bold text-white">지난 영상 편지 보기</button>}</div>}
     </>}
-    <section className="mt-8 rounded-[28px] border-2 border-[#d5dfcf] bg-white p-5 sm:p-6" aria-labelledby="reply-title"><h2 id="reply-title" className="text-2xl font-extrabold">답글 남기기</h2><p className="mt-2 text-lg leading-8 text-stone-600">{isToday ? "짧은 안부도 좋아요. 하고 싶은 말을 적어 주세요." : "지난 영상에 답글을 남겨도 오늘 날짜의 대화에 저장돼요."}</p>{replyTo !== null && <div className="mt-4 flex items-center justify-between gap-2 rounded-xl bg-[#f0f4ea] px-3 py-2 text-base"><span>선택한 영상에 답글을 쓰고 있어요.</span><button disabled={sending} onClick={() => setReplyTo(null)} className="min-h-12 px-2 font-bold underline">선택 취소</button></div>}<label htmlFor="senior-reply" className="sr-only">보낼 답글</label><textarea id="senior-reply" ref={composer} value={text} disabled={sending} onChange={(e) => setText(e.target.value)} maxLength={1000} rows={4} placeholder="예: 영상 잘 봤다. 오늘은 산책도 다녀왔어." className="mt-4 w-full rounded-2xl border-2 border-[#dce3d5] bg-[#fcfdf9] p-4 text-[22px] leading-9 outline-none focus:border-[#315d4b]" /><p className="mt-1 text-right text-sm text-stone-500">{text.length} / 1,000자</p><Button onClick={sendReply} loading={sending} disabled={!text.trim() || !thread} className="mt-4 min-h-16 w-full !text-xl"><Send size={23} /> {sending ? "보내고 있어요" : "답글 보내기"}</Button><p role="status" aria-live="polite" className="mt-3 text-lg font-bold leading-8 text-[#315d4b]">{notice}</p></section>
-    <footer className="mt-7 text-base leading-8 text-stone-500"><p>한국 시간 밤 12시가 지나면 새 날짜의 대화가 시작돼요. 지난 이야기는 대화 날짜에서 다시 볼 수 있어요.</p><p className="mt-3">이 영상은 보낸 분이 승인한 말을 AI 목소리와 얼굴로 만든 영상이에요. 답글은 보낸 분에게 전달되고 월간 대화 기록에 활용돼요.</p></footer>
+    <section className="mt-8 rounded-[28px] border-2 border-[#d5dfcf] bg-white p-5 sm:p-6" aria-labelledby="reply-title"><h2 id="reply-title" className="text-2xl font-extrabold">답글 남기기</h2><p className="mt-2 text-lg leading-8 text-stone-600">{isToday ? "짧은 안부도 좋아요. 하고 싶은 말을 적어 주세요." : "지난 영상에 답글을 남겨도 오늘 날짜의 대화에 저장돼요."}</p>{replyTo !== null && <div className="mt-4 flex items-center justify-between gap-2 rounded-xl bg-[#f0f4ea] px-3 py-2 text-base"><span>선택한 영상에 답글을 쓰고 있어요.</span><button disabled={sending} onClick={() => setReplyTo(null)} className="min-h-12 px-2 font-bold underline">선택 취소</button></div>}{voice && <>{voice.notice_needed && voice.notice && <div className="mt-4 rounded-2xl bg-[#f4f8f1] p-4"><p className="text-lg leading-8">{voice.notice}</p><button type="button" onClick={acceptNotice} className="mt-3 min-h-14 w-full rounded-2xl border-2 border-[#cbd9ce] bg-white px-4 text-lg font-bold text-[#315d4b]">알겠어요</button></div>}<SeniorVoiceComposer token={token} state={voice} replyTo={replyTo} disabled={sending || !thread} onNoticeAccepted={noticeAccepted} onSent={(reply) => showSent(reply, "음성 답장을 보냈어요. 보낸 분이 들어 볼 수 있어요.")} /><p className="mt-6 text-center text-lg font-bold text-stone-500">또는 글로 쓰기</p></>}<label htmlFor="senior-reply" className="sr-only">보낼 답글</label><textarea id="senior-reply" ref={composer} value={text} disabled={sending} onChange={(e) => setText(e.target.value)} maxLength={1000} rows={4} placeholder="예: 영상 잘 봤다. 오늘은 산책도 다녀왔어." className="mt-4 w-full rounded-2xl border-2 border-[#dce3d5] bg-[#fcfdf9] p-4 text-[22px] leading-9 outline-none focus:border-[#315d4b]" /><p className="mt-1 text-right text-sm text-stone-500">{text.length} / 1,000자</p><Button onClick={sendReply} loading={sending} disabled={!text.trim() || !thread} className="mt-4 min-h-16 w-full !text-xl"><Send size={23} /> {sending ? "보내고 있어요" : "답글 보내기"}</Button><p role="status" aria-live="polite" className="mt-3 text-lg font-bold leading-8 text-[#315d4b]">{notice}</p></section>
+    <footer className="mt-7 text-base leading-8 text-stone-500"><p>한국 시간 밤 12시가 지나면 새 날짜의 대화가 시작돼요. 지난 이야기는 대화 날짜에서 다시 볼 수 있어요.</p><p className="mt-3">이 영상은 보낸 분이 승인한 말을 AI 목소리와 얼굴로 만든 영상이에요. 답글은 보낸 분에게 전달되고 월간 대화 기록에 활용돼요.</p>{voice && <p className="mt-3">이 대화방에서는 보내 주신 답글(음성은 받아쓴 글)을 네이버 클로바 AI로 정리해 보낸 분께만 보여 드려요. 음성 파일은 보내지 않아요. 진단이 아니에요.</p>}</footer>
   </Shell>;
 }
 

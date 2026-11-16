@@ -13,6 +13,7 @@ from sqlalchemy import and_, case, func, or_, select, text, union_all, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import iso, utcnow
 from ..models import Message, MonthlyPortfolio, Notification, ParentProfile, Recipient, SeniorReply, User
 
@@ -161,7 +162,9 @@ def recipient_summaries(db: Session, recipients: list[Recipient]) -> dict[int, d
         select(Message.recipient_id.label("recipient_id"), timestamp.label("at"),
                case((Message.script != "", Message.script), else_=Message.memo).label("preview"))
         .where(Message.user_id == owner_id, Message.recipient_id.in_(recipient_ids), Message.status != "deleted"),
-        select(SeniorReply.recipient_id, SeniorReply.created_at, SeniorReply.text)
+        # 받아쓰기 전(또는 불확실한) 음성 답장은 글이 비어 있다
+        select(SeniorReply.recipient_id, SeniorReply.created_at,
+               case((SeniorReply.text == "", "음성 답장"), else_=SeniorReply.text))
         .where(SeniorReply.user_id == owner_id, SeniorReply.recipient_id.in_(recipient_ids)),
     ).subquery()
     ranked = select(
@@ -189,14 +192,23 @@ def recipient_dict(db: Session, recipient: Recipient, public: bool = False, stat
         "is_primary": recipient.legacy_parent_id is not None,
         **stats,
     })
+    if settings.reply_analysis_enabled:
+        from .replies import owner_state
+        result["reply_analysis"] = owner_state(db, recipient)
     return result
 
 
-def reply_event(reply: SeniorReply) -> dict:
-    return {
+def reply_event(reply: SeniorReply, token: str | None = None) -> dict:
+    event = {
         "type": "reply", "id": reply.id, "created_at": iso(reply.created_at),
         "date": korea_date(reply.created_at), "text": reply.text, "message_id": reply.message_id,
     }
+    if reply.kind == "voice":
+        root = f"/api/watch/{token}/replies/{reply.id}" if token else f"/api/recipients/{reply.recipient_id}/replies/{reply.id}"
+        event.update(kind="voice", audio_url=f"{root}/audio", audio_seconds=reply.audio_seconds)
+        if token:
+            event["text"] = ""  # 시니어 화면에는 자동 받아쓰기를 보여 주지 않는다 (docs/REPLY_ANALYSIS.md)
+    return event
 
 
 def video_event(db: Session, message: Message, token: str | None = None) -> dict:
@@ -293,9 +305,12 @@ def conversation(db: Session, recipient: Recipient, selected_date: str | None = 
     selected.sort(key=lambda value: value[:3])
     has_more = len(selected) > limit
     selected = selected[-limit:]
-    events = [video_event(db, row, token) if kind == "video" else reply_event(row)
+    events = [video_event(db, row, token) if kind == "video" else reply_event(row, token)
               for _at, kind, _id, row in selected]
     events.sort(key=_event_key)
+    if not token:  # 답장 분석은 자녀(로그인 사용자)에게만
+        from .replies import attach
+        attach(db, recipient.user_id, events)
     return {
         "recipient": recipient_dict(db, recipient, public=bool(token)), "child_name": recipient.child_name,
         "today": korea_date(), "selected_date": selected_date, "timezone": "Asia/Seoul",
@@ -342,6 +357,8 @@ def conversation_feed(db: Session, recipient: Recipient, before: str | None = No
         replies = db.scalars(reply_query.where(SeniorReply.created_at >= start, SeniorReply.created_at < end)).all()
         events = [video_event(db, message) for message in messages] + [reply_event(reply) for reply in replies]
         events.sort(key=_event_key)
+        from .replies import attach
+        attach(db, recipient.user_id, events)
         has_older, has_newer = active[0] < picked[0], active[-1] > picked[-1]
     else:
         # Nothing on this side of the bound: say whether the other side still has chat.
@@ -376,7 +393,10 @@ def reply_fingerprint(replies: list[SeniorReply]) -> str:
 
 
 def _evidence(reply: SeniorReply) -> dict:
-    return {"reply_id": reply.id, "text": reply.text, "date": korea_date(reply.created_at)}
+    item = {"reply_id": reply.id, "text": reply.text, "date": korea_date(reply.created_at)}
+    if reply.kind == "voice":
+        item["voice"] = True  # 음성 답장의 자동 받아쓰기 (틀린 글자가 있을 수 있다)
+    return item
 
 
 def build_portfolio(recipient: Recipient, month: str, replies: list[SeniorReply]) -> dict:
@@ -397,6 +417,9 @@ def build_portfolio(recipient: Recipient, month: str, replies: list[SeniorReply]
     representatives = []
     seen = set()
     for values in by_day.values():
+        values = [item for item in values if item.text]  # 받아쓰기 전·불확실한 음성 답장은 글이 없다
+        if not values:
+            continue
         reply = max(values, key=lambda item: (len(reply_topics(item.text)), len(item.text), -item.id))
         if reply.text not in seen:
             representatives.append(_evidence(reply))
@@ -427,7 +450,8 @@ def build_portfolio(recipient: Recipient, month: str, replies: list[SeniorReply]
             "하나의 답글이 여러 주제에 포함될 수 있습니다. 주제의 개수는 답글의 개수와 다를 수 있습니다.",
             "답글이 없는 날의 상태는 알 수 없습니다. 공유 링크를 가진 사람이 작성했으며 작성자의 신원은 인증하지 않았습니다.",
             "현재 월의 보고서는 작성 시점까지의 부분 기록입니다. 새 답글이 오면 다시 작성해 주세요.",
-        ],
+        ] + (["음성 답장은 자동 받아쓰기로 정리해서 틀린 글자가 있을 수 있습니다."]
+             if any(reply.kind == "voice" for reply in replies) else []),
     }
 
 
@@ -489,14 +513,16 @@ def delete_reply(db: Session, recipient: Recipient, reply_id: int) -> None:
     reply = db.get(SeniorReply, reply_id)
     if not reply or reply.user_id != recipient.user_id or reply.recipient_id != recipient.id:
         raise HTTPException(404, "답글을 찾을 수 없어요.")
-    # The notification has no reply id; it was written with the reply and quotes its first 60 characters.
+    # Older notifications have no reply id; they were written with the reply and quote its first 60 characters.
     note = db.scalar(select(Notification).where(
         Notification.user_id == reply.user_id, Notification.recipient_id == recipient.id,
         Notification.kind == "senior_reply", Notification.created_at >= reply.created_at,
-        Notification.text.endswith(f": {reply.text[:60]}", autoescape=True),
+        Notification.reply_id.is_(None), Notification.text.endswith(f": {reply.text[:60]}", autoescape=True),
     ).order_by(Notification.created_at, Notification.id).limit(1))
     if note:
         db.delete(note)
+    from .replies import delete_for_reply
+    delete_for_reply(db, reply)  # 음성 파일, 답장 분석, reply_id로 이어진 알림
     month = korea_date(reply.created_at)[:7]
     db.delete(reply)
     db.flush()

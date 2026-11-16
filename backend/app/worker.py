@@ -1,7 +1,7 @@
 """작업 큐 워커. 웹 서버와 별도 프로세스로 실행한다: python -m app.worker
 
 TTS 서버(TTS_PROVIDER=wemeet)는 GPU 1장으로 요청을 하나씩 처리한다. 이 워커가 작업을 하나씩 처리하므로
-목소리 등록·음성 생성·목소리 삭제·음색 학습이 서버와 GPU에 순서대로 전달된다. 워커는 1개만 띄운다.
+목소리 등록·음성 생성·목소리 삭제·음색 학습·답장 분석이 서버와 GPU에 순서대로 전달된다. 워커는 1개만 띄운다.
 """
 
 import logging
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import SessionLocal, init_db, iso, utcnow
 from .models import Job, Message, Notification, Photo, VoiceProfile, VoiceSample
-from .services import audio, face, jobs, korean, s3gen, s3gen_remote, storage, tts, video, wemeet_tts, young
+from .services import audio, face, jobs, korean, replies, reply_gpu, reply_llm, s3gen, s3gen_remote, storage, tts, video, wemeet_tts, young
 
 log = logging.getLogger("ongi.worker")
 
@@ -332,7 +332,9 @@ def run_voice_train(db: Session, job: Job) -> None:
     )
 
 
-HANDLERS = {"voice": run_voice, "video": run_video, "voice_delete": run_voice_delete, "voice_train": run_voice_train}
+# reply_analysis: 부모님 답장 분석 (services/replies.py, GPU PC 분석 서버. docs/REPLY_ANALYSIS.md)
+HANDLERS = {"voice": run_voice, "video": run_video, "voice_delete": run_voice_delete, "voice_train": run_voice_train,
+            "reply_analysis": replies.run}
 
 
 def _on_final_failure(db: Session, job: Job, user_message: str | None = None) -> None:
@@ -360,6 +362,9 @@ def _on_final_failure(db: Session, job: Job, user_message: str | None = None) ->
             profile.s3gen_status = "failed"
             profile.s3gen_report = {"result": "failed", "error": (job.last_error or "")[:500], "finished_at": iso(utcnow())}
             db.add(Notification(user_id=job.user_id, kind="voice_tune_failed", text=TUNE_FAILED_TEXT))
+    elif job.type == "reply_analysis":
+        # 자녀 화면에는 "답장을 정리하지 못했어요"와 다시 정리하기가 보인다
+        replies.on_final_failure(db, job)
     db.commit()
 
 
@@ -401,6 +406,16 @@ def main() -> None:
                 log.warning("S3GEN_TRAINING이 켜져 있지만 학습할 수 없습니다: %s", reason)
             else:
                 log.info("S3Gen 음색 학습 켜짐 (%s step, 배치 %s)", settings.s3gen_steps, settings.s3gen_batch_size)
+    if settings.reply_analysis_enabled:
+        if reply_gpu.health():
+            log.info("답장 분석 켜짐: 받아쓰기 서버 연결됨 (%s)", settings.reply_analysis_url)
+        else:
+            log.warning("답장 분석이 켜져 있지만 받아쓰기 서버(%s)에 연결할 수 없습니다. 음성 답장만 실패합니다 "
+                        "(GPU PC에서 npm run gpu로 띄우세요).", settings.reply_analysis_url)
+        if not reply_llm.api_key():
+            log.warning("답장 분석이 켜져 있지만 CLOVA 키(REPLY_LLM_API_KEY 또는 NAVER_API_KEY)가 없어서 분석이 바로 실패합니다.")
+        else:
+            log.info("답장 분석 LLM: CLOVA Studio %s", reply_llm.model_name())
     from .services.conversations import refresh_closed_portfolios
 
     last_check = time.monotonic()

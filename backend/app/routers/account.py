@@ -10,7 +10,8 @@ from .. import serialize
 from ..auth import current_user
 from ..db import get_db, utcnow
 from ..models import Consent, DeletionLog, Job, Message, MonthlyPortfolio, Notification, ParentProfile, Photo, SeniorReply, ShareLink, User, VoiceProfile, VoiceSample
-from ..services import conversations, jobs, storage
+from ..config import settings
+from ..services import conversations, jobs, replies, storage
 
 router = APIRouter(prefix="/api", tags=["account"])
 
@@ -59,6 +60,10 @@ def withdraw_consent(user: User = Depends(current_user), db: Session = Depends(g
     db.execute(delete(Photo).where(Photo.user_id == user.id))
     message_ids = db.scalars(select(Message.id).where(Message.user_id == user.id)).all()
     detail["messages"] = len(message_ids)
+    # 음성 답장 파일·답장 분석·분석 알림·답장 분석 동의 (답장보다 먼저 지워야 건수를 셀 수 있다)
+    analysis = replies.delete_for_user(db, user.id)
+    if settings.reply_analysis_enabled or any(analysis.values()):
+        detail.update(analysis)
     detail["senior_replies"] = db.execute(delete(SeniorReply).where(SeniorReply.user_id == user.id)).rowcount
     detail["monthly_portfolios"] = db.execute(delete(MonthlyPortfolio).where(MonthlyPortfolio.user_id == user.id)).rowcount
     detail["reply_notifications"] = db.execute(

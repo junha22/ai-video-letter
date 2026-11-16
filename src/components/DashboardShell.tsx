@@ -1,9 +1,10 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { ChevronLeft, Heart, House, Leaf, Mail, Settings } from "lucide-react";
+import { AlertTriangle, ChevronLeft, Heart, House, Leaf, Mail, Settings } from "lucide-react";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { api } from "@/lib/api";
 import type { NotificationItem } from "@/lib/types";
 import { NotificationBell } from "./Notifications";
 
@@ -14,6 +15,16 @@ export function DashboardShell({ children, back, onNotification }: {
   onNotification?: (n: NotificationItem) => void;
 }) {
   const pathname = usePathname();
+  // 답장 분석의 '바로 연락 필요'(reply_alert)는 읽을 때까지 화면 맨 위에 띄운다
+  const [alerts, setAlerts] = useState<NotificationItem[]>([]);
+  const onItems = (items: NotificationItem[]) => {
+    const next = items.filter((n) => n.kind === "reply_alert" && !n.read);
+    setAlerts((prev) => (prev.length === next.length && prev.every((n, i) => n.id === next[i].id) ? prev : next));
+  };
+  const confirmAlert = (id: number) => {
+    setAlerts((list) => list.filter((n) => n.id !== id));
+    void api(`/api/notifications/${id}/read`, { method: "POST" }).catch(() => undefined);
+  };
   const pageLabel = pathname.startsWith("/onboarding/") ? "편지를 위한 준비" : pathname === "/letters" ? "영상 편지함" : pathname.startsWith("/conversations/") ? "날짜별 대화와 월간 기록" : pathname.startsWith("/messages/") ? "마음을 전하는 편지" : pathname === "/settings" ? "나의 설정" : "오늘의 온기";
   const navigation = (
     <>
@@ -40,8 +51,14 @@ export function DashboardShell({ children, back, onNotification }: {
             <Link href="/home" className="text-2xl font-black text-[#315d4b] lg:hidden">온기</Link>
             <span className="hidden items-center gap-3 text-xs text-[#8e9989] lg:flex">온기<span className="h-1 w-1 rounded-full bg-[#cbd6c4]" /> <span className="text-[#566a54]">{pageLabel}</span></span>
           </div>
-          <div className="flex items-center gap-2"><div className="rounded-full border border-[#e8ece1] bg-white"><NotificationBell onNew={onNotification} /></div><Link href="/settings" aria-label="설정" className="rounded-full border border-[#e8ece1] bg-white p-2 text-stone-600 hover:bg-[#e8eee6]"><Settings size={22} /></Link></div>
+          <div className="flex items-center gap-2"><div className="rounded-full border border-[#e8ece1] bg-white"><NotificationBell onNew={onNotification} onItems={onItems} /></div><Link href="/settings" aria-label="설정" className="rounded-full border border-[#e8ece1] bg-white p-2 text-stone-600 hover:bg-[#e8eee6]"><Settings size={22} /></Link></div>
         </header>
+        {alerts.length > 0 && <div role="alert" className="border-b border-[#8f2a18] bg-[#A8321E] px-5 py-3 text-white sm:px-10">
+          {alerts.slice(0, 3).map((n) => <div key={n.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-1">
+            <p className="flex min-w-0 flex-1 items-center gap-2 text-sm font-bold"><AlertTriangle size={18} className="shrink-0" />{n.text}</p>
+            <div className="flex gap-2">{n.recipient_id && <Link href={`/conversations/${n.recipient_id}`} onClick={() => confirmAlert(n.id)} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#A8321E]">대화방에서 보기</Link>}<button type="button" onClick={() => confirmAlert(n.id)} className="rounded-full border border-white/70 px-3 py-1.5 text-xs font-bold">확인했어요</button></div>
+          </div>)}
+        </div>}
         <details className="border-b border-[#e4e5da] px-5 py-3 lg:hidden">
           <summary className="cursor-pointer text-sm font-bold text-[#315d4b]">메뉴</summary>
           <nav aria-label="모바일 주 메뉴" className="mt-3 space-y-1 pb-2">{navigation}</nav>

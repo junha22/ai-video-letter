@@ -227,8 +227,61 @@ class SeniorReply(Base):
     message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
     share_link_id: Mapped[int | None] = mapped_column(ForeignKey("share_links.id", ondelete="SET NULL"))
     client_id: Mapped[str] = mapped_column(String(80))
+    # 음성 답장(kind=voice)은 처음엔 ""이고, 받아쓰기가 확실하면 자동 받아쓰기로 채운다 (docs/REPLY_ANALYSIS.md)
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    kind: Mapped[str] = mapped_column(String(10), default="text")  # text | voice
+    audio_path: Mapped[str | None] = mapped_column(String(500))  # 16kHz 모노 WAV
+    audio_seconds: Mapped[float | None] = mapped_column(Float)
+    audio_sha256: Mapped[str | None] = mapped_column(String(64))  # 같은 client_id 재시도가 같은 녹음인지
+
+
+class ReplyAnalysis(Base):
+    """답장 1개의 분석 (기능 스위치 REPLY_ANALYSIS_ENABLED, 자녀·시니어 동의가 모두 있을 때만). 자녀 화면에만 보인다."""
+
+    __tablename__ = "reply_analyses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"), index=True)
+    reply_id: Mapped[int] = mapped_column(ForeignKey("senior_replies.id", ondelete="CASCADE"), unique=True)
+    kind: Mapped[str] = mapped_column(String(10))  # text | voice
+    # queued -> running -> done / failed / stt_uncertain (받아쓰기 불확실이라 LLM에 보내지 않음)
+    status: Mapped[str] = mapped_column(String(20), default="queued")
+    stt_text: Mapped[str | None] = mapped_column(Text)  # 받아쓰기 원문 (불확실해도 남긴다. 답장 글에는 확실할 때만 채운다)
+    stt: Mapped[dict | None] = mapped_column(JSON)  # {duration, pieces, problems, seconds}
+    prosody: Mapped[dict | None] = mapped_column(JSON)  # measure_prosody 결과
+    voice: Mapped[dict | None] = mapped_column(JSON)  # compare_prosody 결과 (평소 목소리와 비교)
+    voice_mismatch: Mapped[bool | None] = mapped_column(Boolean)
+    llm_raw: Mapped[dict | None] = mapped_column(JSON)  # LLM 원래 결과
+    result: Mapped[dict | None] = mapped_column(JSON)  # 후처리 결과
+    level: Mapped[str | None] = mapped_column(String(20))
+    mood: Mapped[str | None] = mapped_column(String(20))
+    reply_chars: Mapped[int | None] = mapped_column(Integer)  # mask_pii 뒤 글자 수 (다음 답장의 '평소보다 짧음' 비교)
+    prompt_id: Mapped[str | None] = mapped_column(String(20))
+    stt_model: Mapped[str | None] = mapped_column(String(100))
+    llm_model: Mapped[str | None] = mapped_column(String(200))
+    timings: Mapped[dict | None] = mapped_column(JSON)  # 단계별 초, CLOVA 시도 횟수·토큰 수
+    error: Mapped[str | None] = mapped_column(Text)  # 받아쓰기·답장 내용은 넣지 않는다
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class ReplyAnalysisConsent(Base):
+    """답장 분석 동의 이력 (대상자별). 자녀(child)가 켜고 시니어(senior)가 안내를 확인해야 분석한다.
+    consents처럼 철회해도 행을 지우지 않고 withdrawn_at만 기록한다."""
+
+    __tablename__ = "reply_analysis_consents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"), index=True)
+    party: Mapped[str] = mapped_column(String(10))  # child | senior
+    version: Mapped[str] = mapped_column(String(20))
+    share_link_id: Mapped[int | None] = mapped_column(ForeignKey("share_links.id", ondelete="SET NULL"))
+    agreed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class MonthlyPortfolio(Base):
@@ -252,10 +305,11 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    type: Mapped[str] = mapped_column(String(20))  # video | voice | voice_delete | voice_train
+    type: Mapped[str] = mapped_column(String(20))  # video | voice | voice_delete | voice_train | reply_analysis
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
-    payload: Mapped[dict | None] = mapped_column(JSON)  # voice: {"tune": bool}, voice_delete·voice_train: {"voice_id": ...}
+    # voice: {"tune": bool}, voice_delete·voice_train: {"voice_id": ...}, reply_analysis: {"reply_id": ...}
+    payload: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)  # queued | running | done | failed | canceled
     stage: Mapped[str | None] = mapped_column(String(20))  # tts | video | encode
     attempts: Mapped[int] = mapped_column(Integer, default=0)
@@ -294,10 +348,13 @@ class Notification(Base):
     message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
     recipient_id: Mapped[int | None] = mapped_column(ForeignKey("recipients.id", ondelete="SET NULL"))
     # viewed | senior_reply | voice_ready | voice_failed | voice_tuned | voice_tune_skipped | voice_tune_failed
+    # | reply_check (답장 분석: 살펴보기) | reply_alert (답장 분석: 바로 연락 필요)
     kind: Mapped[str] = mapped_column(String(20))
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     read_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # 어떤 답장의 알림인지. 답장 하나 지우기·동의 철회 때 정확히 찾아 지운다 (예전 답글 알림은 비어 있다)
+    reply_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
 
 class DeletionLog(Base):

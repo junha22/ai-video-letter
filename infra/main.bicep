@@ -50,6 +50,12 @@ param gpuGatewayToken string
 @description('카카오톡 공유 버튼의 JavaScript 키 (카카오 콘솔 [앱] > [플랫폼 키]). 공개용 키라 브라우저에 보인다. 비우면 버튼 대신 휴대폰 공유 창')
 param kakaoJsKey string = ''
 
+@description('부모님 답장 분석 (docs/REPLY_ANALYSIS.md). true면 음성 받아쓰기는 GPU PC 게이트웨이의 /analysis, 판단은 CLOVA Studio HCX-007. 기본은 꺼짐')
+param replyAnalysisEnabled bool = false
+@secure()
+@description('답장 분석용 CLOVA Studio 키. 비우면 naverApiKey를 쓴다 (둘 다 비우면 분석이 바로 실패한다)')
+param replyLlmApiKey string = ''
+
 @description('동의 화면에 보이는 저장·처리 장소 안내')
 param dataProcessingNotice string = '목소리·사진·영상은 Microsoft Azure 클라우드에 저장되고, 음성과 영상은 연구팀 GPU 컴퓨터에서 만들어요.'
 @description('동의 문구를 바꾸면 같이 바꾼다')
@@ -160,6 +166,8 @@ var databaseUrl = 'postgresql+psycopg://${postgresAdminUser}:${uriComponent(post
 // Container Apps는 빈 비밀값을 받지 않아서 HyperCLOVA 키는 있을 때만 넣는다
 var naverSecret = empty(naverApiKey) ? [] : [ { name: 'naver-api-key', value: naverApiKey } ]
 var naverEnv = empty(naverApiKey) ? [] : [ { name: 'NAVER_API_KEY', secretRef: 'naver-api-key' } ]
+var replyLlmSecret = empty(replyLlmApiKey) ? [] : [ { name: 'reply-llm-api-key', value: replyLlmApiKey } ]
+var replyLlmEnv = empty(replyLlmApiKey) ? [] : [ { name: 'REPLY_LLM_API_KEY', secretRef: 'reply-llm-api-key' } ]
 
 // 공개 이미지면 저장소 로그인 정보 없이 받는다 (비공개로 바꾸면 registryUsername·registryPassword를 채운다)
 var registrySecret = empty(registryPassword) ? [] : [ { name: 'registry-password', value: registryPassword } ]
@@ -172,9 +180,9 @@ var backendSecrets = concat(registrySecret, [
   { name: 'session-secret', value: sessionSecret }
   { name: 'gpu-token', value: gpuGatewayToken }
   { name: 'ts-authkey', value: tailscaleAuthKey }
-], naverSecret)
+], naverSecret, replyLlmSecret)
 
-var backendEnv = concat(naverEnv, [
+var backendEnv = concat(naverEnv, replyLlmEnv, [
   { name: 'DATABASE_URL', secretRef: 'database-url' }
   { name: 'SESSION_SECRET', secretRef: 'session-secret' }
   { name: 'PUBLIC_BASE_URL', value: publicBaseUrl }
@@ -187,7 +195,7 @@ var backendEnv = concat(naverEnv, [
   { name: 'RUNPOD_VIDEO_ENDPOINT_ID', value: '${gpuGatewayUrl}/video' }
   { name: 'RUNPOD_API_KEY', secretRef: 'gpu-token' }
   // GPU PC는 공개 주소가 없고 tailnet 안에서만 열린다. 옆의 Tailscale 컨테이너(사용자 공간 모드)가 여는 프록시로 나간다.
-  // HyperCLOVA는 프록시 없이 바로 부른다 (httpx가 이 환경 변수들을 따른다. DB(psycopg)는 영향 없음)
+  // HyperCLOVA(대본·답장 분석)는 프록시 없이 바로 부른다 (httpx가 이 환경 변수들을 따른다. DB(psycopg)는 영향 없음)
   { name: 'HTTPS_PROXY', value: 'http://127.0.0.1:1055' }
   { name: 'HTTP_PROXY', value: 'http://127.0.0.1:1055' }
   { name: 'NO_PROXY', value: 'clovastudio.stream.ntruss.com,localhost,127.0.0.1' }
@@ -198,6 +206,11 @@ var backendEnv = concat(naverEnv, [
   // 어린 시절 모드 사진: GPU PC의 ComfyUI (docs/YOUNG_MODE.md). ComfyUI가 꺼져 있으면 어린 시절 모드로 만드는 영상만 실패한다
   { name: 'COMFYUI_URL', value: '${gpuGatewayUrl}/comfy' }
   { name: 'COMFYUI_API_KEY', secretRef: 'gpu-token' }
+  // 부모님 답장 분석: 음성 받아쓰기·운율은 GPU PC의 분석 서버(gpu_worker/reply_analysis_server.py), 판단은 워커가 CLOVA Studio
+  // HCX-007을 바로 부른다 (기본 주소는 backend 설정, 키는 REPLY_LLM_API_KEY 또는 NAVER_API_KEY). 꺼져 있으면 지금과 같다
+  { name: 'REPLY_ANALYSIS_ENABLED', value: replyAnalysisEnabled ? 'true' : 'false' }
+  { name: 'REPLY_ANALYSIS_URL', value: '${gpuGatewayUrl}/analysis' }
+  { name: 'REPLY_ANALYSIS_API_KEY', secretRef: 'gpu-token' }
   { name: 'VOICE_TARGET_SECONDS', value: '135' }
   { name: 'CONSENT_VERSION', value: consentVersion }
   { name: 'DATA_PROCESSING_NOTICE', value: dataProcessingNotice }
