@@ -109,7 +109,9 @@ def turn_off(db: Session, recipient: Recipient) -> dict:
         Notification.user_id == recipient.user_id, Notification.recipient_id == recipient.id,
         Notification.kind.in_(ANALYSIS_KINDS),
     )).rowcount
-    return {"reply_analyses": analyses, "analysis_notifications": notes}
+    from .reply_month import delete_months  # 월간 포트폴리오의 'AI가 정리한 한 달' 문장
+    months = delete_months(db, recipient.user_id, recipient.id)
+    return {"reply_analyses": analyses, "analysis_notifications": notes, "analysis_month_summaries": months}
 
 
 def _cancel_jobs(db: Session, user_id: int, reply_ids: set[int]) -> None:
@@ -195,10 +197,12 @@ def attach(db: Session, user_id: int, events: list[dict]) -> list[dict]:
 
 # ---------------------------------------------------------------- 삭제 ----
 def delete_for_reply(db: Session, reply: SeniorReply) -> None:
-    """답장 하나 지우기: 음성 파일, 분석, 그 답장의 알림"""
+    """답장 하나 지우기: 음성 파일, 분석, 그 답장의 알림, 그 달의 'AI가 정리한 한 달' 문장 (그 답장 요약이 들어 있을 수 있다)"""
     storage.delete_file(reply.audio_path)
     db.execute(delete(ReplyAnalysis).where(ReplyAnalysis.reply_id == reply.id))
     db.execute(delete(Notification).where(Notification.user_id == reply.user_id, Notification.reply_id == reply.id))
+    from .reply_month import delete_months
+    delete_months(db, reply.user_id, reply.recipient_id, korea_date(reply.created_at)[:7])
 
 
 def delete_for_user(db: Session, user_id: int) -> dict:
@@ -211,7 +215,10 @@ def delete_for_user(db: Session, user_id: int) -> dict:
     db.execute(update(ReplyAnalysisConsent).where(
         ReplyAnalysisConsent.user_id == user_id, ReplyAnalysisConsent.withdrawn_at.is_(None),
     ).values(withdrawn_at=utcnow()))
-    return {"reply_audio_files": files, "reply_analyses": analyses, "analysis_notifications": notes}
+    from .reply_month import delete_months
+    months = delete_months(db, user_id)
+    return {"reply_audio_files": files, "reply_analyses": analyses, "analysis_notifications": notes,
+            "analysis_month_summaries": months}
 
 
 # ---------------------------------------------------------------- 분석 작업 ----

@@ -284,6 +284,23 @@ class ReplyAnalysisConsent(Base):
     withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class ReplyAnalysisMonth(Base):
+    """월간 포트폴리오의 'AI가 정리한 한 달' 문장 (CLOVA). 그 달의 분석에서 규칙으로 센 사실만 보내 만든다.
+    사실이 바뀌면(fingerprint) 다시 만든다. 분석을 끄거나 답장을 지우거나 동의를 철회하면 같이 지운다."""
+
+    __tablename__ = "reply_analysis_months"
+    __table_args__ = (UniqueConstraint("recipient_id", "month", name="uq_reply_month_recipient_month"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"), index=True)
+    month: Mapped[str] = mapped_column(String(7))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    summary: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class MonthlyPortfolio(Base):
     __tablename__ = "monthly_portfolios"
     __table_args__ = (UniqueConstraint("recipient_id", "month", name="uq_portfolio_recipient_month"),)

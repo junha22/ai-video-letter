@@ -14,7 +14,7 @@ from ..config import settings
 from ..db import get_db
 from ..models import ParentProfile, Recipient, SeniorReply, User
 from ..services import conversations as service
-from ..services import replies, storage
+from ..services import replies, reply_month, storage
 
 router = APIRouter(prefix="/api", tags=["conversations"])
 
@@ -185,7 +185,7 @@ def get_portfolio(recipient_id: int, response: Response, month: str | None = Non
     recipient = service.owned_recipient(db, user, recipient_id)
     db.commit()
     response.headers["Cache-Control"] = "private, no-store"
-    return service.portfolio_state(db, recipient, month)
+    return _with_trends(db, recipient, service.portfolio_state(db, recipient, month))
 
 
 @router.post("/recipients/{recipient_id}/portfolio")
@@ -193,4 +193,23 @@ def generate_portfolio(recipient_id: int, response: Response, month: str | None 
                        user: User = Depends(current_user), db: Session = Depends(get_db)):
     recipient = service.owned_recipient(db, user, recipient_id)
     response.headers["Cache-Control"] = "private, no-store"
-    return service.portfolio_state(db, recipient, month, generate=True)
+    return _with_trends(db, recipient, service.portfolio_state(db, recipient, month, generate=True))
+
+
+def _with_trends(db: Session, recipient: Recipient, state: dict) -> dict:
+    """답장 살펴보기를 켠 대화방이면 'AI가 정리한 한 달의 변화'를 붙인다. 보고서에는 저장하지 않고 볼 때마다 계산한다"""
+    trends = reply_month.month_trends(db, recipient, state["month"])
+    if trends is not None:
+        state["analysis_trends"] = trends
+    return state
+
+
+@router.post("/recipients/{recipient_id}/portfolio/analysis-summary")
+def summarize_month(recipient_id: int, response: Response, month: str | None = None,
+                    user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """그 달의 분석에서 센 사실을 CLOVA로 2~3문장 정리해 저장한다 (답장 원문은 보내지 않는다)"""
+    _analysis_feature()
+    recipient = service.owned_recipient(db, user, recipient_id)
+    db.commit()
+    response.headers["Cache-Control"] = "private, no-store"
+    return reply_month.summarize(db, recipient, month)

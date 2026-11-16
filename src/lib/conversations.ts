@@ -118,7 +118,24 @@ export type PublicConversationThread = ConversationThread & { voice_reply?: Voic
 export type PublicConversationFeed = Omit<ConversationFeed, "recipient"> & {
   recipient: PublicRecipient; expires_at: string; voice_reply?: VoiceReplyState;
 };
-export type PortfolioEvidence = { reply_id: number; text: string; date: string };
+/** voice: 음성 답장의 자동 받아쓰기라 틀린 글자가 있을 수 있다 */
+export type PortfolioEvidence = { reply_id: number; text: string; date: string; voice?: boolean };
+
+/** 월간 포트폴리오의 'AI가 정리한 한 달의 변화'. 답장 살펴보기를 켠 대화방에만 온다 (보고서에 저장하지 않고 볼 때마다 계산) */
+export type MonthAnalysisTrends = {
+  month: string;
+  notice: string;
+  analyzed: number;
+  enough: boolean;
+  few_text: string | null;
+  timeline: { reply_id: number; date: string; kind: "text" | "voice"; status: string; level: "없음" | "살펴보기" | "바로 연락 필요" | null; label: string; mood_text: string | null; voice: string | null; mismatch: boolean }[];
+  signals: { area: string; value: string; count: number; dates: string[]; evidence: string[] }[];
+  voice: { points: { date: string; state: string }[]; down: number; mismatch: number } | null;
+  compare: { prev_month: string; rows: { label: string; prev: number; now: number; unit: string }[]; length_text: string | null };
+  starters: string[];
+  summary: { text: string; generated_at: string; stale: boolean } | null;
+  can_summarize: boolean;
+};
 export type MonthlyPortfolio = {
   id: number;
   generated_at: string;
@@ -143,6 +160,7 @@ export type MonthlyPortfolioResponse = {
   active_days: number;
   stale: boolean;
   portfolio: MonthlyPortfolio | null;
+  analysis_trends?: MonthAnalysisTrends;
 };
 
 /** Calendar boundaries are shared by owner and senior screens, irrespective of device time zone. */

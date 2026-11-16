@@ -5,6 +5,7 @@ import { ArrowUpRight, Check, Clipboard, Download, FileText, RefreshCw, Sparkles
 import { api, errorText } from "@/lib/api";
 import { formatConversationDate, formatConversationMonth, kstMonth, portfolioAsText, type MonthlyPortfolioResponse, type PortfolioEvidence } from "@/lib/conversations";
 import { Button, Card, Notice, Spinner } from "@/components/ui";
+import { MonthChanges } from "./MonthChanges";
 
 export function MonthlyPortfolio({ recipientId, recipientName, onOpenDate }: {
   recipientId: number;
@@ -85,6 +86,9 @@ export function MonthlyPortfolio({ recipientId, recipientName, onOpenDate }: {
 
       {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
       {loading && !current && <Spinner label="한 달의 답글을 불러오고 있어요" />}
+      {/* 답장 살펴보기를 켠 대화방에만 온다. 보고서와 따로 볼 때마다 계산해서 '포트폴리오 작성' 전에도 보인다 */}
+      {current?.analysis_trends && <MonthChanges recipientId={recipientId} trends={current.analysis_trends} onOpenDate={onOpenDate}
+        onTrends={(trends) => setData((old) => old && old.month === trends.month ? { ...old, analysis_trends: trends } : old)} />}
       {current?.stale && <Notice>포트폴리오 작성 후 새 답글이 쌓였어요. 다시 분석하면 최신 답글까지 반영돼요.</Notice>}
       {current && !portfolio && <Card className="py-12 text-center"><FileText size={34} className="mx-auto text-[#9aaf91]" /><h3 className="mt-4 font-bold">{current.reply_count ? "쌓인 답글을 한 장의 기록으로" : "아직 이달의 답글이 없어요"}</h3><p className="mx-auto mt-3 max-w-md text-sm leading-7 text-stone-500">{current.reply_count ? "위의 ‘포트폴리오 작성’을 누르면 관심 주제, 날짜별 대화 흐름, 다음에 건넬 안부를 확인할 수 있어요." : "영상 편지를 보내고 답글을 받아 보세요. 첫 답글부터 월간 기록에 차곡차곡 쌓여요."}</p></Card>}
 
@@ -113,5 +117,5 @@ function Metric({ title, value }: { title: string; value: string }) {
 }
 
 function Evidence({ item, onOpenDate }: { item: PortfolioEvidence; onOpenDate: (date: string) => void }) {
-  return <blockquote><p className="whitespace-pre-wrap break-words text-sm leading-7 text-stone-600">“{item.text}”</p><button type="button" onClick={() => onOpenDate(item.date)} className="mt-2 inline-flex min-h-8 items-center gap-1 text-[11px] font-semibold text-[#8a9b7d] hover:text-[#315d4b]">{formatConversationDate(item.date)} 대화 보기<ArrowUpRight size={12} /></button></blockquote>;
+  return <blockquote>{item.voice && <p className="mb-1 text-[10px] font-semibold tracking-wide text-[#a08a72]">음성 답장 · 자동 받아쓰기</p>}<p className="whitespace-pre-wrap break-words text-sm leading-7 text-stone-600">“{item.text}”</p><button type="button" onClick={() => onOpenDate(item.date)} className="mt-2 inline-flex min-h-8 items-center gap-1 text-[11px] font-semibold text-[#8a9b7d] hover:text-[#315d4b]">{formatConversationDate(item.date)} 대화 보기<ArrowUpRight size={12} /></button></blockquote>;
 }

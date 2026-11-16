@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from app.models import (
     Job, Message, Notification, ParentProfile, Recipient, ReplyAnalysis, ReplyAnalysisConsent, SeniorReply, ShareLink,
 )
-from app.services import jobs, replies, reply_analysis, reply_gpu, reply_llm, storage
+from app.services import jobs, replies, reply_analysis, reply_gpu, reply_llm, reply_month, storage
 
 NOW = datetime(2026, 11, 12, 3, 0, 0)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -572,6 +572,80 @@ class ReplyAnalysisTests(unittest.TestCase):
             with db.SessionLocal() as session:
                 versions = sorted(c.version for c in session.scalars(select(ReplyAnalysisConsent)))
             self.assertEqual(versions, ["2026-11-clova", "2026-11-clova", "2099-new-wording", "2099-new-wording"])
+
+
+    def test_month_trends_and_clova_summary(self):
+        uid, rid = self.owner()
+        self.enable(rid)
+        knee = dict(CALM, health="병원·약", level="살펴보기", summary="무릎 때문에 병원에 다녀오셨대요.")
+        plan = [("month-reply-1", "경로당에서 점심 먹었어. 반찬이 맛있더라.", dict(CALM, mood="밝음", summary="경로당에서 점심을 드셨대요."), 3),
+                ("month-reply-2", "무릎이 쑤셔서 병원에 다녀왔어.", dict(knee, evidence=["무릎이 쑤셔서 병원에 다녀왔어"]), 7),
+                ("month-reply-3", "또 무릎 때문에 병원 갔어.", dict(knee, evidence=["또 무릎 때문에 병원 갔어"]), 10),
+                ("month-prev", "시월에 쓴 답장이야.", CALM, None)]
+        ids = {}
+        for client_id, value, out, day in plan:
+            self.fake.clova = [out]
+            ids[client_id] = self.assert_ok(self.text(client_id, value))["id"]
+            self.run_jobs()
+        self.assert_ok(self.voice("month-voice"))
+        self.run_jobs()
+        with db.SessionLocal() as session:  # 날짜를 나눈다 (한국 시간 정오), 하나는 지난달로
+            for client_id, _value, _out, day in plan:
+                reply = session.get(SeniorReply, ids[client_id])
+                reply.created_at = datetime(2026, 11, day, 3) if day else datetime(2026, 10, 20, 3)
+            session.commit()
+
+        trends = self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"}))["analysis_trends"]
+        self.assertEqual([(t["date"], t["label"], t["mood_text"]) for t in trends["timeline"]],
+                         [("2026-11-03", "평소와 같아요", "밝아 보여요"), ("2026-11-07", "살펴보기", "평온해 보여요"),
+                          ("2026-11-10", "살펴보기", "평온해 보여요"), ("2026-11-12", "평소와 같아요", "평온해 보여요")])
+        self.assertEqual(trends["timeline"][-1]["voice"], "평소 목소리 기록 중")
+        self.assertEqual(trends["signals"], [{"area": "건강", "value": "병원·약", "count": 2, "dates": ["2026-11-07", "2026-11-10"],
+                                              "evidence": ["무릎이 쑤셔서 병원에 다녀왔어", "또 무릎 때문에 병원 갔어"]}])
+        self.assertEqual(trends["starters"], ["병원 다녀오신 뒤 어떠신지, 약은 잘 챙기시는지 여쭤보세요."])
+        self.assertEqual({r["label"]: (r["prev"], r["now"]) for r in trends["compare"]["rows"]},
+                         {"답장": (1, 4), "음성 답장": (0, 1), "살펴보기 이상": (0, 2), "바로 연락 필요": (0, 0)})
+        self.assertEqual((trends["enough"], trends["summary"], trends["can_summarize"]), (True, None, True))
+        self.assertEqual(trends["voice"]["points"], [{"date": "2026-11-12", "state": "평소 목소리 기록 중"}])
+
+        # CLOVA 정리: 답장 원문은 보내지 않고 답장별 AI 요약·분류와 센 숫자만
+        self.fake.llm_requests.clear()
+        self.fake.clova = [{"summary": "이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 두 번 이어졌어요."}]
+        made = self.assert_ok(self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary", params={"month": "2026-11"}))
+        self.assertEqual((made["summary"]["text"], made["summary"]["stale"]), ("이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 두 번 이어졌어요.", False))
+        body = self.fake.llm_requests[0]["body"]
+        self.assertEqual(body["messages"][0]["content"], reply_month.SUMMARY_SYSTEM)
+        self.assertEqual((body["responseFormat"]["schema"], body["maxCompletionTokens"]), (reply_month.SUMMARY_SCHEMA, 400))
+        facts = body["messages"][1]["content"]
+        self.assertIn("[부르는 말] 엄마", facts)
+        self.assertIn("건강 병원·약 2번 (11월 7일, 11월 10일)", facts)
+        self.assertIn("요약: 무릎 때문에 병원에 다녀오셨대요.", facts)
+        for raw in ("반찬이 맛있더라", "또 무릎 때문에 병원 갔어", "밥도 잘 먹고"):
+            self.assertNotIn(raw, facts)
+        again = self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"}))["analysis_trends"]
+        self.assertFalse(again["summary"]["stale"])
+
+        # 새 답장이 정리되면 낡은 것으로 보인다
+        self.fake.clova = [dict(CALM, summary="오늘도 잘 지내신대요.")]
+        self.assert_ok(self.text("month-reply-new", "오늘도 잘 지내"))
+        self.run_jobs()
+        self.assertTrue(self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"}))["analysis_trends"]["summary"]["stale"])
+        # 진단 같은 말이 나오면 seed 2로 한 번 더 하고, 그래도면 저장하지 않는다
+        self.fake.clova = [{"summary": "우울증이 의심되는 한 달이었어요."}, {"summary": "치매 진단이 필요해 보여요."}]
+        failed = self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary", params={"month": "2026-11"})
+        self.assertEqual(failed.status_code, 502, failed.text)
+        # 정리한 답장이 3개보다 적은 달은 만들지 않는다
+        self.assertEqual(self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary", params={"month": "2026-10"}).status_code, 409)
+
+        # 그 달의 답장을 지우면 저장한 정리도 지운다
+        self.assert_ok(self.client.delete(f"/api/recipients/{rid}/replies/{ids['month-reply-1']}"))
+        self.assertIsNone(self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"}))["analysis_trends"]["summary"])
+        # 분석을 끄면 이 칸이 아예 없다
+        self.assert_ok(self.client.put(f"/api/recipients/{rid}/reply-analysis", json={"enabled": False}))
+        self.assertNotIn("analysis_trends", self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"})))
+        with patch.object(settings, "reply_analysis_enabled", False):
+            self.assertNotIn("analysis_trends", self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"})))
+            self.assertEqual(self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary").status_code, 404)
 
 
 if __name__ == "__main__":

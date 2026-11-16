@@ -7,7 +7,7 @@ import { api, errorText } from "@/lib/api";
 import type { ReplyAnalysisCard, ReplyAnalysisState } from "@/lib/conversations";
 
 // 수준 배지 색 (reply_analysis.LEVEL_UI와 같은 색)
-const LEVEL_TONE: Record<string, { bg: string; fg: string }> = {
+export const LEVEL_TONE: Record<string, { bg: string; fg: string }> = {
   "없음": { bg: "#E4EEEC", fg: "#255F5A" },
   "살펴보기": { bg: "#FBE9CC", fg: "#7A4A00" },
   "바로 연락 필요": { bg: "#A8321E", fg: "#FFFFFF" },

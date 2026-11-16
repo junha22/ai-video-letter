@@ -122,7 +122,13 @@ def _post(body: dict) -> tuple[dict, str]:
 
 
 def analyze(system: str, user: str, schema: dict, params: dict) -> dict:
-    """판단 JSON을 받아 check_output까지 본다. JSON이 깨졌거나 틀에 맞지 않으면 seed+1로 한 번만 더 한다"""
+    """답장 판단 JSON을 받아 check_output까지 본다. JSON이 깨졌거나 틀에 맞지 않으면 seed+1로 한 번만 더 한다"""
+    return complete_json(system, user, schema, params, rules.check_output)
+
+
+def complete_json(system: str, user: str, schema: dict, params: dict, check) -> dict:
+    """형식 강제 JSON 한 번 부르기. check(out)이 ValueError를 내면(값은 알리지 않는다) seed+1로 한 번만 더 한다.
+    답장 판단(analyze)과 월간 포트폴리오의 한 달 정리(reply_month)가 같이 쓴다"""
     if not api_key():
         raise AnalysisError("CLOVA 키가 없어요 (REPLY_LLM_API_KEY 또는 NAVER_API_KEY)", retryable=False)
     started = time.monotonic()
@@ -139,8 +145,8 @@ def analyze(system: str, user: str, schema: dict, params: dict) -> dict:
         tokens["completion_tokens"] += usage.get("completionTokens") or 0
         try:
             out = json.loads((result.get("message") or {}).get("content") or "")
-            rules.check_output(out)
-        except ValueError as e:  # JSONDecodeError도 ValueError. check_output은 틀린 칸 이름만 알린다
+            check(out)
+        except ValueError as e:  # JSONDecodeError도 ValueError. check는 틀린 칸 이름만 알린다
             problem = "JSON이 깨짐" if isinstance(e, json.JSONDecodeError) else str(e)
             log.warning("CLOVA 결과를 쓸 수 없음 (요청 %s, %s) → seed+1로 한 번 더", request_id, problem)
             continue
