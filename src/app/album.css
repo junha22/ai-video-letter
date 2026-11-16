@@ -53,3 +53,17 @@ button,input,textarea,select { -webkit-tap-highlight-color:transparent; }
 .album-cover-error button { display:inline; text-decoration:underline; margin-left:9px; font-weight:700; }
 .album-cover-photo:has(.album-cover-editor) .album-photo-stamp { bottom:auto; top:23px; right:23px; pointer-events:none; }
 @media(max-width:650px) { .album-cover-editor { padding:10px 1px 7px; }.album-cover-editor-buttons button { font-size:11px; padding:8px 12px; }.album-cover-file-hint{font-size:9px}.album-cover-photo:has(.album-cover-editor) .album-photo-stamp{top:20px;right:18px} }
+
+/* Each letter represents the recipient, while its video remains available inside. */
+.album-memory-art.has-recipient-photo img { object-fit:cover; object-position:50% 35%; }
+.album-memory-video-badge { position:absolute; bottom:11px; left:11px; display:inline-flex; align-items:center; gap:5px; background:#fffdf2eb; color:var(--album-primary); font-size:10px; font-weight:700; border-radius:20px; padding:5px 9px; }
+.family-portrait--photo img { left:0; top:0; width:100%; height:100%; object-fit:cover; object-position:50% 35%; }
+.recipient-photo-editor { min-width:0; }
+.recipient-photo-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.recipient-photo-actions button { display:inline-flex; align-items:center; gap:6px; min-height:38px; border:1px solid var(--album-line); background:#fffaf4; color:var(--album-primary); border-radius:25px; padding:8px 12px; font-size:11px; font-weight:700; }
+.recipient-photo-actions button:disabled { opacity:.5; cursor:wait; }
+.recipient-photo-hint { font-size:10px; line-height:1.8; color:var(--album-muted); margin-top:8px; }
+.recipient-photo-error { font-size:11px; line-height:1.8; color:#a8321e; margin-top:7px; }
+.recipient-photo-notice { font-size:10px; line-height:1.8; color:var(--album-primary); margin-top:4px; }
+.album-recipient-grid .album-recipient-link { border-radius:20px 20px 0 0; border-bottom:0; }
+.album-recipient-photo-tools { border:1px solid var(--album-line); border-top:1px dashed var(--album-line); border-radius:0 0 20px 20px; background:#fffdf9; padding:17px 23px; }

@@ -4,10 +4,11 @@ type FamilyPortraitProps = {
   relation: string;
   name?: string;
   className?: string;
+  photoUrl?: string | null;
 };
 
 /** Reuse the parents in the album cover so every family portrait has the same artwork. */
-export function FamilyPortrait({ relation, name = "", className = "" }: FamilyPortraitProps) {
+export function FamilyPortrait({ relation, name = "", className = "", photoUrl }: FamilyPortraitProps) {
   const identity = `${relation} ${name}`;
   const kind = /어머니|엄마|할머니|외할머니/.test(identity)
     ? "mother"
@@ -16,9 +17,10 @@ export function FamilyPortrait({ relation, name = "", className = "" }: FamilyPo
       : "family";
 
   return (
-    <span className={`family-portrait family-portrait--${kind} ${className}`} aria-hidden="true">
+    <span className={`family-portrait family-portrait--${photoUrl ? "photo" : kind} ${className}`} aria-hidden="true">
       <Image
-        src="/images/family-together.webp"
+        src={photoUrl || "/images/family-together.webp"}
+        unoptimized={!!photoUrl}
         alt=""
         width={1448}
         height={1086}

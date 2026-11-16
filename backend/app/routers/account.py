@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .. import serialize
 from ..auth import current_user
 from ..db import get_db, utcnow
-from ..models import AlbumCover, Consent, DeletionLog, Job, Message, MonthlyPortfolio, Notification, ParentProfile, Photo, SeniorReply, ShareLink, User, VoiceProfile, VoiceSample
+from ..models import AlbumCover, Consent, DeletionLog, Job, Message, MonthlyPortfolio, Notification, ParentProfile, Photo, RecipientPhoto, SeniorReply, ShareLink, User, VoiceProfile, VoiceSample
 from ..config import settings
 from ..services import conversations, jobs, replies, storage
 
@@ -53,6 +53,7 @@ def withdraw_consent(user: User = Depends(current_user), db: Session = Depends(g
         "voice_files": storage.delete_tree(root / "voice"),
         "photo_files": storage.delete_tree(root / "photo"),
         "album_cover_files": storage.delete_tree(root / "album-cover"),
+        "recipient_photo_files": storage.delete_tree(root / "recipient-photos"),
         "message_files": storage.delete_tree(root / "messages"),
     }
     detail["voice_samples"] = db.execute(delete(VoiceSample).where(VoiceSample.user_id == user.id)).rowcount
@@ -60,6 +61,7 @@ def withdraw_consent(user: User = Depends(current_user), db: Session = Depends(g
     db.execute(delete(VoiceProfile).where(VoiceProfile.user_id == user.id))
     db.execute(delete(Photo).where(Photo.user_id == user.id))
     db.execute(delete(AlbumCover).where(AlbumCover.user_id == user.id))
+    db.execute(delete(RecipientPhoto).where(RecipientPhoto.user_id == user.id))
     message_ids = db.scalars(select(Message.id).where(Message.user_id == user.id)).all()
     detail["messages"] = len(message_ids)
     # 음성 답장 파일·답장 분석·분석 알림·답장 분석 동의 (답장보다 먼저 지워야 건수를 셀 수 있다)

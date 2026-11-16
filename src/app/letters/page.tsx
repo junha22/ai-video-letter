@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight, Inbox, MessageCircle, Plus, RefreshCw, Video } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
+import { RecipientPhotoEditor } from "@/components/album/RecipientPhotoEditor";
 import { FamilyPortrait } from "@/components/album/FamilyPortrait";
 import { RecipientForm } from "@/components/conversations/RecipientForm";
 import { Button, Card, Notice, Spinner } from "@/components/ui";
@@ -17,16 +18,20 @@ export default function LettersPage() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const requestVersion = useRef(0);
 
   const refresh = useCallback(async () => {
+    const version = ++requestVersion.current;
     setRefreshing(true);
     try {
-      setRecipients(await api<Recipient[]>("/api/recipients"));
+      const rows = await api<Recipient[]>("/api/recipients");
+      if (version !== requestVersion.current) return;
+      setRecipients(rows);
       setError(null);
     } catch (e) {
-      setError(errorText(e));
+      if (version === requestVersion.current) setError(errorText(e));
     } finally {
-      setRefreshing(false);
+      if (version === requestVersion.current) setRefreshing(false);
     }
   }, []);
 
@@ -36,7 +41,7 @@ export default function LettersPage() {
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 20000);
     const onFocus = () => { void refresh(); };
     window.addEventListener("focus", onFocus);
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", onFocus); };
+    return () => { requestVersion.current += 1; window.clearInterval(timer); window.removeEventListener("focus", onFocus); };
   }, [me, refresh]);
 
   return (
@@ -64,14 +69,15 @@ export default function LettersPage() {
         <Card className="py-14 text-center"><Inbox className="mx-auto h-10 w-10 text-[#81645d]" /><h2 className="mt-5 text-lg font-bold">첫 대화를 시작해 보세요</h2><p className="mx-auto mt-2 max-w-sm text-sm leading-7 text-stone-500">대화할 분을 추가하면 영상 편지와 답글을 한곳에서 이어갈 수 있어요.</p><Button onClick={() => setAdding(true)} className="mt-6"><Plus size={18} />대상자 추가하기</Button></Card>
       ) : recipients ? (
         <ul className="album-recipient-grid grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          {recipients.map((recipient) => <li key={recipient.id}>
-            <Link href={`/conversations/${recipient.id}`} className="album-recipient-link group flex h-full flex-col rounded-[24px] border border-[#ead9cd] bg-white p-6 shadow-[0_5px_18px_rgba(32,42,32,0.03)] transition-colors hover:border-[#b68e7e]">
-              <div className="flex items-start justify-between gap-3"><FamilyPortrait relation={recipient.relation} name={recipient.nickname} /><span className="rounded-full bg-[#f6f2eb] px-3 py-1 text-xs text-[#9b8069]">{recipient.relation}</span></div>
+          {recipients.map((recipient) => <li key={recipient.id} className="flex flex-col">
+            <Link href={`/conversations/${recipient.id}`} className="album-recipient-link group flex flex-1 flex-col rounded-[24px] border border-[#ead9cd] bg-white p-6 shadow-[0_5px_18px_rgba(32,42,32,0.03)] transition-colors hover:border-[#b68e7e]">
+              <div className="flex items-start justify-between gap-3"><FamilyPortrait relation={recipient.relation} name={recipient.nickname} photoUrl={recipient.photo?.url} /><span className="rounded-full bg-[#f6f2eb] px-3 py-1 text-xs text-[#9b8069]">{recipient.relation}</span></div>
               <h3 className="mt-5 text-xl font-bold text-[#493035]">{recipient.nickname}</h3>
               <p className="mt-2 line-clamp-2 min-h-12 break-words text-sm leading-6 text-stone-500">{recipient.last_preview || "첫 번째 영상 편지로 안부를 전해 보세요."}</p>
               <div className="mb-5 mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-[#81645d]"><span className="inline-flex items-center gap-1.5"><Video size={14} />영상 {recipient.video_count}</span><span className="inline-flex items-center gap-1.5"><MessageCircle size={14} />답글 {recipient.reply_count}</span></div>
               <div className="mt-auto flex items-end justify-between gap-3 border-t border-[#fff5eb] pt-4"><div className="text-xs leading-6 text-stone-500">{recipient.today_reply_count > 0 || recipient.today_video_count > 0 ? <p className="font-semibold text-[#c8493c]">오늘 영상 {recipient.today_video_count} · 답글 {recipient.today_reply_count}</p> : <p>오늘의 안부를 건네 보세요</p>}{recipient.last_activity_at && <p className="text-[11px]">{kstDate(new Date(recipient.last_activity_at)) === kstDate() ? `오늘 ${formatConversationTime(recipient.last_activity_at)}` : formatConversationDate(kstDate(new Date(recipient.last_activity_at)))}</p>}</div><ChevronRight size={19} className="shrink-0 text-[#81645d] transition-transform group-hover:translate-x-1" /></div>
             </Link>
+            <div className="album-recipient-photo-tools"><RecipientPhotoEditor recipientId={recipient.id} name={recipient.nickname} photoUrl={recipient.photo?.url} onChange={(photo)=>{requestVersion.current+=1;setRefreshing(false);setRecipients(rows=>rows?.map(r=>r.id===recipient.id?{...r,photo}:r)??null);}} /></div>
           </li>)}
         </ul>
       ) : null}

@@ -1,11 +1,8 @@
 """Private, account-owned album cover upload, retrieval, and reset."""
 
-from io import BytesIO
 import secrets
-import warnings
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
-from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,15 +10,13 @@ from .. import serialize
 from ..auth import current_user
 from ..db import get_db, iso, utcnow
 from ..models import AlbumCover, User
-from ..services import conversations, storage
+from ..services import conversations, private_images, storage
 
 router = APIRouter(prefix="/api/album-cover", tags=["album-cover"])
-MAX_UPLOAD = 15 * 1024 * 1024
-MAX_PIXELS = 40_000_000
-MAX_SIDE = 2048
-FORMATS = {"JPEG", "PNG", "WEBP"}
-MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
-PRIVATE = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
+MAX_UPLOAD = private_images.MAX_UPLOAD
+MAX_PIXELS = private_images.MAX_PIXELS
+MIME_TYPES = private_images.MIME_TYPES
+PRIVATE = private_images.PRIVATE
 
 
 def _owned(db: Session, user_id: int) -> AlbumCover | None:
@@ -36,31 +31,7 @@ def _info(cover: AlbumCover | None) -> dict | None:
 
 
 def _normalize(data: bytes) -> tuple[bytes, int, int]:
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(BytesIO(data)) as source:
-                if source.format not in FORMATS or getattr(source, "is_animated", False):
-                    raise HTTPException(415, "움직이지 않는 JPG, PNG, WebP 이미지를 선택해 주세요.")
-                if source.width * source.height > MAX_PIXELS:
-                    raise HTTPException(422, "이미지 해상도가 너무 커요. 4천만 화소 이하로 줄여 주세요.")
-                image = ImageOps.exif_transpose(source)
-                image.thumbnail((MAX_SIDE, MAX_SIDE), Image.Resampling.LANCZOS)
-                if image.mode in ("RGBA", "LA") or "transparency" in image.info:
-                    rgba = image.convert("RGBA")
-                    rgb = Image.new("RGB", image.size, (255, 250, 244))
-                    rgb.paste(rgba, mask=rgba.getchannel("A"))
-                    image = rgb
-                else:
-                    image = image.convert("RGB")
-                output = BytesIO()
-                # Re-encode without EXIF/location metadata or the original filename.
-                image.save(output, format="JPEG", quality=90, optimize=True)
-                return output.getvalue(), image.width, image.height
-    except HTTPException:
-        raise
-    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombWarning, Image.DecompressionBombError):
-        raise HTTPException(422, "이미지를 읽지 못했어요. 정상적인 JPG, PNG, WebP 파일을 선택해 주세요.") from None
+    return private_images.normalize(data, max_pixels=MAX_PIXELS)
 
 
 @router.get("")

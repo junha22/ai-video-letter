@@ -125,10 +125,26 @@ class Recipient(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     user: Mapped[User] = relationship()
+    photo: Mapped["RecipientPhoto | None"] = relationship(uselist=False, lazy="selectin", passive_deletes=True)
 
     @property
     def child_name(self) -> str:
         return self.child_call_name or self.user.name
+
+
+class RecipientPhoto(Base):
+    """Private display photo for one recipient, separate from video/album cover images."""
+
+    __tablename__ = "recipient_photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"), unique=True)
+    path: Mapped[str] = mapped_column(String(300))
+    version: Mapped[str] = mapped_column(String(32))
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class VoiceProfile(Base):

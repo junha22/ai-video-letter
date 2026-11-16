@@ -10,7 +10,7 @@ from .auth import check_origin
 
 from .config import settings
 from .db import init_db
-from .routers import account, album_cover, auth, conversations, messages, notifications, photo, voice, watch
+from .routers import account, album_cover, auth, conversations, messages, notifications, photo, recipient_photo, voice, watch
 from .services import reply_gpu, reply_llm, s3gen, wemeet_tts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -61,7 +61,7 @@ async def mutation_origin(request: Request, call_next):
         response.headers["Cache-Control"] = "private, no-store"
     return response
 
-for module in (auth, account, voice, photo, messages, watch, notifications, conversations, album_cover):
+for module in (auth, account, voice, photo, messages, watch, notifications, conversations, album_cover, recipient_photo):
     app.include_router(module.router)
 
 
