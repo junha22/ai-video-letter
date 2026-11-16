@@ -61,16 +61,16 @@ export default function SettingsPage() {
 
   return (
     <AppShell back="/home">
-      <p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">MY LITTLE SPACE</p>
-      <h1 className="mt-3 text-[27px] font-bold tracking-tighter text-[#2b3d30] sm:text-[34px]">나의 설정</h1>
-      <p className="mb-8 mt-3 text-sm leading-7 text-[#7c8775]">나와 가족의 연결을 관리해요.</p>
+      <p className="text-[10px] font-bold tracking-[0.16em] text-[#aa6348]">MY LITTLE SPACE</p>
+      <h1 className="mt-3 text-[27px] font-bold tracking-tighter text-[#493035] sm:text-[34px]">나의 설정</h1>
+      <p className="mb-8 mt-3 text-sm leading-7 text-[#81645d]">나와 가족의 연결을 관리해요.</p>
       {error && <div className="mb-5" role="alert"><Notice tone="error">{error}</Notice></div>}
       <div className="grid items-start gap-6 lg:grid-cols-2">
       <Card className="!rounded-[28px] p-5 sm:p-7">
         <p className="px-3 pb-1 pt-2 text-sm text-stone-500">
           {me.user.name} · {me.user.has_password ? "이메일 로그인" : me.user.kakao ? "카카오 로그인" : "개발용 로그인"}
         </p>
-        {me.user.email && <p className="break-all px-3 pb-3 pt-1 text-sm font-semibold text-[#315d4b]">{me.user.email}</p>}
+        {me.user.email && <p className="break-all px-3 pb-3 pt-1 text-sm font-semibold text-[#c8493c]">{me.user.email}</p>}
         {me.consent_ok &&
           links.map((l) => (
             <Link key={l.href} href={l.href} className="flex items-center justify-between rounded-xl px-3 py-3.5 hover:bg-stone-50">

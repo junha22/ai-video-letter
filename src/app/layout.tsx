@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./album.css";
 
 export const metadata: Metadata = {
   title: "온기 - 목소리로 전하는 영상 편지",
@@ -9,7 +10,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#FAF7F2",
+  themeColor: "#fffaf4",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

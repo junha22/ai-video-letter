@@ -56,7 +56,7 @@ export default function PhotoPage() {
         <div className="grid items-start gap-6 lg:grid-cols-[0.85fr_1.15fr]">
           <PhotoGuide />
           <Card className="min-w-0 !rounded-[28px] p-6 sm:p-8">
-          <div className="mb-6 flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">MY PORTRAIT</p><h2 className="mt-2 text-xl font-bold text-[#293d31]">마음에 담을 나의 얼굴</h2></div><span className="rounded-full bg-[#f0f4ea] px-3 py-1.5 text-[10px] text-[#75896d]">사진 1장</span></div>
+          <div className="mb-6 flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold tracking-[0.16em] text-[#aa6348]">MY PORTRAIT</p><h2 className="mt-2 text-xl font-bold text-[#493035]">마음에 담을 나의 얼굴</h2></div><span className="rounded-full bg-[#fff0bd] px-3 py-1.5 text-[10px] text-[#81645d]">사진 1장</span></div>
           <div>
             {preview || photo ? (
               <div className="relative mx-auto aspect-[4/5] w-full max-w-xs overflow-hidden rounded-3xl bg-stone-200">
@@ -115,7 +115,7 @@ export default function PhotoPage() {
               완료
             </LinkButton>
           )}
-          <p className="mt-4 text-center text-[11px] leading-6 text-[#909b86]">사진을 고르면 얼굴과 화질을 확인해 드려요.</p>
+          <p className="mt-4 text-center text-[11px] leading-6 text-[#81645d]">사진을 고르면 얼굴과 화질을 확인해 드려요.</p>
           </Card>
         </div>
       )}

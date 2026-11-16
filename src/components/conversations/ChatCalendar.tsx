@@ -32,13 +32,13 @@ export function ChatCalendar({ activeDays, selected, today, onSelect }: {
   const chatDays = activeDays.filter((day) => day.startsWith(month)).length;
 
   return (
-    <div className="rounded-xl border border-[#e4e9dc] bg-[#fcfdf9] p-2.5">
+    <div className="rounded-xl border border-[#ead9cd] bg-[#fff5eb] p-2.5">
       <div className="flex items-center justify-between">
-        <button type="button" onClick={() => setMonth(addMonth(month, -1))} disabled={month <= first} aria-label="이전 달" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#6f865f] hover:bg-[#eef3e8] disabled:opacity-30"><ChevronLeft size={15} /></button>
-        <p className="text-xs font-bold text-[#4d6546]" aria-live="polite">{year}년 {value}월</p>
-        <button type="button" onClick={() => setMonth(addMonth(month, 1))} disabled={month >= last} aria-label="다음 달" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#6f865f] hover:bg-[#eef3e8] disabled:opacity-30"><ChevronRight size={15} /></button>
+        <button type="button" onClick={() => setMonth(addMonth(month, -1))} disabled={month <= first} aria-label="이전 달" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#81645d] hover:bg-[#fff5eb] disabled:opacity-30"><ChevronLeft size={15} /></button>
+        <p className="text-xs font-bold text-[#81645d]" aria-live="polite">{year}년 {value}월</p>
+        <button type="button" onClick={() => setMonth(addMonth(month, 1))} disabled={month >= last} aria-label="다음 달" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#81645d] hover:bg-[#fff5eb] disabled:opacity-30"><ChevronRight size={15} /></button>
       </div>
-      <div className="mt-1 grid grid-cols-7 text-center text-[10px] text-[#a0ad94]" aria-hidden="true">{WEEKDAYS.map((day) => <span key={day} className="py-1">{day}</span>)}</div>
+      <div className="mt-1 grid grid-cols-7 text-center text-[10px] text-[#81645d]" aria-hidden="true">{WEEKDAYS.map((day) => <span key={day} className="py-1">{day}</span>)}</div>
       <div className="grid grid-cols-7 gap-y-0.5 text-center">
         {cells.map((day, index) => {
           if (!day) return <span key={`blank-${index}`} />;
@@ -53,13 +53,13 @@ export function ChatCalendar({ activeDays, selected, today, onSelect }: {
               aria-pressed={selected === day}
               aria-label={enabled ? `${label} 대화 보기` : `${label} 대화 없음`}
               className={`relative mx-auto flex h-8 w-8 items-center justify-center rounded-full text-[11px] ${
-                selected === day ? "bg-[#315d4b] font-bold text-white"
-                  : enabled ? "font-bold text-[#315d4b] hover:bg-[#e6eedf]"
+                selected === day ? "bg-[#c8493c] font-bold text-white"
+                  : enabled ? "font-bold text-[#c8493c] hover:bg-[#ead9cd]"
                     : "cursor-default text-stone-300"
-              } ${day === today && selected !== day ? "ring-1 ring-[#aabc9c]" : ""}`}
+              } ${day === today && selected !== day ? "ring-1 ring-[#b68e7e]" : ""}`}
             >
               {Number(day.slice(8))}
-              {enabled && selected !== day && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-[#8da77d]" aria-hidden="true" />}
+              {enabled && selected !== day && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-[#81645d]" aria-hidden="true" />}
             </button>
           );
         })}
