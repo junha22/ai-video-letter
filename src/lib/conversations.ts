@@ -114,6 +114,10 @@ export type ConversationFeed = {
 export type VoiceReplyState = { available: boolean; notice_needed: boolean; notice: string | null; max_seconds: number };
 
 export type PublicConversationThread = ConversationThread & { voice_reply?: VoiceReplyState };
+/** 시니어 링크의 채팅 피드: 승인된 영상만, 대상자 정보는 공개해도 되는 것만. voice_reply는 답장 분석이 켜진 서버에서만 온다 */
+export type PublicConversationFeed = Omit<ConversationFeed, "recipient"> & {
+  recipient: PublicRecipient; expires_at: string; voice_reply?: VoiceReplyState;
+};
 export type PortfolioEvidence = { reply_id: number; text: string; date: string };
 export type MonthlyPortfolio = {
   id: number;

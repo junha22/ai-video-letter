@@ -199,6 +199,7 @@ class ReplyAnalysisTests(unittest.TestCase):
             self.assertEqual(set(reply), {"type", "id", "created_at", "date", "text", "message_id"})
             public = self.assert_ok(self.client.get("/api/watch/room-token/conversation"))
             self.assertNotIn("voice_reply", public)
+            self.assertNotIn("voice_reply", self.assert_ok(self.client.get("/api/watch/room-token/feed")))
             self.assertEqual(set(self.feed_replies(rid)[0]), {"type", "id", "created_at", "date", "text", "message_id"})
             self.assertNotIn("reply_analysis", self.assert_ok(self.client.get(f"/api/recipients/{rid}")))
             self.assertNotIn("reply_analysis", self.assert_ok(self.client.get("/api/health")))
@@ -272,6 +273,14 @@ class ReplyAnalysisTests(unittest.TestCase):
         public = self.assert_ok(self.client.get("/api/watch/room-token/conversation"))
         self.assertFalse(PRIVATE_KEYS & set(keys_deep(public)), PRIVATE_KEYS & set(keys_deep(public)))
         self.assertNotIn("밥도 잘 먹고", json.dumps(public, ensure_ascii=False))
+        # 시니어 링크의 채팅 피드도 같다: 녹음 버튼 정보만 있고, 분석·받아쓰기는 없다
+        public_feed = self.assert_ok(self.client.get("/api/watch/room-token/feed"))
+        self.assertFalse(PRIVATE_KEYS & set(keys_deep(public_feed)), PRIVATE_KEYS & set(keys_deep(public_feed)))
+        self.assertNotIn("밥도 잘 먹고", json.dumps(public_feed, ensure_ascii=False))
+        voice_events = [e for e in public_feed["events"] if e.get("kind") == "voice"]
+        self.assertEqual(len(voice_events), 5)
+        self.assertTrue(all(e["text"] == "" and e["audio_url"].startswith("/api/watch/room-token/") for e in voice_events))
+        self.assertTrue(public_feed["voice_reply"]["available"])
         audio_url = public["events"][-1]["audio_url"]
         played = self.client.get(audio_url)
         self.assertEqual((played.status_code, played.headers["content-type"]), (200, "audio/wav"))

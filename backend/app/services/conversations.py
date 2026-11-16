@@ -321,11 +321,12 @@ def conversation(db: Session, recipient: Recipient, selected_date: str | None = 
 
 
 def conversation_feed(db: Session, recipient: Recipient, before: str | None = None, after: str | None = None,
-                      page_days: int = FEED_DAYS, max_events: int = FEED_MAX_EVENTS) -> dict:
-    """Owner chat feed paged by whole days that have chat.
+                      page_days: int = FEED_DAYS, max_events: int = FEED_MAX_EVENTS, token: str | None = None) -> dict:
+    """Chat feed paged by whole days that have chat, for the owner or (with token) the recipient's link.
 
     No bound: the latest days. before=D: the days just before D (scrolling up). after=D: the days just
     after D (jumping to a date passes the day before it, then reading on). Days without chat are skipped.
+    The link sees only watchable videos, with media addressed through the token.
     """
     if before and after:
         raise HTTPException(422, "before와 after는 함께 쓸 수 없어요.")
@@ -333,7 +334,7 @@ def conversation_feed(db: Session, recipient: Recipient, before: str | None = No
         _day_start(before)
     if after:
         _day_start(after)
-    query, reply_query = _room_queries(recipient)
+    query, reply_query = _room_queries(recipient, token)
     counts = _day_counts(db, query, reply_query)
     active = sorted(counts)
     if after:
@@ -355,17 +356,18 @@ def conversation_feed(db: Session, recipient: Recipient, before: str | None = No
         timestamp = func.coalesce(Message.approved_at, Message.created_at)
         messages = db.scalars(query.where(timestamp >= start, timestamp < end)).all()
         replies = db.scalars(reply_query.where(SeniorReply.created_at >= start, SeniorReply.created_at < end)).all()
-        events = [video_event(db, message) for message in messages] + [reply_event(reply) for reply in replies]
+        events = [video_event(db, message, token) for message in messages] + [reply_event(reply, token) for reply in replies]
         events.sort(key=_event_key)
-        from .replies import attach
-        attach(db, recipient.user_id, events)
+        if not token:  # 답장 분석은 자녀(로그인 사용자)에게만. 공개 링크에는 붙이지 않는다
+            from .replies import attach
+            attach(db, recipient.user_id, events)
         has_older, has_newer = active[0] < picked[0], active[-1] > picked[-1]
     else:
         # Nothing on this side of the bound: say whether the other side still has chat.
         has_older = bool(after) and bool(active) and active[0] <= after
         has_newer = bool(before) and bool(active) and active[-1] >= before
     return {
-        "recipient": recipient_dict(db, recipient), "child_name": recipient.child_name,
+        "recipient": recipient_dict(db, recipient, public=bool(token)), "child_name": recipient.child_name,
         "today": korea_date(), "timezone": "Asia/Seoul",
         "days": [{"date": day, **counts[day]} for day in reversed(active)],
         "events": events, "start": picked[0] if picked else None, "end": picked[-1] if picked else None,
