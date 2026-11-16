@@ -11,9 +11,9 @@ MIN_SIDE = 480
 MAX_SIDE = 1280
 
 
-def _load_cascade() -> "cv2.CascadeClassifier":
+def _load_cascade(name: str = "haarcascade_frontalface_default.xml") -> "cv2.CascadeClassifier":
     # 경로에 한글이 있으면 OpenCV가 파일을 못 읽어서 메모리로 읽는다
-    path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    path = cv2.data.haarcascades + name
     with open(path, encoding="utf-8") as f:
         storage = cv2.FileStorage(f.read(), cv2.FILE_STORAGE_READ | cv2.FILE_STORAGE_MEMORY)
     cascade = cv2.CascadeClassifier()
@@ -22,6 +22,20 @@ def _load_cascade() -> "cv2.CascadeClassifier":
 
 
 _cascade = _load_cascade()
+# 어린 시절 모드로 만든 사진(조금 멀리서 찍은 구도, 매끈한 아이 얼굴)은 기본 검출기가 놓쳤다 (실험 결과 A2·A3 둘 다). alt2는 둘 다 찾았다
+_cascade_alt2 = _load_cascade("haarcascade_frontalface_alt2.xml")
+
+
+def find_face_alt(img: Image.Image) -> list[int] | None:
+    """만든 사진에서 기본 검출기(check)가 얼굴을 못 찾았을 때 alt2로 한 번 더 찾는다. 가장 큰 얼굴 [x, y, w, h]."""
+    gray = cv2.cvtColor(np.asarray(img.convert("RGB")), cv2.COLOR_RGB2GRAY)
+    min_face = int(min(gray.shape) * 0.12)
+    faces = _cascade_alt2.detectMultiScale(
+        cv2.equalizeHist(gray), scaleFactor=1.1, minNeighbors=6, minSize=(min_face, min_face)
+    )
+    if len(faces) == 0:
+        return None
+    return [int(v) for v in max(faces, key=lambda f: f[2] * f[3])]
 
 
 @dataclass

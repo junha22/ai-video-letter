@@ -163,16 +163,19 @@ def _young_photo(db: Session, photo: Photo) -> tuple[Path, list[int]]:
         return storage.abs_path(photo.path), photo.face
     data = young.generate(storage.abs_path(photo.path).read_bytes(), f"ongi_user_{photo.user_id}.jpg", settings.young_age)
     result = face.check(data)
-    if not result.face:
+    # 영상(FLOAT)은 자체 검출기로 얼굴을 자르고, 이 위치는 포스터 구도와 FLOAT 검출이 실패했을 때만 쓴다.
+    # 만든 사진은 기본 검출기가 자주 놓쳐서 다른 검출기로 한 번 더 찾는다
+    box = result.face or (face.find_face_alt(result.image) if result.image else None)
+    if not box:
         raise young.YoungPhotoError("어린 시절 사진에서 얼굴을 찾지 못했습니다.", retryable=False)
     # 만든 사진은 매끈해서 '흐림'에, 멀리서 찍은 구도라 '얼굴이 작음'에 걸릴 수 있다. 영상에는 얼굴 위치만 있으면 된다
     if result.problems:
         log.info("어린 시절 사진 검사 참고: %s", result.problems)
     path = storage.user_dir(photo.user_id, "photo") / "young.png"
     result.image.save(path)
-    photo.young_path, photo.young_face = storage.rel_path(path), result.face
+    photo.young_path, photo.young_face = storage.rel_path(path), box
     db.commit()
-    return path, result.face
+    return path, box
 
 
 def run_video(db: Session, job: Job) -> None:

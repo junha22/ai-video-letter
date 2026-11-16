@@ -2,14 +2,16 @@
 
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import numpy as np
+from PIL import Image
 
 from _test_support import TEST_ROOT, settings
 from app.models import Photo
 from app.services import audio, young
+from app.services import face as face_service
 from app.worker import _young_photo
 
 SR = audio.SAMPLE_RATE
@@ -101,6 +103,31 @@ class YoungPhotoTest(unittest.TestCase):
             path, face = _young_photo(None, photo)
         self.assertEqual(path, settings.data_dir / "users/1/photo/young.png")
         self.assertEqual(face, [5, 6, 7, 8])
+
+    def _make(self, alt_box):
+        """기본 검출기는 못 찾는 만든 사진. 두 번째 검출기 결과(alt_box)에 따라 달라진다"""
+        original = settings.data_dir / "users/2/photo/photo.jpg"
+        original.parent.mkdir(parents=True, exist_ok=True)
+        original.write_bytes(b"JPEG")
+        photo = Photo(user_id=2, path="users/2/photo/photo.jpg", width=800, height=1000, face=[1, 2, 3, 4])
+        missed = face_service.PhotoCheck(image=Image.new("RGB", (896, 1152), "white"), problems=["얼굴을 찾지 못했어요."])
+        with patch.object(settings, "comfyui_url", "http://comfy.test"), \
+                patch.object(young, "generate", return_value=b"PNG"), \
+                patch.object(face_service, "check", return_value=missed), \
+                patch.object(face_service, "find_face_alt", return_value=alt_box):
+            return photo, _young_photo(MagicMock(), photo)
+
+    def test_second_detector_finds_face(self):
+        # 조금 멀리서 찍은 구도의 아이 얼굴은 기본 검출기가 놓쳐서 영상 만들기가 실패했다
+        photo, (path, box) = self._make([248, 301, 350, 350])
+        self.assertEqual(box, [248, 301, 350, 350])
+        self.assertEqual(photo.young_face, [248, 301, 350, 350])
+        self.assertTrue(path.exists())
+
+    def test_fails_when_no_detector_finds_face(self):
+        with self.assertRaises(young.YoungPhotoError) as ctx:
+            self._make(None)
+        self.assertFalse(ctx.exception.retryable)
 
 
 if __name__ == "__main__":
