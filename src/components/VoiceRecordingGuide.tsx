@@ -47,18 +47,18 @@ export function voiceCategory(sentence: GuidedScript): VoiceCategory {
 export function VoiceCategoryOverview({ sentences }: { sentences: readonly GuidedScript[] }) {
   return (
     <section aria-label="녹음 대본 종류" className="mb-6">
-      <h2 className="mb-2 text-sm font-bold text-[#3b5341]">여러 모습의 내 목소리를 담아요</h2>
-      <p className="mb-4 text-xs leading-6 text-[#6b7767]">한 대본은 약 10초예요. 한 문장이면 기본 목소리로 등록할 수 있고, 종류를 번갈아 더 읽으면 음색 학습(선택)에 쓰여요.</p>
+      <h2 className="mb-2 text-sm font-bold text-[#493035]">여러 모습의 내 목소리를 담아요</h2>
+      <p className="mb-4 text-xs leading-6 text-[#81645d]">한 대본은 약 10초예요. 한 문장이면 기본 목소리로 등록할 수 있고, 종류를 번갈아 더 읽으면 음색 학습(선택)에 쓰여요.</p>
       <div className="grid gap-3 sm:grid-cols-3">
         {(Object.keys(CATEGORIES) as VoiceCategory[]).map((category) => {
           const count = sentences.filter((sentence) => voiceCategory(sentence) === category).length;
           if (!count) return null;
           const { label, Icon, detail, description } = CATEGORIES[category];
           return (
-            <div key={category} className="rounded-2xl border border-[#e3e8dc] bg-white px-4 py-4">
-              <p className="flex items-center gap-2 text-sm font-bold text-[#3b5341]"><Icon size={16} className="shrink-0 text-[#63816a]" aria-hidden="true" />{label}</p>
-              <p className="mt-2 text-xs font-semibold text-[#60735d]">대본 {count}개 · {detail}</p>
-              <p className="mt-2 text-xs leading-6 text-[#6b7767]">{description}</p>
+            <div key={category} className="rounded-2xl border border-[#ead9cd] bg-white px-4 py-4">
+              <p className="flex items-center gap-2 text-sm font-bold text-[#493035]"><Icon size={16} className="shrink-0 text-[#81645d]" aria-hidden="true" />{label}</p>
+              <p className="mt-2 text-xs font-semibold text-[#81645d]">대본 {count}개 · {detail}</p>
+              <p className="mt-2 text-xs leading-6 text-[#81645d]">{description}</p>
             </div>
           );
         })}
@@ -69,8 +69,8 @@ export function VoiceCategoryOverview({ sentences }: { sentences: readonly Guide
 
 export function VoiceScriptLabel({ sentence }: { sentence: GuidedScript }) {
   return (
-    <p className="mb-5 flex flex-wrap items-center gap-2 text-xs font-semibold text-[#60785b]">
-      <span className="rounded-full border border-[#dce5d6] bg-white px-3 py-1.5">{CATEGORIES[voiceCategory(sentence)].label}</span>
+    <p className="mb-5 flex flex-wrap items-center gap-2 text-xs font-semibold text-[#81645d]">
+      <span className="rounded-full border border-[#ead9cd] bg-white px-3 py-1.5">{CATEGORIES[voiceCategory(sentence)].label}</span>
       <span>약 10초</span>
     </p>
   );
@@ -80,20 +80,20 @@ export function VoiceRecordingGuide({ sentence }: { sentence: GuidedScript }) {
   const category = voiceCategory(sentence);
   const { Icon, label, hint, guide } = CATEGORIES[category];
   return (
-    <aside aria-label="이 대본 읽는 방법" className="rounded-[22px] border border-[#dfe7d8] bg-[#f1f5eb] p-5 sm:p-6">
-      <p className="flex items-center gap-2 text-xs font-semibold text-[#60735d]"><Icon size={16} aria-hidden="true" />{label} · 읽는 방법</p>
-      <h3 className="mt-3 text-lg font-bold text-[#344a38]">{sentence.hint || hint}</h3>
-      <p className="mt-2 text-sm leading-7 text-[#53634d]">{sentence.guide || guide}</p>
+    <aside aria-label="이 대본 읽는 방법" className="rounded-[22px] border border-[#ead9cd] bg-[#fff5eb] p-5 sm:p-6">
+      <p className="flex items-center gap-2 text-xs font-semibold text-[#81645d]"><Icon size={16} aria-hidden="true" />{label} · 읽는 방법</p>
+      <h3 className="mt-3 text-lg font-bold text-[#493035]">{sentence.hint || hint}</h3>
+      <p className="mt-2 text-sm leading-7 text-[#81645d]">{sentence.guide || guide}</p>
       {category === "pronunciation" && Boolean(sentence.focus?.length) && (
-        <div className="mt-4 border-t border-[#dce5d5] pt-4">
-          <p className="mb-2 text-xs font-semibold text-[#53634d]">확인하는 발음</p>
+        <div className="mt-4 border-t border-[#ead9cd] pt-4">
+          <p className="mb-2 text-xs font-semibold text-[#81645d]">확인하는 발음</p>
           <ul className="flex flex-wrap gap-2">
-            {sentence.focus?.map((focus) => <li key={focus} className="rounded-lg border border-[#dce5d5] bg-white px-2.5 py-1.5 text-xs text-[#476042]">{focus}</li>)}
+            {sentence.focus?.map((focus) => <li key={focus} className="rounded-lg border border-[#ead9cd] bg-white px-2.5 py-1.5 text-xs text-[#81645d]">{focus}</li>)}
           </ul>
         </div>
       )}
-      {category === "calm" && <p className="mt-3 text-xs leading-6 text-[#60735d]">나의 기본 음색을 담는 참조 음성 후보예요.</p>}
-      <p className="mt-3 text-xs leading-6 text-[#60735d]">안내는 읽지 않고, 대본만 녹음해 주세요.</p>
+      {category === "calm" && <p className="mt-3 text-xs leading-6 text-[#81645d]">나의 기본 음색을 담는 참조 음성 후보예요.</p>}
+      <p className="mt-3 text-xs leading-6 text-[#81645d]">안내는 읽지 않고, 대본만 녹음해 주세요.</p>
     </aside>
   );
 }

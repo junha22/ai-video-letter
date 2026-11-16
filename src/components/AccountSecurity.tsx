@@ -51,7 +51,7 @@ export function AccountSecurity({ user, disabled, onBusyChange, onSaved }: {
   };
 
   return <Card className="!rounded-[28px] p-5 sm:p-7">
-    <h2 className="flex items-center gap-2 text-lg font-bold text-[#315d4b]"><KeyRound size={21} />{hasPassword ? "비밀번호 변경" : "이메일 로그인 연결"}</h2>
+    <h2 className="flex items-center gap-2 text-lg font-bold text-[#c8493c]"><KeyRound size={21} />{hasPassword ? "비밀번호 변경" : "이메일 로그인 연결"}</h2>
     <p className="mb-6 mt-3 text-sm leading-7 text-stone-500">{hasPassword ? "4자 이상의 새 비밀번호를 설정해 주세요. 변경하면 다른 기기의 로그인도 해제돼요." : "현재 계정의 영상과 대화를 그대로 유지하면서 이메일과 비밀번호로 로그인할 수 있어요."}</p>
     <form onSubmit={submit} aria-label={hasPassword ? "비밀번호 변경" : "이메일 연결"} className="space-y-4">
       <fieldset disabled={busy || disabled} className="min-w-0 space-y-4">

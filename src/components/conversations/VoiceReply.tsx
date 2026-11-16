@@ -25,8 +25,8 @@ export function VoiceClip({ src, seconds, big = false, label = "음성 답장 �
   };
   return <div className={`flex items-center gap-3 ${big ? "" : "text-sm"}`}>
     <audio ref={audio} src={src} preload="none" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => { setPlaying(false); setTime(0); }} onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)} onError={() => setFailed(true)} />
-    <button type="button" onClick={toggle} aria-label={playing ? "멈추기" : label} className={`flex shrink-0 items-center justify-center rounded-full bg-[#315d4b] text-white shadow-sm ${big ? "h-16 w-16" : "h-10 w-10"}`}>{playing ? <Pause size={big ? 30 : 18} /> : <Play size={big ? 30 : 18} className="ml-0.5 fill-current" />}</button>
-    <span className={`font-bold tabular-nums ${big ? "text-xl" : "text-xs"} text-[#315d4b]`}>{playing || time > 0 ? `${formatClipLength(time)} / ` : ""}{formatClipLength(seconds)}</span>
+    <button type="button" onClick={toggle} aria-label={playing ? "멈추기" : label} className={`flex shrink-0 items-center justify-center rounded-full bg-[#c8493c] text-white shadow-sm ${big ? "h-16 w-16" : "h-10 w-10"}`}>{playing ? <Pause size={big ? 30 : 18} /> : <Play size={big ? 30 : 18} className="ml-0.5 fill-current" />}</button>
+    <span className={`font-bold tabular-nums ${big ? "text-xl" : "text-xs"} text-[#c8493c]`}>{playing || time > 0 ? `${formatClipLength(time)} / ` : ""}{formatClipLength(seconds)}</span>
     {failed && <span role="alert" className={`${big ? "text-lg" : "text-xs"} text-red-700`}>재생하지 못했어요. 다시 눌러 주세요.</span>}
   </div>;
 }
@@ -128,10 +128,10 @@ export function SeniorVoiceComposer({ token, state, replyTo, disabled, onSent, o
 
   const bar = Math.max(4, Math.min(100, ((level + 60) / 50) * 100));
   return <div className="mt-4">
-    {phase === "idle" || phase === "starting" ? <button type="button" onClick={begin} disabled={disabled || phase === "starting"} className="flex min-h-20 w-full items-center justify-center gap-3 rounded-[22px] bg-[#315d4b] px-5 py-4 text-2xl font-extrabold text-white shadow-sm disabled:opacity-50"><Mic size={30} />{phase === "starting" ? "마이크를 켜고 있어요" : "말로 답하기"}</button> : null}
-    {phase === "notice" && state.notice && <div className="rounded-[22px] border-2 border-[#cbd9ce] bg-[#f4f8f1] p-5">
+    {phase === "idle" || phase === "starting" ? <button type="button" onClick={begin} disabled={disabled || phase === "starting"} className="flex min-h-20 w-full items-center justify-center gap-3 rounded-[22px] bg-[#c8493c] px-5 py-4 text-2xl font-extrabold text-white shadow-sm disabled:opacity-50"><Mic size={30} />{phase === "starting" ? "마이크를 켜고 있어요" : "말로 답하기"}</button> : null}
+    {phase === "notice" && state.notice && <div className="rounded-[22px] border-2 border-[#ead9cd] bg-[#f4f8f1] p-5">
       <p className="text-xl font-bold leading-9">{state.notice}</p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2"><button type="button" onClick={acceptNotice} className="min-h-16 rounded-2xl bg-[#315d4b] px-4 text-xl font-bold text-white">알겠어요, 말로 답할게요</button><button type="button" onClick={() => setPhase("idle")} className="min-h-16 rounded-2xl border-2 border-[#cbd9ce] bg-white px-4 text-xl font-bold text-[#315d4b]">그만두기</button></div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2"><button type="button" onClick={acceptNotice} className="min-h-16 rounded-2xl bg-[#c8493c] px-4 text-xl font-bold text-white">알겠어요, 말로 답할게요</button><button type="button" onClick={() => setPhase("idle")} className="min-h-16 rounded-2xl border-2 border-[#ead9cd] bg-white px-4 text-xl font-bold text-[#c8493c]">그만두기</button></div>
     </div>}
     {phase === "recording" && <div className="rounded-[22px] border-2 border-[#e7b9ad] bg-[#fff4f0] p-5 text-center">
       <p className="text-xl font-bold text-[#a8321e]">듣고 있어요. 편하게 말씀해 주세요.</p>
@@ -139,12 +139,12 @@ export function SeniorVoiceComposer({ token, state, replyTo, disabled, onSent, o
       <div className="mx-auto mt-4 h-4 w-full max-w-sm overflow-hidden rounded-full bg-white" aria-hidden="true"><div className="h-full rounded-full bg-[#e0735b] transition-[width]" style={{ width: `${bar}%` }} /></div>
       <button type="button" onClick={() => { void finish(); }} className="mt-5 flex min-h-20 w-full items-center justify-center gap-3 rounded-[22px] bg-[#a8321e] text-2xl font-extrabold text-white"><Square size={26} className="fill-current" />다 했어요</button>
     </div>}
-    {(phase === "review" || phase === "sending") && take && <div className="rounded-[22px] border-2 border-[#cbd9ce] bg-white p-5">
+    {(phase === "review" || phase === "sending") && take && <div className="rounded-[22px] border-2 border-[#ead9cd] bg-white p-5">
       <p className="mb-3 text-xl font-bold">녹음한 목소리를 들어 보세요</p>
       <VoiceClip src={take.url} seconds={take.duration} big label="녹음 다시 듣기" />
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <button type="button" onClick={() => { void record(); }} disabled={phase === "sending"} className="flex min-h-16 items-center justify-center gap-2 rounded-2xl border-2 border-[#cbd9ce] px-4 text-xl font-bold text-[#315d4b] disabled:opacity-50"><RotateCcw size={24} />다시 하기</button>
-        <button type="button" onClick={() => { void send(); }} disabled={phase === "sending"} className="flex min-h-16 items-center justify-center gap-2 rounded-2xl bg-[#315d4b] px-4 text-xl font-bold text-white disabled:opacity-60"><Send size={24} />{phase === "sending" ? "보내고 있어요" : "보내기"}</button>
+        <button type="button" onClick={() => { void record(); }} disabled={phase === "sending"} className="flex min-h-16 items-center justify-center gap-2 rounded-2xl border-2 border-[#ead9cd] px-4 text-xl font-bold text-[#c8493c] disabled:opacity-50"><RotateCcw size={24} />다시 하기</button>
+        <button type="button" onClick={() => { void send(); }} disabled={phase === "sending"} className="flex min-h-16 items-center justify-center gap-2 rounded-2xl bg-[#c8493c] px-4 text-xl font-bold text-white disabled:opacity-60"><Send size={24} />{phase === "sending" ? "보내고 있어요" : "보내기"}</button>
       </div>
     </div>}
     {error && <p role="alert" className="mt-3 text-lg font-bold leading-8 text-red-700">{error}</p>}

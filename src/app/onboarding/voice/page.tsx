@@ -232,8 +232,8 @@ export default function VoicePage() {
 
   const intro = (
     <VoiceWorkspace
-      reading={<><p className="mb-4 text-xs font-semibold text-[#6b8566]">녹음 전, 잠깐만 준비해 주세요</p><h3 className="mb-5 text-2xl font-bold leading-relaxed tracking-tight text-[#344a38]">가장 편안한<br />나의 목소리로.</h3><ul className="space-y-3 text-sm leading-7 text-[#7b8574]"><li>TV나 음악을 끄고 조용한 곳에서 녹음해 주세요.</li><li>휴대폰은 입에서 한 뼘 정도 떨어뜨려 주세요.</li><li>부모님께 말하듯 평소 말투로 읽으면 더 자연스러워요.</li><li>중간에 그만둬도 녹음한 문장은 저장돼요.</li></ul></>}
-      controls={<><span className="mb-5 flex h-20 w-20 items-center justify-center rounded-full border border-white/20 bg-white/10"><Mic className="h-8 w-8 text-[#e9eddb]" strokeWidth={1.5} aria-hidden="true" /></span><p className="mb-5 text-sm font-medium text-[#dae4d3]">목소리를 들려주실 준비가 됐나요?</p><Button onClick={openMic} className="w-full !bg-[#f0ecd9] !text-[#284f3e] hover:!bg-white"><Mic className="h-4 w-4" /> 마이크 켜기</Button><p className="mt-4 text-center text-[11px] leading-6 text-[#a7bda6]">편안한 목소리로, 한 문장씩 시작해요.</p></>}
+      reading={<><p className="mb-4 text-xs font-semibold text-[#81645d]">녹음 전, 잠깐만 준비해 주세요</p><h3 className="mb-5 text-2xl font-bold leading-relaxed tracking-tight text-[#493035]">가장 편안한<br />나의 목소리로.</h3><ul className="space-y-3 text-sm leading-7 text-[#81645d]"><li>TV나 음악을 끄고 조용한 곳에서 녹음해 주세요.</li><li>휴대폰은 입에서 한 뼘 정도 떨어뜨려 주세요.</li><li>부모님께 말하듯 평소 말투로 읽으면 더 자연스러워요.</li><li>중간에 그만둬도 녹음한 문장은 저장돼요.</li></ul></>}
+      controls={<><span className="mb-5 flex h-20 w-20 items-center justify-center rounded-full border border-white/20 bg-white/10"><Mic className="h-8 w-8 text-[#ead9cd]" strokeWidth={1.5} aria-hidden="true" /></span><p className="mb-5 text-sm font-medium text-[#ead9cd]">목소리를 들려주실 준비가 됐나요?</p><Button onClick={openMic} className="w-full !bg-[#fff0bd] !text-[#70443e] hover:!bg-white"><Mic className="h-4 w-4" /> 마이크 켜기</Button><p className="mt-4 text-center text-[11px] leading-6 text-[#b68e7e]">편안한 목소리로, 한 문장씩 시작해요.</p></>}
     />
   );
 
@@ -254,7 +254,7 @@ export default function VoicePage() {
       )}
 
       <VoiceWorkspace
-        reading={<><VoiceScriptLabel sentence={current} /><p className="text-[25px] font-semibold leading-[1.8] tracking-tight text-[#344a38] sm:text-[30px]">{current.text}</p><p className="mt-7 text-xs leading-6 text-[#6b7767]">읽는 방법을 확인한 뒤, 대본만 소리 내어 읽어 주세요.</p></>}
+        reading={<><VoiceScriptLabel sentence={current} /><p className="text-[25px] font-semibold leading-[1.8] tracking-tight text-[#493035] sm:text-[30px]">{current.text}</p><p className="mt-7 text-xs leading-6 text-[#81645d]">읽는 방법을 확인한 뒤, 대본만 소리 내어 읽어 주세요.</p></>}
         guide={<VoiceRecordingGuide sentence={current} />}
         controls={<>
           {phase === "recording" ? (
@@ -269,13 +269,13 @@ export default function VoicePage() {
             <button
               onClick={start}
               disabled={phase === "checking"}
-              className="flex h-24 w-24 items-center justify-center rounded-full bg-[#f0ecd9] text-[#284f3e] shadow-[0_0_0_10px_rgba(255,255,255,0.05)] disabled:opacity-50"
+              className="flex h-24 w-24 items-center justify-center rounded-full bg-[#fff0bd] text-[#70443e] shadow-[0_0_0_10px_rgba(255,255,255,0.05)] disabled:opacity-50"
               aria-label="녹음 시작"
             >
               <Mic className="h-10 w-10" />
             </button>
           )}
-          <p className="mt-6 text-sm font-medium text-[#e5ecdc]">
+          <p className="mt-6 text-sm font-medium text-[#ead9cd]">
             {phase === "recording" ? "다 읽으면 눌러 주세요" : phase === "checking" ? "확인하고 있어요…" : "눌러서 녹음 시작"}
           </p>
 
@@ -288,9 +288,9 @@ export default function VoicePage() {
                 style={{ width: `${meter * 100}%` }}
               />
             </div>
-            {levelHint && <p className="mt-3 text-center text-xs font-medium text-[#d5e3cd]">{levelHint}</p>}
+            {levelHint && <p className="mt-3 text-center text-xs font-medium text-[#ead9cd]">{levelHint}</p>}
           </div>
-          <p className="mt-5 hidden text-[10px] text-[#9bb398] sm:block"><span className="mr-1.5 rounded border border-white/20 px-2 py-1 font-mono text-[9px]">SPACE</span>녹음 시작 · 끝내기</p>
+          <p className="mt-5 hidden text-[10px] text-[#b68e7e] sm:block"><span className="mr-1.5 rounded border border-white/20 px-2 py-1 font-mono text-[9px]">SPACE</span>녹음 시작 · 끝내기</p>
         </>}
       />
 
@@ -360,8 +360,8 @@ export default function VoicePage() {
             </>
           )}
         </Card>
-        <div className="rounded-3xl border border-[#dce9db] bg-[#edf3eb] p-6 sm:p-8">
-        <p className="mb-4 text-lg font-bold text-[#315d4b]">다음으로 마음을 담을 사진을 준비해요</p>
+        <div className="rounded-3xl border border-[#ead9cd] bg-[#fff5eb] p-6 sm:p-8">
+        <p className="mb-4 text-lg font-bold text-[#c8493c]">다음으로 마음을 담을 사진을 준비해요</p>
         <LinkButton href="/onboarding/photo" className="w-full">
           다음: 얼굴 사진 올리기
         </LinkButton>
@@ -375,7 +375,7 @@ export default function VoicePage() {
 
         {tuningOpen && (
           <Card className="mt-6">
-            <p className="flex items-center gap-2 text-lg font-bold text-[#315d4b]">
+            <p className="flex items-center gap-2 text-lg font-bold text-[#c8493c]">
               <Sparkles className="h-5 w-5" aria-hidden="true" />
               {notice ? "다시 학습해 볼 수 있어요" : "목소리를 더 닮게 만들기 (선택)"}
             </p>
@@ -389,7 +389,7 @@ export default function VoicePage() {
               학습은 5분쯤 걸리고 그동안에도 영상을 만들 수 있어요. 더 닮지 않으면 기본 목소리를 그대로 써요.
             </p>
             <div className="mt-4">
-              <div className="mb-2 flex justify-between text-xs text-[#788671]">
+              <div className="mb-2 flex justify-between text-xs text-[#81645d]">
                 <span>음색 학습용 녹음</span>
                 <span>{formatSeconds(voice.total_seconds)} / {formatSeconds(voice.target_seconds)}</span>
               </div>
@@ -440,15 +440,15 @@ export default function VoicePage() {
         desc="대본을 한 문장씩 읽어 주세요. 한 문장만 끝까지 읽어도 기본 목소리로 등록할 수 있어요."
       />
 
-      <div className="mb-6 rounded-2xl border border-[#e4e9dd] bg-white px-5 py-4 sm:px-6">
-        <div className="mb-3 flex items-center justify-between gap-3 text-xs text-[#788671]">
-          <span className="flex items-center gap-2"><Mic size={14} className="text-[#63816a]" aria-hidden="true" />나의 목소리 준비</span>
+      <div className="mb-6 rounded-2xl border border-[#ead9cd] bg-white px-5 py-4 sm:px-6">
+        <div className="mb-3 flex items-center justify-between gap-3 text-xs text-[#81645d]">
+          <span className="flex items-center gap-2"><Mic size={14} className="text-[#81645d]" aria-hidden="true" />나의 목소리 준비</span>
           <span>
             {formatSeconds(voice.total_seconds)} / {formatSeconds(voice.target_seconds)}
           </span>
         </div>
         <Progress value={progress} />
-        <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#6f7c69]">
+        <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#81645d]">
           <Milestone done={voice.basic_ready} label="기본 등록 · 대본 한 문장" />
           {voice.tuning_available && <Milestone done={reachedTarget} label={`음색 학습(선택) · ${formatSeconds(voice.target_seconds)}`} />}
         </ul>

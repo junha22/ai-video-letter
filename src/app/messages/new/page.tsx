@@ -75,18 +75,18 @@ export default function NewMessagePage() {
 
   return (
     <AppShell back={recipient ? `/conversations/${recipient.id}` : "/letters"}>
-      <p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">WRITE YOUR HEART</p>
-      <h1 className="mt-3 text-[27px] font-bold tracking-tighter text-[#2b3d30] sm:text-[34px]">{recipient?.nickname || "소중한 분"}께 무슨 말을 전할까요?</h1>
-      <p className="mt-3 text-sm leading-7 text-[#7c8775]">한 줄만 쓰면 AI가 15~20초 영상 대본으로 다듬어 드려요.</p>
+      <p className="text-[10px] font-bold tracking-[0.16em] text-[#aa6348]">WRITE YOUR HEART</p>
+      <h1 className="mt-3 text-[27px] font-bold tracking-tighter text-[#493035] sm:text-[34px]">{recipient?.nickname || "소중한 분"}께 무슨 말을 전할까요?</h1>
+      <p className="mt-3 text-sm leading-7 text-[#81645d]">한 줄만 쓰면 AI가 15~20초 영상 대본으로 다듬어 드려요.</p>
       <div className="mt-6 flex flex-wrap items-end gap-3">
-        <div className="min-w-48 flex-1 sm:max-w-sm"><label htmlFor="letter-recipient" className="mb-2 block text-sm font-bold text-[#3e5541]">받는 분</label><select id="letter-recipient" value={recipientId} disabled={busy || !recipients} onChange={(e) => { setRecipientId(e.target.value); setError(null); }} className="min-h-12 w-full rounded-xl border border-[#d6dfd2] bg-white px-4 py-3"><option value="" disabled>{recipients ? "받는 분을 선택해 주세요" : "받는 분을 불러오고 있어요"}</option>{recipients?.map((r) => <option key={r.id} value={r.id}>{r.nickname} · {r.relation}</option>)}</select></div>
-        <Link href="/letters" className="inline-flex min-h-12 items-center rounded-xl px-3 text-sm font-bold text-[#315d4b] underline underline-offset-4">받는 분 추가·관리</Link>
+        <div className="min-w-48 flex-1 sm:max-w-sm"><label htmlFor="letter-recipient" className="mb-2 block text-sm font-bold text-[#493035]">받는 분</label><select id="letter-recipient" value={recipientId} disabled={busy || !recipients} onChange={(e) => { setRecipientId(e.target.value); setError(null); }} className="min-h-12 w-full rounded-xl border border-[#ead9cd] bg-white px-4 py-3"><option value="" disabled>{recipients ? "받는 분을 선택해 주세요" : "받는 분을 불러오고 있어요"}</option>{recipients?.map((r) => <option key={r.id} value={r.id}>{r.nickname} · {r.relation}</option>)}</select></div>
+        <Link href="/letters" className="inline-flex min-h-12 items-center rounded-xl px-3 text-sm font-bold text-[#c8493c] underline underline-offset-4">받는 분 추가·관리</Link>
       </div>
 
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[1.5fr_1fr]">
-      <section className="min-w-0 rounded-[28px] border border-[#e3e8df] bg-white p-6 shadow-[0_12px_40px_rgba(36,62,44,0.04)] sm:p-8">
-      <div className="mb-6 flex items-center justify-between border-b border-[#edf0e8] pb-5"><h2 className="text-base font-bold text-[#3e5541]">오늘의 마음 한 줄</h2><span className="text-xs text-[#9aa48e]">To. {recipient?.nickname}</span></div>
-      <p className="mb-3 text-[11px] text-[#8a9681]">어떤 이야기를 전하고 싶으세요?</p>
+      <div className="album-compose-spread mt-8 grid items-start gap-6 lg:grid-cols-[1.5fr_1fr]">
+      <section className="album-letter-paper min-w-0 rounded-[28px] border border-[#ead9cd] bg-white p-6 shadow-[0_12px_40px_rgba(36,62,44,0.04)] sm:p-8">
+      <div className="mb-6 flex items-center justify-between border-b border-[#ead9cd] pb-5"><h2 className="text-base font-bold text-[#493035]">오늘의 마음 한 줄</h2><span className="text-xs text-[#81645d]">To. {recipient?.nickname}</span></div>
+      <p className="mb-3 text-[11px] text-[#81645d]">어떤 이야기를 전하고 싶으세요?</p>
       <div className="flex flex-wrap gap-2">
         {TEMPLATES.map((t) => (
           <button
@@ -94,7 +94,7 @@ export default function NewMessagePage() {
             aria-pressed={template === t.key}
             onClick={() => setTemplate(t.key)}
             className={`rounded-full border px-4 py-2 text-[15px] font-semibold ${
-              template === t.key ? "border-[#315d4b] bg-[#315d4b] text-white" : "border-[#e5eadf] bg-[#fafbf7] text-[#809074] hover:border-[#bdcdb4]"
+              template === t.key ? "border-[#c8493c] bg-[#c8493c] text-white" : "border-[#ead9cd] bg-[#fffaf4] text-[#81645d] hover:border-[#b68e7e]"
             }`}
           >
             {t.label}
@@ -111,15 +111,15 @@ export default function NewMessagePage() {
         maxLength={200}
         autoFocus
         placeholder={`예: ${current.example}`}
-        className="mt-6 w-full resize-y rounded-2xl border border-[#e8ecdf] bg-[#fbfcf8] px-5 py-5 text-base leading-9 text-[#3e5541] outline-none placeholder:text-[#a3ad96] focus:border-[#9bb38b] focus:ring-4 focus:ring-[#f0f4e8]"
+        className="mt-6 w-full resize-y rounded-2xl border border-[#ead9cd] bg-[#fffaf4] px-5 py-5 text-base leading-9 text-[#493035] outline-none placeholder:text-[#81645d] focus:border-[#81645d] focus:ring-4 focus:ring-[#fff5eb]"
       />
-      <p className="mb-5 mt-3 text-right text-[11px] text-[#9aa48e]">{memo.length} / 200</p>
+      <p className="mb-5 mt-3 text-right text-[11px] text-[#81645d]">{memo.length} / 200</p>
 
       {error && <Notice tone="error">{error}{recipients === null && <button onClick={loadRecipients} className="ml-3 font-bold underline">받는 분 다시 불러오기</button>}</Notice>}
       <Button onClick={submit} disabled={!memo.trim() || !recipient} loading={busy} className="mt-4 w-full py-4 text-lg">
         {!busy && <Sparkles className="h-5 w-5" />} {busy ? "분위기가 다른 대본 3개를 쓰고 있어요…" : "대본 만들기"}
       </Button>
-      {busy && <p className="mt-3 text-center text-sm text-[#9aa48e]">10초 정도 걸릴 수 있어요</p>}
+      {busy && <p className="mt-3 text-center text-sm text-[#81645d]">10초 정도 걸릴 수 있어요</p>}
       </section>
       <LetterCompanion recipient={recipient?.nickname ?? "부모님"} example={current.example} />
       </div>

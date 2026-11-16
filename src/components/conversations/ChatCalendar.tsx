@@ -41,13 +41,13 @@ export function ChatCalendar({ activeDays, selected, today, onSelect, large = fa
   const chatDays = activeDays.filter((day) => day.startsWith(month)).length;
 
   return (
-    <div className={`border border-[#e4e9dc] bg-[#fcfdf9] ${z.box}`}>
+    <div className={`border border-[#ead9cd] bg-[#fff5eb] ${z.box}`}>
       <div className="flex items-center justify-between">
-        <button type="button" onClick={() => setMonth(addMonth(month, -1))} disabled={month <= first} aria-label="이전 달" className={`inline-flex items-center justify-center text-[#6f865f] hover:bg-[#eef3e8] disabled:opacity-30 ${z.nav}`}><ChevronLeft size={z.icon} /></button>
-        <p className={`font-bold text-[#4d6546] ${z.title}`} aria-live="polite">{year}년 {value}월</p>
-        <button type="button" onClick={() => setMonth(addMonth(month, 1))} disabled={month >= last} aria-label="다음 달" className={`inline-flex items-center justify-center text-[#6f865f] hover:bg-[#eef3e8] disabled:opacity-30 ${z.nav}`}><ChevronRight size={z.icon} /></button>
+        <button type="button" onClick={() => setMonth(addMonth(month, -1))} disabled={month <= first} aria-label="이전 달" className={`inline-flex items-center justify-center text-[#81645d] hover:bg-[#fff5eb] disabled:opacity-30 ${z.nav}`}><ChevronLeft size={z.icon} /></button>
+        <p className={`font-bold text-[#81645d] ${z.title}`} aria-live="polite">{year}년 {value}월</p>
+        <button type="button" onClick={() => setMonth(addMonth(month, 1))} disabled={month >= last} aria-label="다음 달" className={`inline-flex items-center justify-center text-[#81645d] hover:bg-[#fff5eb] disabled:opacity-30 ${z.nav}`}><ChevronRight size={z.icon} /></button>
       </div>
-      <div className={`mt-1 grid grid-cols-7 text-center text-[#a0ad94] ${z.week}`} aria-hidden="true">{WEEKDAYS.map((day) => <span key={day} className={z.weekCell}>{day}</span>)}</div>
+      <div className={`mt-1 grid grid-cols-7 text-center text-[#81645d] ${z.week}`} aria-hidden="true">{WEEKDAYS.map((day) => <span key={day} className={z.weekCell}>{day}</span>)}</div>
       <div className="grid grid-cols-7 gap-y-0.5 text-center">
         {cells.map((day, index) => {
           if (!day) return <span key={`blank-${index}`} />;
@@ -62,13 +62,13 @@ export function ChatCalendar({ activeDays, selected, today, onSelect, large = fa
               aria-pressed={selected === day}
               aria-label={enabled ? `${label} 대화 보기` : `${label} 대화 없음`}
               className={`relative mx-auto flex items-center justify-center rounded-full ${z.day} ${
-                selected === day ? "bg-[#315d4b] font-bold text-white"
-                  : enabled ? "font-bold text-[#315d4b] hover:bg-[#e6eedf]"
+                selected === day ? "bg-[#c8493c] font-bold text-white"
+                  : enabled ? "font-bold text-[#c8493c] hover:bg-[#ead9cd]"
                     : "cursor-default text-stone-300"
-              } ${day === today && selected !== day ? "ring-1 ring-[#aabc9c]" : ""}`}
+              } ${day === today && selected !== day ? "ring-1 ring-[#b68e7e]" : ""}`}
             >
               {Number(day.slice(8))}
-              {enabled && selected !== day && <span className={`absolute h-1 w-1 rounded-full bg-[#8da77d] ${z.dot}`} aria-hidden="true" />}
+              {enabled && selected !== day && <span className={`absolute h-1 w-1 rounded-full bg-[#81645d] ${z.dot}`} aria-hidden="true" />}
             </button>
           );
         })}

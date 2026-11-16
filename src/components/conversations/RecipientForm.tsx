@@ -6,7 +6,7 @@ import type { Recipient } from "@/lib/conversations";
 import type { Parent } from "@/lib/types";
 import { Button, Notice } from "@/components/ui";
 
-const INPUT = "mt-2 w-full rounded-xl border border-[#dce3d7] bg-[#fcfcf8] px-4 py-3 text-sm text-stone-800 outline-none focus:border-[#79967c] focus:ring-2 focus:ring-[#dce8d8]";
+const INPUT = "mt-2 w-full rounded-xl border border-[#ead9cd] bg-[#fcfcf8] px-4 py-3 text-sm text-stone-800 outline-none focus:border-[#81645d] focus:ring-2 focus:ring-[#ead9cd]";
 
 export function RecipientForm({ recipient, onSaved, onCancel }: {
   recipient?: Recipient;

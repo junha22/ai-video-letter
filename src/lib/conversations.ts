@@ -5,7 +5,10 @@ export const CONVERSATION_TIMEZONE = "Asia/Seoul";
 /** 자녀 화면의 답장 분석 켜기 상태 (서버 기능 REPLY_ANALYSIS_ENABLED가 켜져 있을 때만 온다) */
 export type ReplyAnalysisState = { enabled: boolean; senior_notice: boolean; consent_text: string; version: string };
 
+export type RecipientPhoto = { url: string; width: number; height: number; updated_at: string };
+
 export type Recipient = Parent & {
+  photo?: RecipientPhoto | null;
   id: number;
   is_primary: boolean;
   reply_analysis?: ReplyAnalysisState;

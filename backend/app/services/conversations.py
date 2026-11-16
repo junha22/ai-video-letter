@@ -13,6 +13,7 @@ from sqlalchemy import and_, case, func, or_, select, text, union_all, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .private_images import image_info
 from ..config import settings
 from ..db import iso, utcnow
 from ..models import Message, MonthlyPortfolio, Notification, ParentProfile, Recipient, SeniorReply, User
@@ -192,6 +193,7 @@ def recipient_dict(db: Session, recipient: Recipient, public: bool = False, stat
         "is_primary": recipient.legacy_parent_id is not None,
         **stats,
     })
+    result["photo"] = image_info(recipient.photo, f"/api/recipients/{recipient.id}/photo/image")
     if settings.reply_analysis_enabled:
         from .replies import owner_state
         result["reply_analysis"] = owner_state(db, recipient)

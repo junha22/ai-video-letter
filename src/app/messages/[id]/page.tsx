@@ -115,7 +115,7 @@ export default function MessagePage() {
 
   return (
     <AppShell back={m.recipient_id ? `/conversations/${m.recipient_id}` : "/letters"} onNotification={load}>
-      {m.recipient_id && <Link href={`/conversations/${m.recipient_id}`} className="mb-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#e9f0e9] px-4 py-2 text-sm font-bold text-[#315d4b]">{m.parent_nickname}님과 대화 이어보기</Link>}
+      {m.recipient_id && <Link href={`/conversations/${m.recipient_id}`} className="mb-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#fae8de] px-4 py-2 text-sm font-bold text-[#c8493c]">{m.parent_nickname}님과 대화 이어보기</Link>}
       <div className="mb-4 flex items-center gap-2 text-sm">
         <span className="rounded-full bg-ongi-100 px-2.5 py-1 font-bold text-ongi-900">{m.template_label}</span>
         <span className="text-stone-500">{formatDate(m.created_at)}</span>
@@ -137,7 +137,7 @@ export default function MessagePage() {
         <div className="grid items-start gap-6 lg:grid-cols-[1.1fr_1fr]">
           {/* 대본 */}
           <Card className="min-w-0 !rounded-[28px] p-6 sm:p-8">
-            <p className="mb-5 text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">01 · YOUR WORDS</p>
+            <p className="mb-5 text-[10px] font-bold tracking-[0.16em] text-[#aa6348]">01 · YOUR WORDS</p>
             <div className="mb-2 flex items-center justify-between">
               <h2 className="font-bold text-stone-900">영상 대본</h2>
               <span className="text-xs font-semibold text-stone-500">{SOURCE_LABEL[m.script_source]}</span>
@@ -148,7 +148,7 @@ export default function MessagePage() {
                 onChange={(e) => setDraft(e.target.value)}
                 rows={5}
                 maxLength={400}
-                className="mt-3 w-full rounded-2xl border border-[#e3e8da] bg-[#fafbf7] p-5 text-base leading-9 text-[#3e5541] outline-none focus:border-[#9bb38b] focus:ring-4 focus:ring-[#f0f4e8]"
+                className="mt-3 w-full rounded-2xl border border-[#ead9cd] bg-[#fffaf4] p-5 text-base leading-9 text-[#493035] outline-none focus:border-[#81645d] focus:ring-4 focus:ring-[#fff5eb]"
               />
             ) : (
               <p className="rounded-2xl bg-[#FFFDF9] p-3 text-[17px] leading-relaxed">{m.script}</p>
@@ -203,8 +203,8 @@ export default function MessagePage() {
           </Card>
 
           {/* 영상 */}
-          <div className="min-w-0 rounded-[28px] border border-[#e3e8df] bg-white p-6 shadow-[0_12px_40px_rgba(36,62,44,0.04)] sm:p-8">
-            <div className="mb-5 border-b border-[#edf0e8] pb-5"><p className="text-[10px] font-bold tracking-[0.16em] text-[#a77c65]">02 · A MOMENT TOGETHER</p><h2 className="mt-2 text-lg font-semibold text-[#3e5541]">얼굴과 목소리로 전하는 편지</h2></div>
+          <div className="min-w-0 rounded-[28px] border border-[#ead9cd] bg-white p-6 shadow-[0_12px_40px_rgba(36,62,44,0.04)] sm:p-8">
+            <div className="mb-5 border-b border-[#ead9cd] pb-5"><p className="text-[10px] font-bold tracking-[0.16em] text-[#aa6348]">02 · A MOMENT TOGETHER</p><h2 className="mt-2 text-lg font-semibold text-[#493035]">얼굴과 목소리로 전하는 편지</h2></div>
             {(m.status === "draft" || m.status === "failed") &&
               (me.can_render ? (
                 <>
@@ -315,7 +315,7 @@ export default function MessagePage() {
 function EmotionPicker({ value, onChange, disabled }: { value: Emotion; onChange: (e: Emotion) => void; disabled: boolean }) {
   return (
     <div className="mt-3">
-      <p className="mb-2 text-[11px] text-[#8a9681]">영상 속 표정</p>
+      <p className="mb-2 text-[11px] text-[#81645d]">영상 속 표정</p>
       <div className="grid grid-cols-4 gap-2" role="group" aria-label="영상 속 표정">
         {EMOTIONS.map((e) => (
           <button
@@ -325,7 +325,7 @@ function EmotionPicker({ value, onChange, disabled }: { value: Emotion; onChange
             disabled={disabled}
             onClick={() => onChange(e.key)}
             className={`rounded-full border px-2 py-2 text-[15px] font-semibold disabled:opacity-60 ${
-              value === e.key ? "border-[#315d4b] bg-[#315d4b] text-white" : "border-[#e5eadf] bg-[#fafbf7] text-[#809074] hover:border-[#bdcdb4]"
+              value === e.key ? "border-[#c8493c] bg-[#c8493c] text-white" : "border-[#ead9cd] bg-[#fffaf4] text-[#81645d] hover:border-[#b68e7e]"
             }`}
           >
             {e.label}
@@ -339,17 +339,17 @@ function EmotionPicker({ value, onChange, disabled }: { value: Emotion; onChange
 // 어린 시절 모습·목소리로 만들기 (테스트 기능). 사진은 사용자당 처음 한 번만 만들어서 첫 영상은 더 오래 걸린다
 function YoungToggle({ value, onChange, disabled }: { value: boolean; onChange: (v: boolean) => void; disabled: boolean }) {
   return (
-    <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-2xl border border-[#e5eadf] bg-[#fafbf7] px-4 py-3">
+    <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-2xl border border-[#ead9cd] bg-[#fffaf4] px-4 py-3">
       <input
         type="checkbox"
         checked={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        className="h-5 w-5 accent-[#315d4b]"
+        className="h-5 w-5 accent-[#c8493c]"
       />
       <span>
-        <span className="block text-[15px] font-semibold text-[#3e5541]">어린 시절 모습으로 만들기 (테스트)</span>
-        <span className="block text-[12px] text-[#8a9681]">사진과 목소리를 어린 시절처럼 바꿔요. 처음 한 번은 사진을 만드느라 더 걸려요.</span>
+        <span className="block text-[15px] font-semibold text-[#493035]">어린 시절 모습으로 만들기 (테스트)</span>
+        <span className="block text-[12px] text-[#81645d]">사진과 목소리를 어린 시절처럼 바꿔요. 처음 한 번은 사진을 만드느라 더 걸려요.</span>
       </span>
     </label>
   );

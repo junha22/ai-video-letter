@@ -105,14 +105,14 @@ export default function WatchPage() {
     <header className="relative shrink-0 border-b border-[#e6e3d7] px-4 pb-3 pt-4 sm:px-6">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-base font-bold text-[#315d4b]"><Heart size={19} /> 온기 · 영상 편지</p>
+          <p className="flex items-center gap-1.5 text-base font-bold text-[#c8493c]"><Heart size={19} /> 온기 · 영상 편지</p>
           <h1 className="mt-1 break-keep text-[24px] font-extrabold leading-snug">{childName ? `${childName}님과 나누는 이야기` : "우리의 대화방"}</h1>
         </div>
-        <button type="button" onClick={() => setCalendarOpen((open) => !open)} aria-expanded={calendarOpen} aria-controls="senior-calendar" className={`flex min-h-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl border-2 px-3 text-sm font-bold ${calendarOpen ? "border-[#315d4b] bg-[#315d4b] text-white" : "border-[#cbd9ce] bg-white text-[#315d4b]"}`}>{calendarOpen ? <X size={24} /> : <CalendarDays size={24} />}{calendarOpen ? "닫기" : "날짜로 찾기"}</button>
+        <button type="button" onClick={() => setCalendarOpen((open) => !open)} aria-expanded={calendarOpen} aria-controls="senior-calendar" className={`flex min-h-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl border-2 px-3 text-sm font-bold ${calendarOpen ? "border-[#c8493c] bg-[#c8493c] text-white" : "border-[#ead9cd] bg-white text-[#c8493c]"}`}>{calendarOpen ? <X size={24} /> : <CalendarDays size={24} />}{calendarOpen ? "닫기" : "날짜로 찾기"}</button>
       </div>
       <p className="mt-2 text-sm leading-6 text-stone-500">보낸 분이 승인한 말을 AI 목소리와 얼굴로 만든 영상이에요. 답글은 보낸 분께 전달되고 월간 대화 기록에 쓰여요.{voice ? " 이 대화방에서는 답글(음성은 받아쓴 글)을 네이버 클로바 AI로 정리해 보낸 분께만 보여 드려요. 음성 파일은 보내지 않아요. 진단이 아니에요." : ""}</p>
-      {calendarOpen && <div id="senior-calendar" className="absolute inset-x-3 top-full z-30 mt-2 rounded-3xl bg-white p-2 shadow-2xl ring-1 ring-[#dfe5d7]">
-        <p className="px-2 pb-2 pt-1 text-lg font-bold text-[#315d4b]">대화한 날을 눌러 주세요</p>
+      {calendarOpen && <div id="senior-calendar" className="absolute inset-x-3 top-full z-30 mt-2 rounded-3xl bg-white p-2 shadow-2xl ring-1 ring-[#ead9cd]">
+        <p className="px-2 pb-2 pt-1 text-lg font-bold text-[#c8493c]">대화한 날을 눌러 주세요</p>
         <ChatCalendar large activeDays={days.map((day) => day.date)} selected={focusDate} today={today} onSelect={(date) => { setCalendarOpen(false); void feed.jumpTo(date); }} />
       </div>}
     </header>
@@ -123,13 +123,13 @@ export default function WatchPage() {
       <div ref={feed.scroller} onScroll={feed.onScroll} aria-busy={loading} aria-label="영상과 답글" className="h-full overflow-y-auto overscroll-contain px-4 pb-6 [overflow-anchor:none] sm:px-6">
         <div ref={feed.content}>
           {!chat ? (loading ? <div className="py-20"><Spinner label="대화를 불러오고 있어요" /></div> : null)
-            : chat.events.length === 0 ? <div className="mt-8 rounded-3xl border border-dashed border-[#d8dfd0] bg-white px-5 py-9 text-center"><p className="text-xl leading-9">아직 영상 편지가 없어요.<br />먼저 안부를 남겨 보세요.</p></div>
+            : chat.events.length === 0 ? <div className="mt-8 rounded-3xl border border-dashed border-[#ead9cd] bg-white px-5 py-9 text-center"><p className="text-xl leading-9">아직 영상 편지가 없어요.<br />먼저 안부를 남겨 보세요.</p></div>
               : <>
                 {chat.hasOlder
                   ? <div className="pt-5"><Button variant="secondary" loading={feed.loadingOlder} onClick={() => { void feed.loadOlder(); }} className="w-full !text-lg">이전 대화 보기</Button></div>
                   : <p className="pt-6 text-center text-base text-stone-500">{childName ? `${childName}님과 나눈 첫 대화예요` : "첫 대화예요"}</p>}
                 {byDay(chat.events).map(([day, items]) => <section key={day} data-day={day} aria-label={formatConversationDate(day)}>
-                  <div className="sticky top-0 z-10 flex justify-center py-3"><span className={`rounded-full px-4 py-1.5 text-base font-bold shadow-sm ring-1 ${focusDate === day ? "bg-[#315d4b] text-white ring-[#315d4b]" : "bg-white/95 text-[#5f6f57] ring-[#e4e9dc]"}`}>{formatConversationDate(day)}{day === today ? " · 오늘" : ""}</span></div>
+                  <div className="sticky top-0 z-10 flex justify-center py-3"><span className={`rounded-full px-4 py-1.5 text-base font-bold shadow-sm ring-1 ${focusDate === day ? "bg-[#c8493c] text-white ring-[#c8493c]" : "bg-white/95 text-[#5f6f57] ring-[#ead9cd]"}`}>{formatConversationDate(day)}{day === today ? " · 오늘" : ""}</span></div>
                   <ol className="space-y-6">{items.map((event) => <li key={eventKey(event)}>
                     {event.type === "video"
                       ? <SeniorVideo event={event} token={token} childName={childName} replying={replyTo?.id === event.id} onReply={() => startReply(event)} />
@@ -140,22 +140,22 @@ export default function WatchPage() {
               </>}
         </div>
       </div>
-      {chat && feed.awayFromBottom && <button type="button" onClick={feed.showLatest} className="absolute bottom-4 left-1/2 z-20 flex min-h-14 -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-[#315d4b] px-5 text-lg font-bold text-white shadow-lg"><ArrowDown size={22} />{feed.unseen ? "새 소식이 왔어요" : "최근 대화로"}</button>}
+      {chat && feed.awayFromBottom && <button type="button" onClick={feed.showLatest} className="absolute bottom-4 left-1/2 z-20 flex min-h-14 -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-[#c8493c] px-5 text-lg font-bold text-white shadow-lg"><ArrowDown size={22} />{feed.unseen ? "새 소식이 왔어요" : "최근 대화로"}</button>}
     </div>
 
     <footer className="shrink-0 border-t border-[#e6e3d7] bg-white px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 sm:px-6">
-      {replyTo && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-[#f0f4ea] px-3 py-1.5 text-base"><span className="min-w-0">{replyTo.date === today ? "오늘" : shortDate(replyTo.date)} 영상에 답글을 쓰고 있어요{replyTo.date !== today ? ". 답글은 오늘 대화에 이어져요" : ""}</span><button type="button" disabled={sending} onClick={() => setReplyTo(null)} className="flex min-h-12 shrink-0 items-center gap-1 px-2 font-bold underline"><X size={18} />취소</button></div>}
+      {replyTo && <div className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-[#fff0bd] px-3 py-1.5 text-base"><span className="min-w-0">{replyTo.date === today ? "오늘" : shortDate(replyTo.date)} 영상에 답글을 쓰고 있어요{replyTo.date !== today ? ". 답글은 오늘 대화에 이어져요" : ""}</span><button type="button" disabled={sending} onClick={() => setReplyTo(null)} className="flex min-h-12 shrink-0 items-center gap-1 px-2 font-bold underline"><X size={18} />취소</button></div>}
       {voice && <div className="mb-3">
-        {voice.notice_needed && voice.notice && <div className="mb-2 rounded-2xl bg-[#f4f8f1] p-3"><p className="text-base leading-7">{voice.notice}</p><button type="button" onClick={() => { void acceptNotice(); }} className="mt-2 min-h-12 w-full rounded-2xl border-2 border-[#cbd9ce] bg-white px-4 text-lg font-bold text-[#315d4b]">알겠어요</button></div>}
+        {voice.notice_needed && voice.notice && <div className="mb-2 rounded-2xl bg-[#f4f8f1] p-3"><p className="text-base leading-7">{voice.notice}</p><button type="button" onClick={() => { void acceptNotice(); }} className="mt-2 min-h-12 w-full rounded-2xl border-2 border-[#ead9cd] bg-white px-4 text-lg font-bold text-[#c8493c]">알겠어요</button></div>}
         <SeniorVoiceComposer token={token} state={voice} replyTo={replyTo?.id ?? null} disabled={sending || !chat} onNoticeAccepted={noticeAccepted} onSent={(reply) => showSent(reply, "음성 답장을 보냈어요. 보낸 분이 들어 볼 수 있어요.")} />
         <p className="mt-2 text-center text-base font-bold text-stone-500">또는 글로 쓰기</p>
       </div>}
       <div className="flex items-end gap-2">
         <label htmlFor="senior-reply" className="sr-only">보낼 답글</label>
-        <textarea id="senior-reply" ref={composer} value={text} disabled={sending} onChange={(e) => { setText(e.target.value); if (notice) setNotice(""); }} maxLength={1000} rows={2} placeholder="예: 영상 잘 봤다. 오늘은 산책도 다녀왔어." className="max-h-40 min-h-[64px] min-w-0 flex-1 resize-none rounded-2xl border-2 border-[#dce3d5] bg-[#fcfdf9] px-4 py-3 text-[20px] leading-8 outline-none focus:border-[#315d4b]" />
+        <textarea id="senior-reply" ref={composer} value={text} disabled={sending} onChange={(e) => { setText(e.target.value); if (notice) setNotice(""); }} maxLength={1000} rows={2} placeholder="예: 영상 잘 봤다. 오늘은 산책도 다녀왔어." className="max-h-40 min-h-[64px] min-w-0 flex-1 resize-none rounded-2xl border-2 border-[#ead9cd] bg-[#fff5eb] px-4 py-3 text-[20px] leading-8 outline-none focus:border-[#c8493c]" />
         <Button onClick={sendReply} loading={sending} disabled={!text.trim() || !chat} className="min-h-16 shrink-0 !px-4 !text-lg"><Send size={22} />{sending ? "보내는 중" : "보내기"}</Button>
       </div>
-      <p role="status" aria-live="polite" className="mt-1 min-h-6 text-base font-bold text-[#315d4b]">{notice || (text.length > 900 ? `${text.length} / 1,000자` : "")}</p>
+      <p role="status" aria-live="polite" className="mt-1 min-h-6 text-base font-bold text-[#c8493c]">{notice || (text.length > 900 ? `${text.length} / 1,000자` : "")}</p>
     </footer>
   </main>;
 }
@@ -163,10 +163,10 @@ export default function WatchPage() {
 function SeniorReply({ event, onOpenVideo }: { event: ConversationReplyEvent; onOpenVideo?: () => void }) {
   const voice = event.kind === "voice";
   return <div className="ml-auto max-w-[85%]">
-    <div className="rounded-[24px] rounded-br-md border border-[#d8e3d2] bg-[#e9f0e2] px-5 py-4">
+    <div className="rounded-[24px] rounded-br-md border border-[#ead9cd] bg-[#fff5eb] px-5 py-4">
       {event.message_id !== null && (onOpenVideo
-        ? <button type="button" onClick={onOpenVideo} className="mb-1 min-h-10 text-left text-base font-bold text-[#315d4b] underline">영상에 남긴 답글 · 영상 보기</button>
-        : <p className="mb-1 text-base font-bold text-[#315d4b]">영상에 남긴 답글</p>)}
+        ? <button type="button" onClick={onOpenVideo} className="mb-1 min-h-10 text-left text-base font-bold text-[#c8493c] underline">영상에 남긴 답글 · 영상 보기</button>
+        : <p className="mb-1 text-base font-bold text-[#c8493c]">영상에 남긴 답글</p>)}
       {/* 음성 답장은 재생만 보여 준다 (받아쓰기·분석은 시니어 화면에 보이지 않는다) */}
       {voice && event.audio_url
         ? <VoiceClip src={event.audio_url} seconds={event.audio_seconds} big label="내 음성 답장 듣기" />
@@ -198,13 +198,13 @@ function SeniorVideo({ event, token, childName, replying, onReply }: { event: Co
   };
   const caption = m.captions?.find((c) => time >= c.start && time < c.end)?.text;
   return <article id={`senior-video-${m.id}`} className="mr-auto max-w-[94%] scroll-mt-16">
-    <p className="mb-2 text-lg font-bold text-[#315d4b]">{childName ? `${childName}님이 보낸 영상 편지` : "영상 편지"}</p>
-    <div className={`overflow-hidden rounded-[26px] rounded-tl-md border bg-white p-3 shadow-sm sm:p-4 ${replying ? "border-[#315d4b] ring-2 ring-[#315d4b]" : "border-[#e4e6da]"}`}>
+    <p className="mb-2 text-lg font-bold text-[#c8493c]">{childName ? `${childName}님이 보낸 영상 편지` : "영상 편지"}</p>
+    <div className={`overflow-hidden rounded-[26px] rounded-tl-md border bg-white p-3 shadow-sm sm:p-4 ${replying ? "border-[#c8493c] ring-2 ring-[#c8493c]" : "border-[#ead9cd]"}`}>
       <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-black"><video ref={video} src={m.video_url || undefined} poster={m.poster_url || undefined} controls={started} playsInline preload="metadata" onPlay={viewed} onEnded={() => setEnded(true)} onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)} onError={() => setError("영상을 불러오지 못했어요. 링크 기간이 지났다면 보낸 분께 새 링크를 부탁해 주세요.")} className="h-full w-full object-contain" />{(!started || ended) && <button type="button" onClick={play} className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/25" aria-label={ended ? "영상 다시 보기" : "영상 재생"}><span className="flex h-24 w-24 items-center justify-center rounded-full bg-[#ffe17f] text-stone-900 shadow-xl">{ended ? <RotateCcw size={42} /> : <Play size={44} className="ml-1 fill-current" />}</span><span className="rounded-full bg-black/70 px-5 py-3 text-xl font-bold text-white">{ended ? "다시 보기" : "눌러서 보기"}</span></button>}</div>
       {caption && <p className="mt-4 text-center text-2xl font-bold leading-9">{caption}</p>}
       {error && <p role="alert" className="mt-3 text-lg leading-8 text-red-700">{error}</p>}
       <p className="mt-4 whitespace-pre-wrap break-words px-1 text-xl leading-9">{m.script}</p>
-      <button type="button" onClick={onReply} aria-pressed={replying} className={`mt-4 min-h-14 w-full rounded-2xl border-2 px-4 py-3 text-lg font-bold ${replying ? "border-[#315d4b] bg-[#315d4b] text-white" : "border-[#cbd9ce] text-[#315d4b]"}`}>{replying ? "이 영상에 답글을 쓰고 있어요" : "이 영상에 답글 남기기"}</button>
+      <button type="button" onClick={onReply} aria-pressed={replying} className={`mt-4 min-h-14 w-full rounded-2xl border-2 px-4 py-3 text-lg font-bold ${replying ? "border-[#c8493c] bg-[#c8493c] text-white" : "border-[#ead9cd] text-[#c8493c]"}`}>{replying ? "이 영상에 답글을 쓰고 있어요" : "이 영상에 답글 남기기"}</button>
     </div>
     <time dateTime={event.created_at} className="mt-1 block text-sm text-stone-500">{formatConversationTime(event.created_at)}</time>
   </article>;

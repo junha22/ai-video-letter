@@ -210,7 +210,7 @@ export function SharePanel({
           onKeyDown={(e) => { if (e.key === "Enter") void savePhone(); }}
           placeholder="010-1234-5678"
           maxLength={13}
-          className="w-full rounded-xl border border-stone-300 px-3 py-3 text-base outline-none focus:border-[#315d4b]"
+          className="w-full rounded-xl border border-stone-300 px-3 py-3 text-base outline-none focus:border-[#c8493c]"
         />
         <div className="flex gap-2">
           <Button onClick={savePhone} loading={savingPhone} disabled={!draft.trim()} className="flex-1">번호 저장하기</Button>
