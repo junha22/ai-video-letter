@@ -41,3 +41,15 @@ button,input,textarea,select { -webkit-tap-highlight-color:transparent; }
 .family-directory-portrait { --portrait-size:65px; border-radius:21px; }
 .family-home-portrait { --portrait-size:48px; border-radius:16px; }
 @media(max-width:500px) { .family-directory-portrait { --portrait-size:53px; border-radius:17px; } }
+
+.album-custom-cover img { object-fit:contain; }
+.album-cover-editor { position:relative; z-index:3; border-top:1px dashed var(--album-line); padding:12px 3px 8px; transform:rotate(2deg); }
+.album-cover-editor-buttons { display:flex; flex-wrap:wrap; gap:8px; }
+.album-cover-editor-buttons button { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:40px; border:1px solid var(--album-line); border-radius:24px; padding:9px 14px; background:#fffaf4; color:var(--album-primary); font-size:12px; font-weight:700; }
+.album-cover-editor button:disabled { opacity:.55; cursor:wait; }
+.album-cover-file-hint { margin-top:9px; font-size:10px; line-height:1.8; color:var(--album-muted); }
+.album-cover-notice { font-size:11px; line-height:1.8; color:var(--album-primary); min-height:4px; margin-top:4px; }
+.album-cover-error { font-size:12px; line-height:1.8; color:#a8321e; margin-top:8px; }
+.album-cover-error button { display:inline; text-decoration:underline; margin-left:9px; font-weight:700; }
+.album-cover-photo:has(.album-cover-editor) .album-photo-stamp { bottom:auto; top:23px; right:23px; pointer-events:none; }
+@media(max-width:650px) { .album-cover-editor { padding:10px 1px 7px; }.album-cover-editor-buttons button { font-size:11px; padding:8px 12px; }.album-cover-file-hint{font-size:9px}.album-cover-photo:has(.album-cover-editor) .album-photo-stamp{top:20px;right:18px} }

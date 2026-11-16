@@ -11,6 +11,8 @@ import type { Me, Message } from "@/lib/types";
 import { useMe } from "@/lib/useMe";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Card, Notice, Spinner } from "@/components/ui";
+import { useAlbumCover } from "@/components/album/useAlbumCover";
+import { AlbumCoverEditor } from "@/components/album/AlbumCoverEditor";
 import { FamilyPortrait } from "@/components/album/FamilyPortrait";
 import { AlbumCover, AlbumClosing } from "@/components/album/AlbumCover";
 import { AlbumMemoryCard } from "@/components/album/AlbumMemoryCard";
@@ -21,6 +23,7 @@ export default function HomePage() {
   const [familyFilter, setFamilyFilter] = useState("all");
   const [monthFilter, setMonthFilter] = useState("all");
   const { me, reload } = useMe();
+  const cover = useAlbumCover({ enabled: !!me });
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [recipients, setRecipients] = useState<Recipient[] | null>(null);
   const [inboxError, setInboxError] = useState<string | null>(null);
@@ -69,7 +72,7 @@ export default function HomePage() {
 
   return (
     <DashboardShell onNotification={onNotification}>
-      <AlbumCover owner={me.user.name} action={<Link href={me.can_write?"/messages/new":"/onboarding/consent"} className="album-primary"><PenLine size={17}/>오늘의 편지 쓰기 <ArrowRight size={17}/></Link>} description={me.can_write&&!me.can_render?"대본은 지금 써 둘 수 있어요. 목소리·사진을 준비하면 영상으로 만들 수 있어요.":undefined}/>
+      <AlbumCover coverImage={cover.url} coverEditor={<AlbumCoverEditor cover={cover}/>} owner={me.user.name} action={<Link href={me.can_write?"/messages/new":"/onboarding/consent"} className="album-primary"><PenLine size={17}/>오늘의 편지 쓰기 <ArrowRight size={17}/></Link>} description={me.can_write&&!me.can_render?"대본은 지금 써 둘 수 있어요. 목소리·사진을 준비하면 영상으로 만들 수 있어요.":undefined}/>
 
       <Checklist me={me} />
 

@@ -5,7 +5,7 @@ export type Screen="home"|"family"|"conversation"|"compose"|"review"|"share"|"pr
 export type Person={id:number;name:string;relation:string;phone:string;callName:string;tone:string;};
 export type Letter={id:number;personId:number;title:string;text:string;date:string;};
 export type Reply={id:number;personId:number;text:string;date:string;};
-export function usePreviewModel(){
+export function usePreviewModel(onWithdraw?:()=>void){
  const [screen,setScreen]=useState<Screen>("home");
  const [people,setPeople]=useState<Person[]>([{id:1,name:"엄마",relation:"어머니",phone:"",callName:"지민",tone:"존댓말"},{id:2,name:"아빠",relation:"아버지",phone:"",callName:"지민",tone:"반말"}]);
  const [personId,setPersonId]=useState(1);
@@ -43,7 +43,7 @@ export function usePreviewModel(){
  function compose(){setStatus("draft");navigate("compose");}
  function generate(){if(!ready){navigate("prepare");return;}setStatus("generating");navigate("review");}
  function approve(){if(status!=="approved")setLetters(rows=>[{id:Date.now(),personId:selected?.id||0,title,text:message,date:"2026-11-11"},...rows]);setStatus("approved");navigate("share");}
- function withdraw(){setConsents([false,false,false]);setVoiceStatus("none");setRecorded(0);setYoung(false);setTuning("none");setPhotoUrl("");setLetters([]);setStatus("draft");setNotice("샘플 동의를 철회하고 이 탭의 목소리·사진·영상 샘플을 초기화했어요. 원본 계정에는 영향이 없어요.");}
+ function withdraw(){onWithdraw?.();setConsents([false,false,false]);setVoiceStatus("none");setRecorded(0);setYoung(false);setTuning("none");setPhotoUrl("");setLetters([]);setStatus("draft");setNotice("샘플 동의를 철회하고 이 탭의 목소리·사진·영상 샘플을 초기화했어요. 원본 계정에는 영향이 없어요.");}
  return {young,setYoung,tuning,setTuning,screen,navigate,people,setPeople,personId,setPersonId,selected,message,setMessage,speech,setSpeech,emotion,setEmotion,title,setTitle,consents,setConsents,consentOk,voiceStatus,setVoiceStatus,recorded,setRecorded,photoUrl,setPhotoUrl,prepTab,setPrepTab,status,setStatus,letters,setLetters,replies,setReplies,date,setDate,month,setMonth,recordTab,setRecordTab,notice,setNotice,reaction,setReaction,read,setRead,linkVersion,setLinkVersion,profile,setProfile,ready,openPerson,compose,generate,approve,withdraw};
 }
 export type PreviewModel=ReturnType<typeof usePreviewModel>;

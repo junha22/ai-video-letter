@@ -17,6 +17,20 @@ class User(Base):
     parent: Mapped["ParentProfile | None"] = relationship(back_populates="user", uselist=False)
 
 
+class AlbumCover(Base):
+    """One private album cover per account; independent of the video face photo."""
+
+    __tablename__ = "album_covers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    path: Mapped[str] = mapped_column(String(300))
+    version: Mapped[str] = mapped_column(String(32))
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AccountCredential(Base):
     """Separate credentials preserve legacy account IDs and their content."""
 
