@@ -28,6 +28,9 @@ with patch.dict(os.environ, {
     "TTS_PROVIDER": "local",
     "VIDEO_PROVIDER": "local",
     "S3GEN_TRAINING": "false",
+    # 로컬 backend/.env에서 답장 분석을 켜 두어도 시험은 꺼진 상태에서 시작한다 (켜는 시험은 settings를 바꿔서 확인)
+    "REPLY_ANALYSIS_ENABLED": "false",
+    "REPLY_LLM_API_KEY": "",
     "VOICE_TARGET_SECONDS": "135",
 }):
     from app import db
