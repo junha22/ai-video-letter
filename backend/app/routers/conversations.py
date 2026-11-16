@@ -4,14 +4,17 @@ import re
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import current_user
+from ..config import settings
 from ..db import get_db
-from ..models import ParentProfile, Recipient, User
+from ..models import ParentProfile, Recipient, SeniorReply, User
 from ..services import conversations as service
+from ..services import replies, storage
 
 router = APIRouter(prefix="/api", tags=["conversations"])
 
@@ -117,6 +120,63 @@ def delete_reply(recipient_id: int, reply_id: int, user: User = Depends(current_
     recipient = service.owned_recipient(db, user, recipient_id)
     service.delete_reply(db, recipient, reply_id)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- 음성 답장·답장 분석 (docs/REPLY_ANALYSIS.md) ----
+@router.get("/recipients/{recipient_id}/replies/{reply_id}/audio")
+def reply_audio(recipient_id: int, reply_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    recipient = service.owned_recipient(db, user, recipient_id)
+    reply = db.get(SeniorReply, reply_id)
+    if (not reply or reply.kind != "voice" or reply.user_id != user.id or reply.recipient_id != recipient.id
+            or not reply.audio_path or not storage.abs_path(reply.audio_path).exists()):
+        raise HTTPException(404, "음성 답장을 찾을 수 없어요.")
+    return FileResponse(storage.abs_path(reply.audio_path), media_type="audio/wav",
+                        headers={"Cache-Control": "private, no-store"})
+
+
+def _analysis_feature() -> None:
+    if not settings.reply_analysis_enabled:
+        raise HTTPException(404)
+
+
+@router.post("/recipients/{recipient_id}/replies/{reply_id}/analysis")
+def retry_analysis(recipient_id: int, reply_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """정리하지 못한 답장 다시 정리하기 (GPU PC가 꺼져 있었을 때 등)"""
+    _analysis_feature()
+    recipient = service.owned_recipient(db, user, recipient_id)
+    row = replies.retry(db, recipient, reply_id)
+    db.commit()
+    return replies.serialize(row)
+
+
+class ReplyAnalysisIn(BaseModel):
+    enabled: bool
+    agree: bool = False  # 켤 때: 부모님께 알리고 동의를 받았다는 확인
+
+
+@router.get("/recipients/{recipient_id}/reply-analysis")
+def get_reply_analysis(recipient_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    _analysis_feature()
+    recipient = service.owned_recipient(db, user, recipient_id)
+    db.commit()
+    return replies.owner_state(db, recipient)
+
+
+@router.put("/recipients/{recipient_id}/reply-analysis")
+def set_reply_analysis(recipient_id: int, body: ReplyAnalysisIn, user: User = Depends(current_user),
+                       db: Session = Depends(get_db)):
+    """대상자별 답장 살펴보기 켜기·끄기. 끄면 분석 결과·분석 알림을 지운다 (답장과 음성은 남긴다)"""
+    _analysis_feature()
+    recipient = service.owned_recipient(db, user, recipient_id)
+    service.lock_owner(db, user.id)
+    if body.enabled:
+        if not body.agree:
+            raise HTTPException(400, "부모님께 알리고 동의를 받았는지 확인해 주세요.")
+        replies.agree(db, recipient, "child")
+    else:
+        replies.turn_off(db, recipient)
+    db.commit()
+    return replies.owner_state(db, recipient)
 
 
 @router.get("/recipients/{recipient_id}/portfolio")

@@ -2,9 +2,13 @@ import type { Caption, MessageStatus, Parent } from "./types";
 
 export const CONVERSATION_TIMEZONE = "Asia/Seoul";
 
+/** 자녀 화면의 답장 분석 켜기 상태 (서버 기능 REPLY_ANALYSIS_ENABLED가 켜져 있을 때만 온다) */
+export type ReplyAnalysisState = { enabled: boolean; senior_notice: boolean; consent_text: string; version: string };
+
 export type Recipient = Parent & {
   id: number;
   is_primary: boolean;
+  reply_analysis?: ReplyAnalysisState;
   video_count: number;
   reply_count: number;
   today_video_count: number;
@@ -39,13 +43,39 @@ export type ConversationVideoEvent = {
   message: ConversationMessage;
 };
 
+/** 답장 분석 카드: 서버가 화면 문구까지 정해서 보낸다 (진단처럼 들리지 않게). 공개 대화방에는 오지 않는다 */
+export type ReplyAnalysisCard = {
+  status: "queued" | "running" | "done" | "failed" | "stt_uncertain";
+  kind: "voice" | "text";
+  message: string | null;
+  notice: string;
+  can_retry: boolean;
+  finished_at: string | null;
+  level?: "없음" | "살펴보기" | "바로 연락 필요";
+  level_label?: string;
+  summary?: string;
+  mood_text?: string;
+  unsure_text?: string | null;
+  signals?: { area: string; value: string }[];
+  evidence?: string[];
+  trend_alerts?: string[];
+  voice_text?: string | null;
+  voice_down?: boolean;
+  mismatch_text?: string | null;
+};
+
 export type ConversationReplyEvent = {
   type: "reply";
   id: number;
   created_at: string;
   date: string;
+  /** 음성 답장이면 자녀 화면에는 자동 받아쓰기(받아쓰기 전에는 ""), 공개 대화방에는 항상 "" */
   text: string;
   message_id: number | null;
+  kind?: "voice";
+  audio_url?: string;
+  audio_seconds?: number | null;
+  analysis?: ReplyAnalysisCard | null;
 };
 
 export type ConversationEvent = ConversationVideoEvent | ConversationReplyEvent;
@@ -80,7 +110,14 @@ export type ConversationFeed = {
   has_newer: boolean;
 };
 
-export type PublicConversationThread = ConversationThread;
+/** 시니어 화면의 음성 답장: 자녀가 답장 살펴보기를 켠 대화방에만 녹음 버튼을 보인다 */
+export type VoiceReplyState = { available: boolean; notice_needed: boolean; notice: string | null; max_seconds: number };
+
+export type PublicConversationThread = ConversationThread & { voice_reply?: VoiceReplyState };
+/** 시니어 링크의 채팅 피드: 승인된 영상만, 대상자 정보는 공개해도 되는 것만. voice_reply는 답장 분석이 켜진 서버에서만 온다 */
+export type PublicConversationFeed = Omit<ConversationFeed, "recipient"> & {
+  recipient: PublicRecipient; expires_at: string; voice_reply?: VoiceReplyState;
+};
 export type PortfolioEvidence = { reply_id: number; text: string; date: string };
 export type MonthlyPortfolio = {
   id: number;

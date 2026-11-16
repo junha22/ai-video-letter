@@ -1,40 +1,23 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { CalendarDays, ChevronDown, FileText, MessageCircle, Pencil, PenLine, RefreshCw } from "lucide-react";
+import { CalendarDays, ChevronDown, FileText, MessageCircle, Pencil, PenLine, RefreshCw, Sparkles } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
 import { ChatCalendar } from "@/components/conversations/ChatCalendar";
 import { ConversationEvents } from "@/components/conversations/ConversationEvents";
 import { MonthlyPortfolio } from "@/components/conversations/MonthlyPortfolio";
 import { RecipientForm } from "@/components/conversations/RecipientForm";
+import { ReplyAnalysisSettings } from "@/components/conversations/ReplyAnalysis";
 import { Button, Card, LinkButton, Notice, Spinner } from "@/components/ui";
 import { api, errorText } from "@/lib/api";
 import {
-  formatConversationDate, kstDate, mergeConversationEvents, shiftDate,
-  type ConversationDay, type ConversationEvent, type ConversationFeed, type Recipient,
+  formatConversationDate, type ConversationEvent, type ConversationFeed, type ConversationReplyEvent, type Recipient,
 } from "@/lib/conversations";
+import { byDay, useChatFeed } from "@/lib/useChatFeed";
 import { useMe } from "@/lib/useMe";
 
-/** 화면에 이어 붙인 대화 범위(start~end). hasNewer가 false면 가장 최근 대화까지 보고 있어서 새 답글을 자동으로 붙인다 */
-type ChatWindow = { events: ConversationEvent[]; start: string | null; end: string | null; hasOlder: boolean; hasNewer: boolean };
-type PendingScroll = { kind: "bottom" } | { kind: "stay" } | { kind: "keep"; height: number; top: number } | { kind: "day"; date: string };
-
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-function windowOf(res: ConversationFeed, events: ConversationEvent[]): ChatWindow {
-  return { events, start: res.start, end: res.end, hasOlder: res.has_older, hasNewer: res.has_newer };
-}
-
-function byDay(events: ConversationEvent[]): [string, ConversationEvent[]][] {
-  const groups: [string, ConversationEvent[]][] = [];
-  for (const event of events) {
-    const last = groups[groups.length - 1];
-    if (last && last[0] === event.date) last[1].push(event);
-    else groups.push([event.date, [event]]);
-  }
-  return groups;
-}
 
 export default function ConversationPage() {
   const params = useParams<{ id: string }>();
@@ -42,235 +25,36 @@ export default function ConversationPage() {
   const { me } = useMe();
   const ready = Boolean(me);
   const [tab, setTab] = useState<"conversation" | "portfolio">("conversation");
-  const [chat, setChat] = useState<ChatWindow | null>(null);
   const [recipient, setRecipient] = useState<Recipient | null>(null);
   const [childName, setChildName] = useState("");
-  const [days, setDays] = useState<ConversationDay[]>([]);
-  const [today, setToday] = useState(kstDate());
-  const [focusDate, setFocusDate] = useState<string | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [loadingNewer, setLoadingNewer] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [retrying, setRetrying] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [scrollTick, setScrollTick] = useState(0);
-  const chatRef = useRef<ChatWindow | null>(null);
-  chatRef.current = chat;
-  // 다른 범위를 새로 열 때마다 올린다. 그 전에 출발한 응답은 버린다
-  const generation = useRef(0);
-  const refreshing$ = useRef(false);
-  const scroller = useRef<HTMLDivElement>(null);
-  const content = useRef<HTMLDivElement>(null);
-  const pendingScroll = useRef<PendingScroll | null>(null);
-  // 맨 아래를 보고 있으면 새 답글이 붙거나 영상 크기가 잡혀도 맨 아래에 붙어 있는다
-  const atBottom = useRef(true);
-  // 지운 항목은 지우기 전에 출발한 새로고침 응답에 섞여 와도 다시 보이지 않게 한다
-  const deleted = useRef(new Set<string>());
-  const visible = (events: ConversationEvent[]) => events.filter((event) => !deleted.current.has(`${event.type}-${event.id}`));
-  const isLive = chat !== null && !chat.hasNewer;
+  const validId = Number.isSafeInteger(recipientId) && recipientId > 0;
 
-  const fetchFeed = (query = "") => api<ConversationFeed>(`/api/conversations/${recipientId}/feed${query}`);
-  const applyMeta = (res: ConversationFeed) => {
-    setRecipient(res.recipient);
-    setChildName(res.child_name);
-    setDays(res.days);
-    setToday(res.today);
-  };
-  const startWindow = () => {
-    const gen = ++generation.current;
-    setLoading(true);
-    setLoadingOlder(false);
-    setLoadingNewer(false);
-    return gen;
-  };
+  const feed = useChatFeed<ConversationFeed>({
+    room: String(recipientId),
+    enabled: ready && validId,
+    active: tab === "conversation",
+    refreshMs: 15000,
+    fetchFeed: (query) => api<ConversationFeed>(`/api/conversations/${recipientId}/feed${query}`),
+    onPage: (res) => { setRecipient(res.recipient); setChildName(res.child_name); },
+    initialFocus: () => {
+      const requested = new URLSearchParams(window.location.search).get("date");
+      return requested && DATE.test(requested) ? requested : undefined;
+    },
+  });
+  const { chat, days, today, focusDate, isLive, loading, refreshing, loadingOlder, loadingNewer, error, setError, refresh, retry } = feed;
 
-  /** 최근 대화 며칠을 열고 맨 아래(가장 최근)로 간다. focus가 그 안에 있으면 그날로 간다 */
-  const openLatest = async (focus?: string) => {
-    const gen = startWindow();
-    try {
-      const res = await fetchFeed();
-      if (gen !== generation.current) return;
-      applyMeta(res);
-      if (focus && (!res.start || focus < res.start)) {
-        void jumpTo(focus);
-        return;
-      }
-      const events = visible(res.events);
-      const target = focus ? events.find((event) => event.date >= focus)?.date : undefined;
-      pendingScroll.current = target ? { kind: "day", date: target } : { kind: "bottom" };
-      setFocusDate(focus ?? null);
-      setChat(windowOf(res, events));
-      setError(null);
-    } catch (e) {
-      if (gen === generation.current) setError(errorText(e));
-    } finally {
-      if (gen === generation.current) setLoading(false);
-    }
-  };
+  useEffect(() => { setRecipient(null); }, [recipientId]);
 
-  /** 날짜로 찾기: 이미 불러온 범위면 그날로 스크롤하고, 아니면 그날부터 며칠을 새로 연다 */
-  const jumpTo = async (date: string) => {
+  const jumpTo = (date: string) => {
     setTab("conversation");
     setCalendarOpen(false);
-    setFocusDate(date);
-    const current = chatRef.current;
-    const loaded = current?.start && current.end && current.start <= date && date <= current.end
-      ? current.events.find((event) => event.date >= date)?.date : undefined;
-    if (loaded) {
-      pendingScroll.current = { kind: "day", date: loaded };
-      setScrollTick((n) => n + 1);
-      return;
-    }
-    const gen = startWindow();
-    try {
-      const res = await fetchFeed(`?after=${shiftDate(date, -1)}`);
-      if (gen !== generation.current) return;
-      if (!res.start) {
-        // 그날 뒤로 대화가 없으면 최근 대화를 연다
-        void openLatest();
-        return;
-      }
-      applyMeta(res);
-      pendingScroll.current = { kind: "day", date: res.start };
-      setChat(windowOf(res, visible(res.events)));
-      setError(null);
-    } catch (e) {
-      if (gen === generation.current) setError(errorText(e));
-    } finally {
-      if (gen === generation.current) setLoading(false);
-    }
+    void feed.jumpTo(date);
   };
-
-  /** 위로 올려서 '이전 대화 보기': 지금 범위 앞의 며칠을 붙이고 보던 자리를 유지한다 */
-  const loadOlder = async () => {
-    const current = chatRef.current;
-    if (!current?.hasOlder || !current.start || loadingOlder) return;
-    const gen = generation.current;
-    setLoadingOlder(true);
-    try {
-      const res = await fetchFeed(`?before=${current.start}`);
-      if (gen !== generation.current) return;
-      applyMeta(res);
-      const el = scroller.current;
-      if (el) pendingScroll.current = { kind: "keep", height: el.scrollHeight, top: el.scrollTop };
-      setChat((prev) => prev && {
-        ...prev,
-        events: visible(mergeConversationEvents(res.events, prev.events)),
-        start: res.start ?? prev.start,
-        hasOlder: res.has_older,
-      });
-      setError(null);
-    } catch (e) {
-      if (gen === generation.current) setError(errorText(e));
-    } finally {
-      if (gen === generation.current) setLoadingOlder(false);
-    }
-  };
-
-  /** 지난 날짜를 보다가 '이후 대화 보기': 지금 범위 뒤의 며칠을 아래에 붙인다 */
-  const loadNewer = async () => {
-    const current = chatRef.current;
-    if (!current?.hasNewer || !current.end || loadingNewer) return;
-    const gen = generation.current;
-    setLoadingNewer(true);
-    try {
-      const res = await fetchFeed(`?after=${current.end}`);
-      if (gen !== generation.current) return;
-      applyMeta(res);
-      // 아래에 붙인 대화를 이어 읽도록 보던 자리에 둔다 (맨 아래에 있었어도 끝으로 건너뛰지 않는다)
-      pendingScroll.current = { kind: "stay" };
-      setChat((prev) => prev && {
-        ...prev,
-        events: visible(mergeConversationEvents(prev.events, res.events)),
-        end: res.end ?? prev.end,
-        hasNewer: res.has_newer,
-      });
-      setError(null);
-    } catch (e) {
-      if (gen === generation.current) setError(errorText(e));
-    } finally {
-      if (gen === generation.current) setLoadingNewer(false);
-    }
-  };
-
-  /** 15초마다·창으로 돌아올 때: 최근 며칠을 서버 것으로 맞춘다 (새 답글, 영상 상태, 다른 곳에서 지운 항목) */
-  const refresh = async () => {
-    if (refreshing$.current) return;
-    const gen = generation.current;
-    refreshing$.current = true;
-    setRefreshing(true);
-    try {
-      const res = await fetchFeed();
-      if (gen !== generation.current) return;
-      applyMeta(res);
-      setChat((prev) => {
-        if (!prev || prev.hasNewer) return prev; // 지난 날짜를 보는 중이면 그대로 둔다
-        const kept = res.start ? prev.events.filter((event) => event.date < res.start!) : [];
-        const start = prev.start && res.start && prev.start < res.start ? prev.start : res.start;
-        return {
-          events: visible([...kept, ...res.events]),
-          start,
-          end: res.end,
-          hasOlder: start === res.start ? res.has_older : prev.hasOlder,
-          hasNewer: false,
-        };
-      });
-      setError(null);
-    } catch (e) {
-      if (gen === generation.current) setError(errorText(e));
-    } finally {
-      refreshing$.current = false;
-      setRefreshing(false);
-    }
-  };
-
-  const actions = useRef({ openLatest, refresh });
-  actions.current = { openLatest, refresh };
-
-  useEffect(() => {
-    if (!ready || !Number.isSafeInteger(recipientId) || recipientId < 1) return;
-    setChat(null);
-    setFocusDate(null);
-    setDays([]);
-    setRecipient(null);
-    const requested = new URLSearchParams(window.location.search).get("date");
-    void actions.current.openLatest(requested && DATE.test(requested) ? requested : undefined);
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void actions.current.refresh(); }, 15000);
-    const onFocus = () => { void actions.current.refresh(); };
-    window.addEventListener("focus", onFocus);
-    return () => { generation.current += 1; window.clearInterval(timer); window.removeEventListener("focus", onFocus); };
-  }, [ready, recipientId]);
-
-  // 새로 연 범위·붙인 대화에 맞춰 스크롤한다 (그리기 전에 해서 화면이 튀지 않게)
-  useLayoutEffect(() => {
-    const el = scroller.current;
-    if (!el || tab !== "conversation") return;
-    const pending = pendingScroll.current;
-    pendingScroll.current = null;
-    if (pending?.kind === "keep") {
-      el.scrollTop = pending.top + (el.scrollHeight - pending.height);
-    } else if (pending?.kind === "day" || pending?.kind === "stay") {
-      const target = pending.kind === "day" ? el.querySelector<HTMLElement>(`[data-day="${pending.date}"]`) : null;
-      if (target) el.scrollTop = Math.max(0, target.offsetTop - 4);
-      atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    } else if (pending?.kind === "bottom" || atBottom.current) {
-      el.scrollTop = el.scrollHeight;
-      atBottom.current = true;
-    }
-  }, [chat, tab, scrollTick]);
-
-  // 영상 크기가 늦게 잡히거나 대본을 펼쳐도, 맨 아래를 보고 있었다면 맨 아래에 붙어 있는다
-  useEffect(() => {
-    const el = scroller.current;
-    const inner = content.current;
-    if (!el || !inner || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => { if (atBottom.current) el.scrollTop = el.scrollHeight; });
-    observer.observe(inner);
-    return () => observer.disconnect();
-  }, [tab, ready]);
 
   const deleteEvent = async (event: ConversationEvent) => {
     const video = event.type === "video";
@@ -281,8 +65,7 @@ export default function ConversationPage() {
     setDeleting(key);
     try {
       await api(video ? `/api/messages/${event.id}` : `/api/recipients/${recipientId}/replies/${event.id}`, { method: "DELETE" });
-      deleted.current.add(key);
-      setChat((prev) => prev && { ...prev, events: prev.events.filter((item) => `${item.type}-${item.id}` !== key) });
+      feed.hideEvent(key);
       setError(null);
       void refresh();
     } catch (e) {
@@ -292,18 +75,25 @@ export default function ConversationPage() {
     }
   };
 
+  /** 정리하지 못한 답장 다시 정리하기 (GPU PC가 꺼져 있었을 때 등) */
+  const retryAnalysis = async (event: ConversationReplyEvent) => {
+    setRetrying(event.id);
+    try {
+      await api(`/api/recipients/${recipientId}/replies/${event.id}/analysis`, { method: "POST" });
+      setError(null);
+      void refresh();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setRetrying(null);
+    }
+  };
+
   const showLatest = () => {
     setTab("conversation");
     setCalendarOpen(false);
-    if (isLive) {
-      setFocusDate(null);
-      pendingScroll.current = { kind: "bottom" };
-      setScrollTick((n) => n + 1);
-    } else {
-      void openLatest();
-    }
+    feed.showLatest();
   };
-  const retry = () => { if (chatRef.current) void refresh(); else void openLatest(); };
   const editRecipient = recipient && "is_primary" in recipient ? recipient : null;
   const recipientName = recipient?.nickname ?? "상대";
   const pastDays = days.filter((day) => day.date !== today);
@@ -315,9 +105,11 @@ export default function ConversationPage() {
     <DashboardShell back="/letters" onNotification={() => { void refresh(); }}>
       <div className="flex flex-wrap items-start justify-between gap-5">
         <div><p className="text-[10px] font-bold tracking-[0.16em] text-[#aa6348]">A LITTLE CLOSER EVERY DAY</p><h1 className="mt-3 text-[27px] font-bold tracking-tight text-[#493035] sm:text-[34px]">{recipient ? `${recipient.nickname}와 나눈 이야기` : "우리의 대화"}</h1><p className="mt-3 text-sm leading-7 text-[#81645d]">영상에 담은 마음과 돌아온 안부를 하루하루 이어가요.</p></div>
-        <div className="flex flex-wrap gap-2">{editRecipient && <Button variant="secondary" onClick={() => setEditing((value) => !value)} aria-expanded={editing} aria-controls="edit-recipient" className="!text-xs"><Pencil size={15} />대상자 정보</Button>}{recipient && <LinkButton href={`/messages/new?recipient_id=${recipientId}`}><PenLine size={17} />영상 편지 쓰기</LinkButton>}</div>
+        <div className="flex flex-wrap gap-2">{editRecipient?.reply_analysis && <Button variant="secondary" onClick={() => setAnalysisOpen((value) => !value)} aria-expanded={analysisOpen} aria-controls="reply-analysis-settings" className="!text-xs"><Sparkles size={15} />답장 살펴보기 {editRecipient.reply_analysis.enabled ? "켜짐" : "꺼짐"}</Button>}{editRecipient && <Button variant="secondary" onClick={() => setEditing((value) => !value)} aria-expanded={editing} aria-controls="edit-recipient" className="!text-xs"><Pencil size={15} />대상자 정보</Button>}{recipient && <LinkButton href={`/messages/new?recipient_id=${recipientId}`}><PenLine size={17} />영상 편지 쓰기</LinkButton>}</div>
       </div>
       {editing && editRecipient && <Card className="mt-6 !border-[#ead9cd] sm:p-7"><div id="edit-recipient"><h2 className="mb-6 text-lg font-bold text-[#c8493c]">대화 대상자 정보</h2><RecipientForm recipient={editRecipient as Recipient} onCancel={() => setEditing(false)} onSaved={(updated) => { setRecipient(updated); setEditing(false); void refresh(); }} /></div></Card>}
+
+      {analysisOpen && editRecipient?.reply_analysis && <ReplyAnalysisSettings recipientId={recipientId} recipientName={editRecipient.nickname} state={editRecipient.reply_analysis} onChange={(state) => { setRecipient((prev) => prev && "is_primary" in prev ? { ...prev, reply_analysis: state } : prev); void refresh(); }} />}
 
       <div className="mb-7 mt-8 flex gap-1 border-b border-[#ead9cd]" aria-label="대화방 보기 선택"><button type="button" aria-pressed={tab === "conversation"} onClick={() => setTab("conversation")} className={`inline-flex min-h-12 items-center gap-2 border-b-2 px-4 text-sm font-bold ${tab === "conversation" ? "border-[#c8493c] text-[#c8493c]" : "border-transparent text-[#81645d]"}`}><MessageCircle size={17} />날짜별 대화</button><button type="button" aria-pressed={tab === "portfolio"} onClick={() => setTab("portfolio")} className={`inline-flex min-h-12 items-center gap-2 border-b-2 px-4 text-sm font-bold ${tab === "portfolio" ? "border-[#c8493c] text-[#c8493c]" : "border-transparent text-[#81645d]"}`}><FileText size={17} />월간 포트폴리오</button></div>
 
@@ -338,19 +130,19 @@ export default function ConversationPage() {
           <section aria-label="대화 기록" className="min-w-0">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-[#493035]">대화 기록</h2><p className="mt-1.5 text-xs text-stone-400">{chat?.hasNewer ? "지난 대화를 보고 있어요. 아래에서 이후 대화를 이어 볼 수 있어요." : "위로 올리면 이전 대화를 더 볼 수 있어요. 새 답글은 자동으로 불러와요."}</p></div><button type="button" onClick={retry} disabled={refreshing || loading} className="inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold text-[#81645d] hover:bg-[#fff5eb] disabled:opacity-50"><RefreshCw size={13} className={refreshing || loading ? "animate-spin" : ""} />새로고침</button></div>
             {error && <div role="alert" className="mb-4"><Notice tone="error">{error}<button type="button" onClick={retry} className="ml-3 font-bold underline">다시 시도</button></Notice></div>}
-            <div ref={scroller} onScroll={(e) => { const el = e.currentTarget; atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} aria-busy={loading} className="relative h-[70vh] min-h-[420px] overflow-y-auto overscroll-contain rounded-[22px] border border-[#ead9cd] bg-[#fffaf4] px-3 pb-6 [overflow-anchor:none] sm:px-6 xl:h-[calc(100vh-27rem)] xl:min-h-[460px]">
-              <div ref={content}>
+            <div ref={feed.scroller} onScroll={feed.onScroll} aria-busy={loading} className="relative h-[70vh] min-h-[420px] overflow-y-auto overscroll-contain rounded-[22px] border border-[#ead9cd] bg-[#fffaf4] px-3 pb-6 [overflow-anchor:none] sm:px-6 xl:h-[calc(100vh-27rem)] xl:min-h-[460px]">
+              <div ref={feed.content}>
                 {!chat ? (loading ? <div className="py-20"><Spinner label="대화를 불러오고 있어요" /></div> : null)
                   : chat.events.length === 0 ? <div className="py-14 text-center"><MessageCircle size={34} className="mx-auto text-[#b68e7e]" /><h3 className="mt-4 font-bold text-[#81645d]">오늘은 어떤 안부를 전할까요?</h3><p className="mx-auto mt-3 max-w-md text-sm leading-7 text-stone-500">영상 편지를 만들고 대화방 링크를 공유해 보세요. 상대는 로그인 없이 영상을 보고 답글을 남길 수 있어요.</p><LinkButton href={`/messages/new?recipient_id=${recipientId}`} className="mt-6"><PenLine size={17} />영상 편지 쓰기</LinkButton></div>
                   : <>
                     {chat.hasOlder
-                      ? <div className="pt-5 text-center"><Button variant="secondary" loading={loadingOlder} onClick={() => { void loadOlder(); }} className="!text-xs">이전 대화 보기</Button></div>
+                      ? <div className="pt-5 text-center"><Button variant="secondary" loading={loadingOlder} onClick={() => { void feed.loadOlder(); }} className="!text-xs">이전 대화 보기</Button></div>
                       : <p className="pt-6 text-center text-[11px] text-stone-400">{recipientName}와 나눈 첫 대화예요</p>}
                     {byDay(chat.events).map(([day, items]) => <section key={day} data-day={day} aria-label={formatConversationDate(day)}>
                       <div className="sticky top-0 z-10 flex justify-center py-3"><span className={`rounded-full px-3 py-1 text-[11px] font-semibold shadow-sm ring-1 ${focusDate === day ? "bg-[#c8493c] text-white ring-[#c8493c]" : "bg-white/95 text-[#81645d] ring-[#ead9cd]"}`}>{formatConversationDate(day)}{day === today ? " · 오늘" : ""}</span></div>
-                      <ConversationEvents events={items} recipientName={recipientName} childName={childName || me.user.name} onDelete={(event) => { void deleteEvent(event); }} deleting={deleting} />
+                      <ConversationEvents events={items} recipientName={recipientName} childName={childName || me.user.name} onDelete={(event) => { void deleteEvent(event); }} deleting={deleting} onRetryAnalysis={(event) => { void retryAnalysis(event); }} retrying={retrying} />
                     </section>)}
-                    {chat.hasNewer && <div className="flex flex-wrap justify-center gap-2 pt-7"><Button variant="secondary" loading={loadingNewer} onClick={() => { void loadNewer(); }} className="!text-xs">이후 대화 보기</Button><Button variant="secondary" onClick={showLatest} className="!text-xs">최근 대화로</Button></div>}
+                    {chat.hasNewer && <div className="flex flex-wrap justify-center gap-2 pt-7"><Button variant="secondary" loading={loadingNewer} onClick={() => { void feed.loadNewer(); }} className="!text-xs">이후 대화 보기</Button><Button variant="secondary" onClick={showLatest} className="!text-xs">최근 대화로</Button></div>}
                   </>}
               </div>
             </div>

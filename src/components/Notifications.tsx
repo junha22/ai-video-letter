@@ -11,7 +11,7 @@ import type { NotificationItem } from "@/lib/types";
 const POLL_MS = 10_000;
 
 /** 헤더의 알림 벨. 주기적으로 확인해서 새 알림이 오면 화면 위에 띄우고, 허용했다면 브라우저 알림도 보낸다. */
-export function NotificationBell({ onNew }: { onNew?: (n: NotificationItem) => void }) {
+export function NotificationBell({ onNew, onItems }: { onNew?: (n: NotificationItem) => void; onItems?: (items: NotificationItem[]) => void }) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
@@ -20,12 +20,15 @@ export function NotificationBell({ onNew }: { onNew?: (n: NotificationItem) => v
   const lastSeen = useRef<number | null>(null);
   const onNewRef = useRef(onNew);
   onNewRef.current = onNew;
+  const onItemsRef = useRef(onItems);
+  onItemsRef.current = onItems;
 
   const load = useCallback(async () => {
     try {
       const data = await api<{ unread: number; items: NotificationItem[] }>("/api/notifications");
       setItems(data.items);
       setUnread(data.unread);
+      onItemsRef.current?.(data.items);
       const newest = data.items[0];
       if (lastSeen.current !== null && newest && newest.id > lastSeen.current && !newest.read) {
         setToast(newest);

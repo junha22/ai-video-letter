@@ -88,13 +88,18 @@ def job(j: Job | None) -> dict | None:
 
 
 def queue_wait(db: Session, j: Job | None, user_id: int) -> dict | None:
-    """대기 중인 작업이 음색 학습 때문에 기다리는지. 워커가 1개라 학습(약 5분)이 끝나야 다음 작업을 시작한다.
+    """대기 중인 작업이 음색 학습·답장 분석 때문에 기다리는지. 워커가 1개라 지금 작업이 끝나야 다음 작업을 시작한다.
     다른 사용자의 학습이면 누구 것인지 드러내지 않고 '앞선 작업'으로만 알린다."""
     if not j or j.status != "queued":
         return None
     train = jobs.running(db, "voice_train")
     if not train or not train.started_at:
-        return None
+        analysis = jobs.running(db, "reply_analysis")
+        if not analysis or not analysis.started_at:
+            return None
+        from .services.replies import EXPECTED_SECONDS
+        return {"reason": "reply_analysis",
+                "seconds": max(30, round(EXPECTED_SECONDS - (utcnow() - analysis.started_at).total_seconds()))}
     elapsed = (utcnow() - train.started_at).total_seconds()
     return {
         "reason": "own_voice_train" if train.user_id == user_id else "voice_train",

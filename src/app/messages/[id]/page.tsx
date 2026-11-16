@@ -290,6 +290,7 @@ export default function MessagePage() {
                     message={m}
                     childName={m.recipient?.child_name || me.user.name}
                     phone={m.recipient?.phone}
+                    recipientId={m.recipient?.id ?? m.recipient_id}
                     onSent={apply}
                   />
                 </div>

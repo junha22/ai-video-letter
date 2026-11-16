@@ -24,9 +24,9 @@ def run_ffmpeg(args: list[str], input_bytes: bytes | None = None) -> bytes:
     return proc.stdout
 
 
-def decode(data: bytes) -> np.ndarray:
-    """webm/mp4/wav 등 어떤 형식이든 24kHz 모노 float32로 디코딩한다."""
-    raw = run_ffmpeg(["-i", "pipe:0", "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "f32le", "pipe:1"], data)
+def decode(data: bytes, rate: int = SAMPLE_RATE) -> np.ndarray:
+    """webm/mp4/wav 등 어떤 형식이든 모노 float32로 디코딩한다 (기본 24kHz, 답장 분석은 16kHz)."""
+    raw = run_ffmpeg(["-i", "pipe:0", "-ac", "1", "-ar", str(rate), "-f", "f32le", "pipe:1"], data)
     return np.frombuffer(raw, dtype=np.float32).copy()
 
 
@@ -40,13 +40,13 @@ def read_wav(path: Path) -> np.ndarray:
     return samples
 
 
-def write_wav(path: Path, samples: np.ndarray) -> None:
+def write_wav(path: Path, samples: np.ndarray, rate: int = SAMPLE_RATE) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
     with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(SAMPLE_RATE)
+        w.setframerate(rate)
         w.writeframes(pcm.tobytes())
 
 

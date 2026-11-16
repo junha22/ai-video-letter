@@ -31,6 +31,19 @@
 
 API 계약, 공유 링크 권한, 답글 제한, 마이그레이션과 검증 방법은 [대화 기능 문서](docs/CONVERSATIONS.md)에 정리했습니다.
 
+## 부모님 답장 분석 (선택, 기본 꺼짐)
+
+`REPLY_ANALYSIS_ENABLED=true`이면 자녀가 대상자별로 **답장 살펴보기**를 켤 수 있습니다. 켠 대화방에서는 시니어가 **말로 답하기**(녹음 → 다시 듣기 → 보내기, 3분까지)로 음성 답장을 보낼 수 있고, 글·음성 답장을 AI로 정리해 **자녀 화면에만** "평소와 같아요 / 살펴보기 / 바로 연락해 보세요"와 기분·확인해 볼 것·목소리 한 줄을 보여 줍니다. 진단이 아니며 화면마다 그렇게 안내합니다.
+
+- 음성 답장: GPU PC에서 BuzzASR 받아쓰기 + 품질 검사 → 목소리(운율)를 같은 부모님의 평소 값과 비교 → **CLOVA Studio HCX-007 API**로 판단 → 코드 후처리
+- 글 답장: CLOVA 판단 + 후처리만 (GPU PC가 꺼져 있어도 됩니다)
+- CLOVA에는 답장 글(음성은 받아쓰기)·편지·최근 기록만 보내고, 이름·전화번호·이메일은 가립니다. 음성 파일과 목소리 값은 보내지 않습니다. 동의 문구에도 이렇게 적었습니다
+- 받아쓰기 서버는 GPU PC에 따로 띄웁니다 (`gpu_worker/reply_analysis_server.py`, `npm run gpu`, 게이트웨이 `/analysis`). 받아쓰기 모델은 분석할 때마다 올렸다 내려서 TTS·영상 서버 자리를 그대로 둡니다
+- 키 확인: `cd backend; python -m app.services.reply_llm --ping` (가짜 답장 한 줄로 부릅니다)
+- 꺼져 있으면 녹음 버튼·분석·API의 새 칸이 없고 지금과 똑같이 동작합니다
+
+설계, API, 켜는 순서는 [답장 분석 문서](docs/REPLY_ANALYSIS.md)에 있습니다.
+
 ## 백엔드 없이 디자인 확인 (개발 프리뷰)
 
 프로젝트 루트에서 프론트엔드만 실행합니다. 기존 의존성이 설치되어 있다면 추가 설치가 필요 없습니다.
@@ -173,6 +186,7 @@ cd backend; python -m app.worker                              # 워커
 | `VIDEO_PROVIDER` | `local`: 사진이 천천히 확대되는 영상 | `runpod`: FLOAT + 입 모양 LoRA로 립싱크 영상 |
 | `PUBLIC_BASE_URL` | `http://localhost:3000` (이 PC에서만 열림) | 배포/터널 주소 → 부모님 휴대폰에서 열림 |
 | `VOICE_BASIC_SECONDS` | 6초 | 기본 등록 기준. 이만큼 넘게 읽은 녹음이 하나 있으면 등록할 수 있다 (대본 1문장이 약 8초) |
+| `REPLY_ANALYSIS_ENABLED` | `false`: 지금과 같음 | `true`: 부모님 답장 분석 (받아쓰기는 GPU PC `REPLY_ANALYSIS_URL`, 판단은 CLOVA HCX-007 `REPLY_LLM_API_KEY`/`NAVER_API_KEY`, [문서](docs/REPLY_ANALYSIS.md)) |
 | `VOICE_TARGET_SECONDS` | 135초(2분 15초) | 음색 학습(선택)을 고를 수 있는 누적 녹음 길이. S3Gen 음색 학습이 돌 수 있는 최소 길이 (비교 30초 + 검증 20초 + 학습 60초, 대본 단위로 나눠서 약 130초) |
 
 카카오톡 공유 버튼은 프론트엔드 `.env.local`에 `NEXT_PUBLIC_KAKAO_JS_KEY`를 넣으면 켜진다 (`.env.local.example` 참고).
@@ -289,6 +303,9 @@ backend/app/
   routers/                 auth, account(동의·기본 부모님), conversations(대상자·대화·포트폴리오), voice, photo, messages, watch, notifications
   services/
     conversations.py       기존 대상자 이관, KST 대화 날짜·페이지 조회, 근거 기반 월별 분석
+    reply_analysis.py      부모님 답장 분석 규칙 (판단 기준·JSON 틀, 후처리, 평소 목소리 비교, 화면 문구)
+    replies.py             음성 답장 저장, 답장 분석 동의·작업·삭제 / reply_gpu.py 받아쓰기 서버 클라이언트
+    reply_llm.py           답장 분석 판단: CLOVA Studio HCX-007 (형식 강제 JSON, 이름 가림, --ping 확인)
     jobs.py                DB 기반 작업 큐 (재시도, 멈춘 작업 복구)
     script_llm.py          HyperCLOVA X 대본 생성 + JSON 파싱·길이·금칙어 검증
     audio.py               녹음 변환(24kHz WAV), 음량 정규화, 품질 분석
@@ -302,6 +319,8 @@ backend/tests/
 docs/CONVERSATIONS.md      대화방·공유 링크·월별 포트폴리오 API 및 운영 문서
 backend/gpu_worker/
   s3gen_user.py            음색 학습의 GPU 단계 (Wemeet-cb 환경에서 실행: 분할·특징값, 유사도)
+  reply_analysis_server.py 답장 분석 서버 :8400 (Wemeet-reply 환경: 받아쓰기·운율)
+  reply_stt.py / reply_audio.py  받아쓰기 자식 프로세스 / 받아쓰기 자르기·품질 검사·운율 측정
   tts_handler.py           RunPod용 Chatterbox TTS 핸들러 초안 (GPU에서 아직 실행 안 해 봄)
   video_handler.py         RunPod용 영상 핸들러: FLOAT + 입 모양 LoRA
   weights/lora_v2_B_best.pt    입 모양 LoRA 가중치 (rank 16, FMT 32층 + 음성 투영 1층, 9MB, 기본)
@@ -401,7 +420,7 @@ $env:TEST_DATABASE_URL = "postgresql+psycopg://user:pass@127.0.0.1:5432/ongi_tes
 
 웹·API·워커·PostgreSQL·파일은 Azure Container Apps에, GPU 작업(TTS·영상)은 GPU PC에 두고 Tailscale로 연결한다 (API·워커 옆 Tailscale 컨테이너 → tailnet 안의 GPU PC, 공개 주소 없음 + 토큰). 순서·명령·비용은 [Azure 배포 문서](docs/DEPLOY_AZURE.md).
 
-- GPU PC: `npm run gpu` (TTS·영상 서버 + 음색 학습 서버 `gpu_worker/trainer.py` :8300 + 게이트웨이 `gpu_worker/gateway.py` :8200) → `tailscale serve --bg 8200` (tailnet 안에서만)
+- GPU PC: `npm run gpu` (TTS·영상 서버 + 음색 학습 서버 `gpu_worker/trainer.py` :8300 + 답장 분석 서버 :8400(`REPLY_ANALYSIS_PYTHON`이 있을 때) + 게이트웨이 `gpu_worker/gateway.py` :8200) → `tailscale serve --bg 8200` (tailnet 안에서만)
 - 음색 학습: Azure 워커는 GPU가 없어서 `S3GEN_REMOTE_URL`(게이트웨이 /train)로 GPU PC에 녹음을 보내 맡긴다 (`services/s3gen_remote.py`). step·적용 기준은 GPU PC의 `backend/.env`를 따른다
 - 리소스: `infra/main.bicep`, `infra/deploy.ps1`, 시연 때 켜고 끄기 `infra/ops.ps1 start|stop`
 - main 푸시 → 테스트(SQLite·PostgreSQL) → 이미지(GHCR) → Container Apps 이미지 교체

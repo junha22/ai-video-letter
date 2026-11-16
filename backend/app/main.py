@@ -11,7 +11,7 @@ from .auth import check_origin
 from .config import settings
 from .db import init_db
 from .routers import account, auth, conversations, messages, notifications, photo, voice, watch
-from .services import s3gen, wemeet_tts
+from .services import reply_gpu, reply_llm, s3gen, wemeet_tts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -80,4 +80,8 @@ def health():
         status["s3gen_training"] = (
             ("gpu-pc" if settings.s3gen_remote_url else (s3gen.unavailable_reason() or "on")) if settings.s3gen_training else "off"
         )
+    if settings.reply_analysis_enabled:
+        # 받아쓰기 서버(GPU PC)와 CLOVA 키 (키가 있는지만. CLOVA를 실제로 부르지는 않는다)
+        status["reply_analysis"] = "ok" if reply_gpu.health() else "unreachable"
+        status["reply_llm"] = reply_llm.model_name() if reply_llm.api_key() else "no_key"
     return status

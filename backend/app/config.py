@@ -110,6 +110,24 @@ class Settings:
     # 음높이와 목소리 울림을 이 배율로 올린다. 1이면 목소리는 그대로 둔다
     young_voice_pitch = _float("YOUNG_VOICE_PITCH", 1.25)
 
+    # 부모님 답장 분석 (docs/REPLY_ANALYSIS.md). 기본 꺼짐: 꺼져 있으면 음성 답장·분석이 없고 지금과 똑같이 동작한다.
+    # 음성 답장의 받아쓰기·운율은 GPU PC의 분석 서버(gpu_worker/reply_analysis_server.py), Azure에서는 게이트웨이 주소 + /analysis
+    reply_analysis_enabled = _bool("REPLY_ANALYSIS_ENABLED", default=False)
+    reply_analysis_url = os.getenv("REPLY_ANALYSIS_URL", "http://127.0.0.1:8400").rstrip("/")
+    reply_analysis_api_key = os.getenv("REPLY_ANALYSIS_API_KEY", "")  # 게이트웨이를 거칠 때 GPU_GATEWAY_TOKEN
+    # 받아쓰기는 요청마다 모델을 올렸다 내려서 넉넉하게 기다린다 (게이트웨이는 900초)
+    reply_analysis_timeout = _float("REPLY_ANALYSIS_TIMEOUT", 600.0)
+    # 자녀 동의·시니어 안내 문구를 바꾸면 이 값도 바꾼다. 지금 버전으로 받은 동의만 인정해서, 바꾸면 다시 묻는다
+    # (2026-11-clova: 답장 글을 CLOVA Studio로 보내 분석한다는 내용이 들어감)
+    reply_analysis_consent_version = os.getenv("REPLY_ANALYSIS_CONSENT_VERSION", "2026-11-clova")
+    # 답장 분석의 LLM 판단: CLOVA Studio HCX-007 (Chat Completions v3, 형식 강제는 HCX-007만). 대본(HCX_ENDPOINT, v1)과 따로 둔다.
+    # 키를 비우면 NAVER_API_KEY를 쓴다. Azure에서는 워커가 GPU PC를 거치지 않고 바로 부른다
+    reply_llm_endpoint = os.getenv(
+        "REPLY_LLM_ENDPOINT", "https://clovastudio.stream.ntruss.com/v3/chat-completions/HCX-007"
+    ).rstrip("/")
+    reply_llm_api_key = os.getenv("REPLY_LLM_API_KEY", "")
+    reply_llm_timeout = _float("REPLY_LLM_TIMEOUT", 60.0)
+
     # 기본 등록: 이만큼 넘게 읽은 녹음이 하나 있으면 등록해서 바로 zero-shot으로 영상을 만든다 (대본 1문장이 약 8초)
     voice_basic_seconds = _float("VOICE_BASIC_SECONDS", 6.0)
     # 음색 학습(선택)에 필요한 누적 녹음 길이

@@ -65,11 +65,11 @@ def enqueue_voice_train(db: Session, profile: VoiceProfile) -> Job:
 
 def claim(db: Session) -> Job | None:
     now = utcnow()
-    # 음색 학습(약 5분)은 급하지 않으므로 대기 중인 영상 생성·등록·삭제를 먼저 처리한다
+    # 음색 학습(약 5분)과 답장 분석(1~2분)은 급하지 않으므로 대기 중인 영상 생성·등록·삭제를 먼저 처리한다
     candidates = db.scalars(
         select(Job.id)
         .where(Job.status == "queued", Job.run_after <= now)
-        .order_by(case((Job.type == "voice_train", 1), else_=0), Job.id)
+        .order_by(case((Job.type.in_(("voice_train", "reply_analysis")), 1), else_=0), Job.id)
         .limit(5)
     ).all()
     for job_id in candidates:
