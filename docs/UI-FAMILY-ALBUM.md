@@ -51,3 +51,12 @@
 - 브라우저 API 응답은 테스트 데이터입니다. 실제 가족에게 메시지를 보내거나 실제 마이크를 사용하지 않았으며, GPU·외부 AI 서비스와 백엔드 테스트 전체는 실행하지 않았습니다.
 
 검증 스크립트는 상위 작업 폴더 `.tools/browser/check-merged-contracts.cjs`, `qa-album-real-merged.cjs`, `qa-album-merged.cjs`, `qa-merged-features.cjs`에 있습니다. 결과 JSON과 캡처는 `design-previews/album-club-merged/`에 저장했습니다.
+
+
+## 가족 편지함 인물 그림 통일
+
+기기별로 입체적으로 보이던 엄마·아빠 이모지를 제거하고, 공통 `FamilyPortrait` 컴포넌트가 기존 `family-together.webp`의 부모님 얼굴을 표시하도록 변경했습니다. 원본 이미지를 수정하거나 별도 인물을 생성하지 않습니다. 개발 프리뷰, 실제 가족 편지함, 홈의 대상자 목록에 같은 그림을 적용했습니다. 관계에 맞는 부모님 그림을 사용하고, 일반 대상자는 같은 가족 그림 전체를 표시합니다.
+
+현재 가족별 사진이나 앨범 표지를 업로드해 교체하는 기능은 없습니다. 기존 `/onboarding/photo`와 `/api/photo`는 보내는 사용자 본인의 AI 영상용 얼굴 사진이며, 부모님 프로필·앨범 표지와 별개입니다. 이번 변경은 표현만 통일하며 사진 저장 API나 가족 정보의 계약은 변경하지 않습니다.
+
+검증: `npm run build` 통과. 1440 / 390px에서 개발 프리뷰·실제 가족 편지함·홈의 이미지 로딩, 가족 추가·수정 시 관계에 따른 그림 표시, 일반 가족의 기본 그림, 가로 넘침과 자바스크립트 오류 없음 확인. 결과는 상위 작업 폴더 `design-previews/album-club-merged/family-illustrations-qa.json`에 저장했습니다.

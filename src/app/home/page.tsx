@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ChevronRight, CircleCheck, PenLine, Mail, Mic, Image as ImageIcon, MessageCircle } from "lucide-react";
+import { ArrowRight, ChevronRight, CircleCheck, PenLine, Mail, Mic, Image as ImageIcon } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import { formatDate, formatSeconds, TUNING_LABEL } from "@/lib/format";
 import type { Recipient } from "@/lib/conversations";
@@ -11,6 +11,7 @@ import type { Me, Message } from "@/lib/types";
 import { useMe } from "@/lib/useMe";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Card, Notice, Spinner } from "@/components/ui";
+import { FamilyPortrait } from "@/components/album/FamilyPortrait";
 import { AlbumCover, AlbumClosing } from "@/components/album/AlbumCover";
 import { AlbumMemoryCard } from "@/components/album/AlbumMemoryCard";
 import { kstDate } from "@/lib/conversations";
@@ -119,7 +120,7 @@ export default function HomePage() {
           {recipients?.map((r) => (
             <li key={r.id}>
               <Link href={`/conversations/${r.id}`} className="album-recipient-link block h-full rounded-[22px] border border-[#ead9cd] bg-white p-5 shadow-sm transition-colors hover:border-[#ead9cd]">
-                <div className="mb-4 flex items-center gap-3"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fae8de] text-[#c8493c]"><MessageCircle size={24} /></span><div className="min-w-0 flex-1"><h3 className="font-bold">{r.nickname}</h3><p className="text-xs text-stone-500">{r.relation} · 영상 {r.video_count}개 · 답글 {r.reply_count}개</p></div></div>
+                <div className="mb-4 flex items-center gap-3"><FamilyPortrait relation={r.relation} name={r.nickname} className="family-home-portrait"/><div className="min-w-0 flex-1"><h3 className="font-bold">{r.nickname}</h3><p className="text-xs text-stone-500">{r.relation} · 영상 {r.video_count}개 · 답글 {r.reply_count}개</p></div></div>
                 <p className="line-clamp-2 min-h-12 text-sm leading-6 text-stone-600">{r.last_preview || "첫 영상 편지를 보내고 대화를 시작해 보세요."}</p>
                 <div className="mt-4 flex items-center justify-between gap-2"><span className="text-xs text-stone-500">{r.last_activity_at ? formatDate(r.last_activity_at) : "아직 대화가 없어요"}</span><span className="inline-flex items-center gap-1 text-xs font-bold text-[#c8493c]">대화 보기 <ChevronRight size={14} /></span></div>
               </Link>

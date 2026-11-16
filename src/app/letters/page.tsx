@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronRight, Inbox, MessageCircle, Plus, RefreshCw, Video } from "lucide-react";
 import { DashboardShell } from "@/components/DashboardShell";
+import { FamilyPortrait } from "@/components/album/FamilyPortrait";
 import { RecipientForm } from "@/components/conversations/RecipientForm";
 import { Button, Card, Notice, Spinner } from "@/components/ui";
 import { api, errorText } from "@/lib/api";
@@ -65,7 +66,7 @@ export default function LettersPage() {
         <ul className="album-recipient-grid grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {recipients.map((recipient) => <li key={recipient.id}>
             <Link href={`/conversations/${recipient.id}`} className="album-recipient-link group flex h-full flex-col rounded-[24px] border border-[#ead9cd] bg-white p-6 shadow-[0_5px_18px_rgba(32,42,32,0.03)] transition-colors hover:border-[#b68e7e]">
-              <div className="flex items-start justify-between gap-3"><span className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-[#fae8de] text-xl font-bold text-[#c8493c]" aria-hidden="true">{recipient.nickname.slice(0, 1)}</span><span className="rounded-full bg-[#f6f2eb] px-3 py-1 text-xs text-[#9b8069]">{recipient.relation}</span></div>
+              <div className="flex items-start justify-between gap-3"><FamilyPortrait relation={recipient.relation} name={recipient.nickname} /><span className="rounded-full bg-[#f6f2eb] px-3 py-1 text-xs text-[#9b8069]">{recipient.relation}</span></div>
               <h3 className="mt-5 text-xl font-bold text-[#493035]">{recipient.nickname}</h3>
               <p className="mt-2 line-clamp-2 min-h-12 break-words text-sm leading-6 text-stone-500">{recipient.last_preview || "첫 번째 영상 편지로 안부를 전해 보세요."}</p>
               <div className="mb-5 mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-[#81645d]"><span className="inline-flex items-center gap-1.5"><Video size={14} />영상 {recipient.video_count}</span><span className="inline-flex items-center gap-1.5"><MessageCircle size={14} />답글 {recipient.reply_count}</span></div>
