@@ -7,6 +7,10 @@ from pathlib import Path
 
 import imageio_ffmpeg
 import numpy as np
+import parselmouth
+from parselmouth.praat import call
+
+from ..config import log
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 SAMPLE_RATE = 24000  # Chatterbox S3Gen 출력과 같은 24kHz (요구사항 16kHz 이상)
@@ -55,9 +59,27 @@ def wav_duration(path: Path) -> float:
         return w.getnframes() / w.getframerate()
 
 
-def make_younger(path: Path, factor: float) -> None:
-    """어린 시절 모드: 음높이와 목소리 울림(포먼트)을 factor배로 올린다. 아이는 목소리가 높고 성도가 짧아 울림도 높다.
-    빠르게 재생해서(음높이·울림이 같이 오른다) 원래 속도로 되돌리므로 길이는 그대로라 립싱크가 어긋나지 않는다"""
+def make_younger(path: Path, pitch_hz: float, formant: float, pitch_range: float) -> None:
+    """어린 시절 모드: 목소리 높이를 pitch_hz로 맞추고, 울림(포먼트)은 formant배로 따로 올린다. 길이는 그대로 둔다.
+    원래 목소리가 낮든(남성 약 120Hz) 높든(여성 약 200Hz) 같은 아이 목소리 높이가 된다. pitch_range배로 억양 폭을 넓힌다.
+    Praat의 Change gender(PSOLA)를 쓴다. 예전 방식(높이·울림을 같은 배율로)은 낮은 목소리가 144~163Hz에 머물렀다 (docs/YOUNG_MODE.md)"""
+    try:
+        sound = parselmouth.Sound(str(path))
+        younger = call(sound, "Change gender", 75, 600, formant, pitch_hz, pitch_range, 1.0)
+        # PSOLA로 이어 붙이면 파형이 한쪽으로 치우칠 수 있다(DC). 단순한 소리일수록 크다 (사인파에서 -0.16)
+        call(younger, "Subtract mean")
+        younger.save(str(path), "WAV")
+    except parselmouth.PraatError as e:
+        # 목소리 높이를 못 찾는 짧은·조용한 음성 등. 예전 방식으로라도 바꾼다
+        log.warning("Praat으로 목소리를 바꾸지 못해서 음높이·울림을 함께 올립니다: %s", e)
+        _shift_all(path, FALLBACK_YOUNG_FACTOR)
+
+
+FALLBACK_YOUNG_FACTOR = 1.25
+
+
+def _shift_all(path: Path, factor: float) -> None:
+    """음높이와 울림을 같이 factor배로 올린다. 빠르게 재생했다가(둘 다 오른다) 원래 속도로 되돌려 길이는 그대로"""
     with wave.open(str(path), "rb") as w:
         rate = w.getframerate()
     tmp = path.with_name(path.stem + ".young.wav")

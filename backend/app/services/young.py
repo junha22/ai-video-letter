@@ -6,7 +6,8 @@
   붙잡아 두었기 때문이다. 옷을 아이 옷으로 풀고 '조금 멀리서 찍은 구도'로 머리를 작게 하자 가장 어려 보였다
 - 같은 편집을 두 번 돌리면 피부·머리에 잡티가 쌓여서 오히려 나빠졌다
 
-사진은 사용자당 한 번 만들어 photo/young.png에 둔다 (worker._young_photo). 동의를 철회하면 photo 폴더째 지워진다.
+영상 전에 한 장을 만들어 보여 주고(worker.run_young_photo), photo/young.png에 둔다. 마음에 들지 않으면 새 seed로 다시 만든다.
+영상은 그 사진으로 만든다. 동의를 철회하면 photo 폴더째 지워진다.
 모델 라이선스는 Qwen Research License라서 상업적으로 쓰려면 별도 계약이 필요하다.
 """
 
@@ -22,7 +23,7 @@ CLIP = "qwen3vl_8b_int8_convrot.safetensors"
 VAE = "qwen_image_2.1_vae_bf16.safetensors"
 # 공식 Turbo 편집 템플릿(image_qwen_image_2_1_turbo_image_edit)의 8단계 시그마. 단계를 바꾸려면 이 값도 같이 바꿔야 한다
 SIGMAS = "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
-SEED = 42  # 같은 사진·나이면 다시 만들어도 같은 결과
+SEED = 42  # 미리 만들어 보지 않고 영상부터 만들 때 쓰는 seed. 다시 만들기는 새 seed를 쓴다
 RESOLUTION = 1024  # 원본을 약 1024x1024 화소로 맞춰 넣는다. 결과도 이 크기
 OUTPUT_NODE = "13"
 TIMEOUT = 600  # 처음 한 장은 모델(약 16GB)을 불러오느라 오래 걸린다
@@ -48,7 +49,7 @@ class YoungPhotoError(RuntimeError):
         self.retryable = retryable  # False면 작업 큐가 재시도하지 않는다
 
 
-def workflow(image_name: str, age: int) -> dict:
+def workflow(image_name: str, age: int, seed: int = SEED) -> dict:
     """ComfyUI API 형식. 공식 Turbo 편집 템플릿에서 지시문 다듬기만 뺀 것과 같다"""
     return {
         "1": {"class_type": "UNETLoader", "inputs": {"unet_name": UNET, "weight_dtype": "default"}},
@@ -61,7 +62,7 @@ def workflow(image_name: str, age: int) -> dict:
             "prompt": PROMPT.format(age=age), "negative_prompt": "", "resolution": RESOLUTION}},
         "7": {"class_type": "CFGGuider", "inputs": {"model": ["2", 0], "positive": ["6", 0], "negative": ["6", 1], "cfg": 1.0}},
         "8": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
-        "9": {"class_type": "RandomNoise", "inputs": {"noise_seed": SEED}},
+        "9": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
         "10": {"class_type": "ManualSigmas", "inputs": {"sigmas": SIGMAS}},
         "11": {"class_type": "SamplerCustomAdvanced", "inputs": {
             "noise": ["9", 0], "guider": ["7", 0], "sampler": ["8", 0], "sigmas": ["10", 0], "latent_image": ["6", 2]}},
@@ -76,14 +77,15 @@ def _client() -> httpx.Client:
     return httpx.Client(base_url=settings.comfyui_url, headers=headers, timeout=httpx.Timeout(60, connect=5))
 
 
-def generate(photo: bytes, name: str, age: int) -> bytes:
-    """사진을 ComfyUI에 올리고 어린 시절 모습(PNG)을 받아 온다. 사진과 결과는 로그에 남기지 않는다."""
+def generate(photo: bytes, name: str, age: int, seed: int = SEED) -> bytes:
+    """사진을 ComfyUI에 올리고 어린 시절 모습(PNG)을 받아 온다. 사진과 결과는 로그에 남기지 않는다.
+    다시 만들기는 seed를 바꿔서 다른 사진이 나오게 한다."""
     started = time.monotonic()
     with _client() as c:
         try:
             up = c.post("/upload/image", files={"image": (name, photo, "image/jpeg")}, data={"overwrite": "true"})
             up.raise_for_status()
-            resp = c.post("/prompt", json={"prompt": workflow(up.json()["name"], age), "client_id": uuid.uuid4().hex})
+            resp = c.post("/prompt", json={"prompt": workflow(up.json()["name"], age, seed), "client_id": uuid.uuid4().hex})
             if resp.status_code == 400:
                 # 모델 파일이 없거나 ComfyUI가 2.1 블록을 모르는 경우. 다시 보내도 같다
                 raise YoungPhotoError(f"ComfyUI가 작업을 거절했어요: {resp.text[:800]}", retryable=False)

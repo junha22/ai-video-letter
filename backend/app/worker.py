@@ -153,18 +153,11 @@ def _synthesize(db: Session, m: Message, profile: VoiceProfile, wav) -> tts.TTSR
         return tts.synthesize(m.script, reference, wav, voice_id=profile.tts_voice_id, seed=m.tts_seed)
 
 
-def _young_photo(db: Session, photo: Photo) -> tuple[Path, list[int]]:
-    """어린 시절 모드 사진과 얼굴 위치. 사용자당 한 번 만들어 두고 다음 영상부터 그대로 쓴다.
-    COMFYUI_URL이 없으면 원본 사진을 쓴다 (GPU 없이 목소리 변환과 흐름만 확인할 때)."""
-    if photo.young_path and photo.young_face:
-        return storage.abs_path(photo.young_path), photo.young_face
-    if not settings.comfyui_url:
-        log.warning("COMFYUI_URL이 없어서 어린 시절 모드에 원본 사진을 씁니다.")
-        return storage.abs_path(photo.path), photo.face
-    data = young.generate(storage.abs_path(photo.path).read_bytes(), f"ongi_user_{photo.user_id}.jpg", settings.young_age)
+def _save_young(db: Session, photo: Photo, data: bytes) -> tuple[Path, list[int]]:
+    """만든 어린 시절 사진을 photo/young.png에 둔다. 얼굴을 못 찾으면 지금 사진은 그대로 두고 실패로 끝낸다.
+    영상(FLOAT)은 자체 검출기로 얼굴을 자르고, 얼굴 위치는 포스터 구도와 FLOAT 검출이 실패했을 때만 쓴다.
+    만든 사진은 기본 검출기가 자주 놓쳐서 다른 검출기로 한 번 더 찾는다"""
     result = face.check(data)
-    # 영상(FLOAT)은 자체 검출기로 얼굴을 자르고, 이 위치는 포스터 구도와 FLOAT 검출이 실패했을 때만 쓴다.
-    # 만든 사진은 기본 검출기가 자주 놓쳐서 다른 검출기로 한 번 더 찾는다
     box = result.face or (face.find_face_alt(result.image) if result.image else None)
     if not box:
         raise young.YoungPhotoError("어린 시절 사진에서 얼굴을 찾지 못했습니다.", retryable=False)
@@ -176,6 +169,40 @@ def _young_photo(db: Session, photo: Photo) -> tuple[Path, list[int]]:
     photo.young_path, photo.young_face = storage.rel_path(path), box
     db.commit()
     return path, box
+
+
+def _young_photo(db: Session, photo: Photo) -> tuple[Path, list[int]]:
+    """어린 시절 모드 사진과 얼굴 위치. 보통은 영상 전에 미리 만들어 본 사진이다 (run_young_photo, routers/photo.py).
+    없으면 한 장 만들어 두고 다음 영상부터 그대로 쓴다.
+    COMFYUI_URL이 없으면 원본 사진을 쓴다 (GPU 없이 목소리 변환과 흐름만 확인할 때)."""
+    if photo.young_path and photo.young_face:
+        return storage.abs_path(photo.young_path), photo.young_face
+    if not settings.comfyui_url:
+        log.warning("COMFYUI_URL이 없어서 어린 시절 모드에 원본 사진을 씁니다.")
+        return storage.abs_path(photo.path), photo.face
+    data = young.generate(storage.abs_path(photo.path).read_bytes(), f"ongi_user_{photo.user_id}.jpg", settings.young_age)
+    return _save_young(db, photo, data)
+
+
+def run_young_photo(db: Session, job: Job) -> None:
+    """어린 시절 사진 만들기·다시 만들기. 영상 전에 미리 보여 준다 (다시 만들기는 새 seed)."""
+    photo = db.scalar(select(Photo).where(Photo.user_id == job.user_id))
+    payload = job.payload or {}
+    # 만드는 사이에 사진을 새로 올렸으면 예전 사진으로 만든 것이라 버린다
+    if not photo or iso(photo.created_at) != payload.get("photo_at"):
+        log.info("어린 시절 사진 작업 #%s: 사진이 바뀌어서 건너뜁니다.", job.id)
+        return
+    if not settings.comfyui_url:
+        raise young.YoungPhotoError("COMFYUI_URL이 없어서 어린 시절 사진을 만들 수 없습니다.", retryable=False)
+    started = time.monotonic()
+    data = young.generate(storage.abs_path(photo.path).read_bytes(), f"ongi_user_{photo.user_id}.jpg",
+                          settings.young_age, payload["seed"])
+    job.gpu_seconds = round(time.monotonic() - started, 1)  # ComfyUI를 쓴 시간 (대기 포함)
+    db.refresh(photo)
+    if iso(photo.created_at) != payload.get("photo_at"):
+        log.info("어린 시절 사진 작업 #%s: 만드는 사이에 사진이 바뀌어서 버립니다.", job.id)
+        return
+    _save_young(db, photo, data)
 
 
 def run_video(db: Session, job: Job) -> None:
@@ -197,8 +224,8 @@ def run_video(db: Session, job: Job) -> None:
     m.tts_seed = t.seed
     db.commit()
     # 입 모양이 바뀐 목소리에 맞도록 영상(FLOAT)에 넣기 전에 바꾼다. 다시 돌 때는 TTS부터 새로 만들어서 두 번 바뀌지 않는다
-    if m.young and settings.young_voice_pitch != 1:
-        audio.make_younger(wav, settings.young_voice_pitch)
+    if m.young and settings.young_voice_hz:
+        audio.make_younger(wav, settings.young_voice_hz, settings.young_voice_formant, settings.young_voice_range)
 
     job.stage = "video"
     job.video_provider = settings.video_provider
@@ -337,7 +364,7 @@ def run_voice_train(db: Session, job: Job) -> None:
 
 # reply_analysis: 부모님 답장 분석 (services/replies.py, GPU PC 분석 서버. docs/REPLY_ANALYSIS.md)
 HANDLERS = {"voice": run_voice, "video": run_video, "voice_delete": run_voice_delete, "voice_train": run_voice_train,
-            "reply_analysis": replies.run}
+            "reply_analysis": replies.run, "young_photo": run_young_photo}
 
 
 def _on_final_failure(db: Session, job: Job, user_message: str | None = None) -> None:

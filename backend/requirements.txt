@@ -10,5 +10,7 @@ opencv-python-headless>=4.10,<5
 pillow
 # ffmpeg 실행 파일을 같이 설치해 준다 (별도 설치 불필요)
 imageio-ffmpeg
+# 어린 시절 모드 목소리: Praat의 Change gender로 목소리 높이와 울림을 따로 바꾼다 (Windows Python 3.14, Linux 3.11 휠 있음)
+praat-parselmouth>=0.4.7
 # 배포(Azure)에서 쓰는 PostgreSQL 드라이버. DATABASE_URL=postgresql+psycopg://... 로 쓴다 (로컬은 SQLite)
 psycopg[binary]>=3.2
