@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import iso, utcnow
 from .models import Consent, Job, Message, ParentProfile, Photo, ShareLink, User, VoiceProfile, VoiceSample
-from .services import jobs, s3gen, script_llm
+from .services import jobs, s3gen, script_llm, storage
 
 CONSENT_VERSION = settings.consent_version
 CONSENT_ITEMS = [
@@ -158,6 +158,31 @@ def photo(p: Photo | None) -> dict | None:
         "height": p.height,
         "face": p.face,
         "url": f"/api/photo/image?v={int(p.created_at.timestamp())}",
+    }
+
+
+YOUNG_FAILED = "어린 시절 사진을 만들지 못했어요. 잠시 뒤 다시 만들어 주세요."
+YOUNG_NO_FACE = "만든 사진에서 얼굴을 찾지 못했어요. 다시 만들어 보거나 얼굴이 잘 보이는 사진을 올려 주세요."
+
+
+def young_photo(db: Session, user_id: int, p: Photo | None) -> dict:
+    """영상 전에 미리 만들어 보는 어린 시절 사진 (routers/photo.py). 사진을 새로 올리기 전에 넣은 작업은 보지 않는다."""
+    job = jobs.latest(db, "young_photo", user_id)
+    if job and (not p or job.created_at < p.created_at):
+        job = None
+    error = None
+    if job and job.status == "failed":
+        error = YOUNG_NO_FACE if "얼굴을 찾지" in (job.last_error or "") else YOUNG_FAILED
+    url = None
+    if p and p.young_path and storage.abs_path(p.young_path).exists():
+        # 다시 만들면 파일이 바뀌어서 주소도 바꾼다 (브라우저가 예전 사진을 보여 주지 않게)
+        url = f"/api/photo/young/image?v={storage.abs_path(p.young_path).stat().st_mtime_ns}"
+    return {
+        # 이 서버에서 사진을 바꿀 수 있는지. 아니면 원본 사진에 목소리만 어리게 바뀐다
+        "available": bool(settings.comfyui_url),
+        "making": bool(job and job.status in ("queued", "running")),
+        "error": error,
+        "url": url,
     }
 
 

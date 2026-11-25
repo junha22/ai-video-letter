@@ -196,7 +196,7 @@ class Photo(Base):
     height: Mapped[int] = mapped_column(Integer)
     face: Mapped[list] = mapped_column(JSON)  # [x, y, w, h]
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
-    # 어린 시절 모드 사진(services/young.py). 처음 쓸 때 한 번 만들고, 사진을 새로 올리면 지운다
+    # 어린 시절 모드 사진(services/young.py). 영상 전에 미리 만들어 보고, 다시 만들면 바뀐다. 사진을 새로 올리면 지운다
     young_path: Mapped[str | None] = mapped_column(String(500))
     young_face: Mapped[list | None] = mapped_column(JSON)
 
@@ -352,7 +352,7 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    type: Mapped[str] = mapped_column(String(20))  # video | voice | voice_delete | voice_train | reply_analysis
+    type: Mapped[str] = mapped_column(String(20))  # video | voice | voice_delete | voice_train | reply_analysis | young_photo
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
     # voice: {"tune": bool}, voice_delete·voice_train: {"voice_id": ...}, reply_analysis: {"reply_id": ...}

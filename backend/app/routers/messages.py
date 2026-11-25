@@ -219,13 +219,18 @@ def render(
     voice = db.scalar(select(VoiceProfile).where(VoiceProfile.user_id == user.id))
     if not voice or voice.status != "ready":
         raise HTTPException(400, "목소리 등록이 끝나야 영상을 만들 수 있어요.")
-    if not db.scalar(select(Photo).where(Photo.user_id == user.id)):
+    photo = db.scalar(select(Photo).where(Photo.user_id == user.id))
+    if not photo:
         raise HTTPException(400, "얼굴 사진을 먼저 올려 주세요.")
+    young = body.young if body else False
+    # 어린 시절 모드는 미리 만들어 본 사진으로 만든다 (routers/photo.py). 사진을 못 바꾸는 서버는 목소리만 바꾼다
+    if young and settings.comfyui_url and not photo.young_path:
+        raise HTTPException(409, "어린 시절 사진을 먼저 만들어 주세요.")
     m.status = "generating"
     m.error = None
     m.voice_profile_id = voice.id
     m.emotion = emotion
-    m.young = body.young if body else False
+    m.young = young
     # 사용자가 누른 생성·다시 만들기는 새 seed로 만들고, 작업 자동 재시도는 저장된 seed로 같은 음성을 만든다
     m.tts_seed = None
     jobs.enqueue(db, "video", user.id, m.id)

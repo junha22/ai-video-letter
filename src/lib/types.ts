@@ -38,6 +38,16 @@ export type PhotoInfo = {
   url: string;
 };
 
+/** 어린 시절 모드 사진: 영상 전에 한 장 만들어 보고, 마음에 들지 않으면 다시 만든다 (GET /api/photo/young) */
+export type YoungPhotoState = {
+  /** 이 서버에서 사진을 바꿀 수 있는지. 아니면 원본 사진에 목소리만 어리게 바뀐다 */
+  available: boolean;
+  making: boolean;
+  error: string | null;
+  /** 영상에 쓰는 사진. 아직 안 만들었으면 null */
+  url: string | null;
+};
+
 export type Me = {
   user: {
     id: number;

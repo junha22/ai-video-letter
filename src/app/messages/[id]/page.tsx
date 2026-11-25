@@ -6,7 +6,7 @@ import Link from "next/link";
 import { CircleCheck, Download, Eye, LoaderCircle, RefreshCw, Send, Sparkles, Video } from "lucide-react";
 import { api, errorText } from "@/lib/api";
 import { formatDate, formatSeconds } from "@/lib/format";
-import type { Emotion, Message } from "@/lib/types";
+import type { Emotion, Message, YoungPhotoState } from "@/lib/types";
 import { useMe } from "@/lib/useMe";
 import { AppShell } from "@/components/AppShell";
 import { SharePanel } from "@/components/SharePanel";
@@ -34,6 +34,7 @@ export default function MessagePage() {
   const [error, setError] = useState<string | null>(null);
   const [emotion, setEmotion] = useState<Emotion>("neutral");
   const [young, setYoung] = useState(false);
+  const youngPhoto = useYoungPhoto(young);
 
   const apply = useCallback((next: Message) => {
     setM(next);
@@ -89,6 +90,9 @@ export default function MessagePage() {
   const editable = EDITABLE.includes(m.status);
   const dirty = draft.trim() !== m.script;
   const chars = charCount(draft);
+  // 어린 시절 모드는 사진을 먼저 만들어 봐야 영상을 만들 수 있다 (사진을 못 바꾸는 서버는 목소리만 바뀌어서 바로 만든다)
+  const ys = youngPhoto.state;
+  const youngBlocked = young && (!ys || (ys.available && !ys.url));
 
   // 후보가 여러 개인데 아직 안 골랐으면 고르는 화면만 보여 준다
   const needsChoice = editable && m.candidates.length > 1 && !m.chosen_style;
@@ -210,11 +214,11 @@ export default function MessagePage() {
                 <>
                   {m.status === "failed" && <Notice tone="error">{m.error ?? "영상을 만들지 못했어요."}</Notice>}
                   <EmotionPicker value={emotion} onChange={setEmotion} disabled={!!busy} />
-                  <YoungToggle value={young} onChange={setYoung} disabled={!!busy} />
+                  <YoungPanel value={young} onChange={setYoung} disabled={!!busy} photo={youngPhoto} />
                   <Button
                     onClick={() => run("render", render)}
                     loading={busy === "render"}
-                    disabled={!!busy || (!dirty && m.script_problems.length > 0) || chars > 120}
+                    disabled={!!busy || (!dirty && m.script_problems.length > 0) || chars > 120 || youngBlocked}
                     className="mt-3 w-full py-4 text-lg"
                   >
                     <Video className="h-5 w-5" /> {m.status === "failed" ? "다시 만들기" : "이 대본으로 영상 만들기"}
@@ -262,12 +266,12 @@ export default function MessagePage() {
                   <Send className="h-5 w-5" /> 승인하고 보내기
                 </Button>
                 <EmotionPicker value={emotion} onChange={setEmotion} disabled={!!busy} />
-                <YoungToggle value={young} onChange={setYoung} disabled={!!busy} />
+                <YoungPanel value={young} onChange={setYoung} disabled={!!busy} photo={youngPhoto} />
                 <Button
                   variant="secondary"
                   onClick={() => run("render", render)}
                   loading={busy === "render"}
-                  disabled={!!busy}
+                  disabled={!!busy || youngBlocked}
                   className="w-full"
                 >
                   <RefreshCw className="h-5 w-5" />{" "}
@@ -336,22 +340,127 @@ function EmotionPicker({ value, onChange, disabled }: { value: Emotion; onChange
   );
 }
 
-// 어린 시절 모습·목소리로 만들기 (테스트 기능). 사진은 사용자당 처음 한 번만 만들어서 첫 영상은 더 오래 걸린다
-function YoungToggle({ value, onChange, disabled }: { value: boolean; onChange: (v: boolean) => void; disabled: boolean }) {
+// 어린 시절 사진 만들어 보기. 체크했을 때만 불러오고, 만드는 동안(약 30초)은 2초마다 다시 본다
+function useYoungPhoto(active: boolean) {
+  const [state, setState] = useState<YoungPhotoState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setState(await api<YoungPhotoState>("/api/photo/young"));
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (active) load();
+  }, [active, load]);
+
+  useEffect(() => {
+    if (!active || !state?.making) return;
+    const t = window.setInterval(load, 2000);
+    return () => window.clearInterval(t);
+  }, [active, state?.making, load]);
+
+  const act = async (fn: () => Promise<YoungPhotoState>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      setState(await fn());
+    } catch (e) {
+      setError(errorText(e));
+    }
+    setBusy(false);
+  };
+
+  return {
+    state,
+    busy,
+    error,
+    make: () => act(() => api<YoungPhotoState>("/api/photo/young", { method: "POST" })),
+  };
+}
+
+// 어린 시절 모습·목소리로 만들기 (테스트 기능). 영상 전에 사진을 만들어 보고, 그 사진으로 영상을 만든다
+function YoungPanel({
+  value,
+  onChange,
+  disabled,
+  photo,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+  disabled: boolean;
+  photo: ReturnType<typeof useYoungPhoto>;
+}) {
+  const s = photo.state;
   return (
-    <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-2xl border border-[#ead9cd] bg-[#fffaf4] px-4 py-3">
-      <input
-        type="checkbox"
-        checked={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-5 w-5 accent-[#c8493c]"
-      />
-      <span>
-        <span className="block text-[15px] font-semibold text-[#493035]">어린 시절 모습으로 만들기 (테스트)</span>
-        <span className="block text-[12px] text-[#81645d]">사진과 목소리를 어린 시절처럼 바꿔요. 처음 한 번은 사진을 만드느라 더 걸려요.</span>
-      </span>
-    </label>
+    <div className="mt-3 rounded-2xl border border-[#ead9cd] bg-[#fffaf4] px-4 py-3">
+      <label className="flex cursor-pointer items-center gap-3">
+        <input
+          type="checkbox"
+          checked={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+          className="h-5 w-5 accent-[#c8493c]"
+        />
+        <span>
+          <span className="block text-[15px] font-semibold text-[#493035]">어린 시절 모습으로 만들기 (테스트)</span>
+          <span className="block text-[12px] text-[#81645d]">사진과 목소리를 어린 시절처럼 바꿔요.</span>
+        </span>
+      </label>
+
+      {value && (
+        <div className="mt-3 space-y-3 border-t border-[#ead9cd] pt-3">
+          {photo.error && <Notice tone="error">{photo.error}</Notice>}
+          {!s ? (
+            !photo.error && <Spinner />
+          ) : !s.available ? (
+            <p className="text-[13px] text-[#81645d]">이 서버에서는 사진을 바꿀 수 없어서, 원본 사진에 목소리만 어리게 바뀌어요.</p>
+          ) : (
+            <>
+              {s.making ? (
+                <p className="flex items-center gap-2 text-[13px] text-[#493035]">
+                  <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-[#c8493c]" />
+                  어린 시절 사진을 만들고 있어요. 30초쯤 걸리고, 처음에는 몇 분 더 걸릴 수 있어요.
+                </p>
+              ) : (
+                s.error && <Notice tone="error">{s.error}</Notice>
+              )}
+
+              {s.url && (
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- 로그인한 사용자만 받는 API 이미지라 최적화하지 않는다 */}
+                  <img
+                    src={s.url}
+                    alt="영상에 쓸 어린 시절 사진"
+                    className={`aspect-[4/5] w-28 rounded-xl border border-[#ead9cd] object-cover ${s.making ? "opacity-50" : ""}`}
+                  />
+                  <p className="text-[13px] text-[#81645d]">
+                    이 사진으로 영상을 만들어요. 마음에 들지 않으면 다시 만들 수 있어요.
+                  </p>
+                </div>
+              )}
+
+              {!s.making && (
+                <Button
+                  variant="secondary"
+                  onClick={photo.make}
+                  loading={photo.busy}
+                  disabled={disabled || photo.busy}
+                  className="w-full text-[15px]"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {s.url ? "사진 다시 만들기" : "어린 시절 사진 만들어 보기"}
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

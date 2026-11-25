@@ -1,18 +1,26 @@
 """어린 시절 모드: 목소리 변환과 ComfyUI 호출 (가짜 ComfyUI로 확인한다)."""
 
 import json
+import logging
 import unittest
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import httpx
 import numpy as np
+from fastapi.testclient import TestClient
 from PIL import Image
+from sqlalchemy import select
 
-from _test_support import TEST_ROOT, settings
-from app.models import Photo
-from app.services import audio, young
+from _test_support import TEST_ROOT, app, db, settings, using_isolated_database
+from app import serialize, worker
+from app.db import utcnow
+from app.models import Message, ParentProfile, Photo, VoiceProfile
+from app.services import audio, jobs, storage, young
 from app.services import face as face_service
 from app.worker import _young_photo
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 SR = audio.SAMPLE_RATE
 
@@ -76,8 +84,15 @@ class GenerateTest(unittest.TestCase):
         self.assertEqual(data, b"PNG-BYTES")
         self.assertEqual(comfy.workflow["5"]["inputs"]["image"], "ongi_user_1.jpg")
         self.assertIn("6-year-old child", comfy.workflow["6"]["inputs"]["prompt"])
+        self.assertEqual(comfy.workflow["9"]["inputs"]["noise_seed"], young.SEED)
         # 다 만든 뒤 GPU를 TTS·영상 서버에 돌려준다
         self.assertEqual(comfy.paths[-1], "/free")
+
+    def test_remake_uses_given_seed(self):
+        comfy = FakeComfy()
+        with patch.object(young, "_client", fake_client(comfy)):
+            young.generate(b"JPEG", "ongi_user_1.jpg", age=6, seed=1234)
+        self.assertEqual(comfy.workflow["9"]["inputs"]["noise_seed"], 1234)
 
     def test_rejected_workflow_is_not_retried(self):
         comfy = FakeComfy(prompt_status=400)
@@ -128,6 +143,130 @@ class YoungPhotoTest(unittest.TestCase):
         with self.assertRaises(young.YoungPhotoError) as ctx:
             self._make(None)
         self.assertFalse(ctx.exception.retryable)
+
+
+FACE = [10, 20, 300, 300]
+
+
+def checked(data: bytes) -> face_service.PhotoCheck:
+    """얼굴 검사 대신: b"no-face"만 얼굴이 없는 사진으로 본다"""
+    image = Image.new("RGB", (64, 80), "white")
+    if data == b"no-face":
+        return face_service.PhotoCheck(image=image, problems=["얼굴을 찾지 못했어요."])
+    return face_service.PhotoCheck(image=image, face=FACE)
+
+
+class YoungPreviewTest(unittest.TestCase):
+    """영상 전에 어린 시절 사진 만들어 보기 → (다시 만들기) → 그 사진으로 영상 만들기"""
+
+    def setUp(self):
+        self.assertTrue(using_isolated_database())
+        storage.delete_tree(TEST_ROOT / "users")
+        db.Base.metadata.drop_all(db.engine)
+        db.init_db()
+        for name, value in (("dev_login", True), ("comfyui_url", "http://comfy.test")):
+            p = patch.object(settings, name, value)
+            p.start()
+            self.addCleanup(p.stop)
+        self.client = TestClient(app)
+        self.addCleanup(self.client.close)
+        self.assertEqual(self.client.post("/api/auth/dev-login", json={"name": "young preview test"}).status_code, 200)
+        self.uid = self.client.get("/api/me").json()["user"]["id"]
+        self.assertEqual(self.client.post("/api/consent", json={"voice": True, "face": True, "parent_receive": True}).status_code, 200)
+        rid = self.client.post("/api/recipients", json={"nickname": "엄마", "relation": "어머니"}).json()["id"]
+        self.assertEqual(self.client.get("/api/voice").status_code, 200)
+        original = storage.user_dir(self.uid, "photo") / "photo.jpg"
+        original.write_bytes(b"JPEG")
+        with db.SessionLocal() as session:
+            profile = session.scalar(select(VoiceProfile).where(VoiceProfile.user_id == self.uid))
+            profile.status = "ready"
+            parent = session.scalar(select(ParentProfile).where(ParentProfile.user_id == self.uid))
+            session.add(Photo(user_id=self.uid, path=storage.rel_path(original), width=800, height=1000, face=[1, 2, 3, 4]))
+            message = Message(user_id=self.uid, parent_id=parent.id, recipient_id=rid, memo="저녁 먹었어?",
+                              template="greeting", script="엄마, 저녁은 드셨어요? 오늘도 따뜻하게 챙겨 드세요.")
+            session.add(message)
+            session.commit()
+            self.message_id = message.id
+
+    def state(self):
+        response = self.client.get("/api/photo/young")
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def make(self, data: bytes):
+        """만들기(다시 만들기)를 누르고 워커가 그 작업을 처리한다"""
+        self.assertTrue(self.client.post("/api/photo/young").json()["making"])
+        with db.SessionLocal() as session:
+            job = jobs.claim(session)
+            self.assertEqual(job.type, "young_photo")
+            with patch.object(young, "generate", return_value=data) as generate, \
+                    patch.object(face_service, "check", side_effect=checked), \
+                    patch.object(face_service, "find_face_alt", return_value=None):
+                worker.process(session, job)
+        self.seed = generate.call_args.args[3]
+        return self.state()
+
+    def render(self):
+        return self.client.post(f"/api/messages/{self.message_id}/render", json={"emotion": "neutral", "young": True})
+
+    def photo_row(self):
+        with db.SessionLocal() as session:
+            return session.scalar(select(Photo).where(Photo.user_id == self.uid))
+
+    def test_make_then_render(self):
+        self.assertEqual(self.state(), {"available": True, "making": False, "error": None, "url": None})
+        # 만들어 보기 전에는 어린 시절 모드로 영상을 만들 수 없다
+        self.assertEqual(self.render().status_code, 409)
+
+        state = self.make(b"a")
+        self.assertFalse(state["making"])
+        image = self.client.get(state["url"])
+        self.assertEqual((image.status_code, image.headers["content-type"]), (200, "image/png"))
+        self.assertEqual(self.photo_row().young_face, FACE)
+
+        response = self.render()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json()["young"])
+
+    def test_remake_uses_new_seed_and_replaces_photo(self):
+        first = self.make(b"a")
+        first_seed = self.seed
+        second = self.make(b"b")
+        self.assertNotEqual(self.seed, first_seed)
+        self.assertNotEqual(first["url"], second["url"])  # 브라우저가 예전 사진을 보여 주지 않게 주소가 바뀐다
+
+    def test_failed_remake_keeps_previous_photo(self):
+        first = self.make(b"a")
+        state = self.make(b"no-face")
+        self.assertEqual(state["error"], serialize.YOUNG_NO_FACE)
+        self.assertEqual(state["url"], first["url"])
+        self.assertEqual(self.render().status_code, 200)
+
+    def test_new_upload_clears_photo(self):
+        self.make(b"a")
+        ok = face_service.PhotoCheck(image=Image.new("RGB", (800, 1000), "white"), face=[1, 2, 3, 4])
+        with patch.object(face_service, "check", return_value=ok):
+            self.assertTrue(self.client.post("/api/photo", files={"file": ("me.jpg", b"JPEG", "image/jpeg")}).json()["ok"])
+        self.assertIsNone(self.state()["url"])
+        self.assertFalse((storage.user_dir(self.uid, "photo") / "young.png").exists())
+
+    def test_photo_replaced_while_making_is_dropped(self):
+        self.assertTrue(self.client.post("/api/photo/young").json()["making"])
+        with db.SessionLocal() as session:
+            photo = session.scalar(select(Photo).where(Photo.user_id == self.uid))
+            photo.created_at = utcnow() + timedelta(seconds=1)  # 만드는 사이에 사진을 새로 올림
+            session.commit()
+            job = jobs.claim(session)
+            with patch.object(young, "generate", side_effect=AssertionError("바뀐 사진으로 만들면 안 된다")):
+                worker.process(session, job)
+        self.assertEqual(self.state(), {"available": True, "making": False, "error": None, "url": None})
+
+    def test_without_comfyui_only_voice_changes(self):
+        with patch.object(settings, "comfyui_url", ""):
+            self.assertFalse(self.state()["available"])
+            self.assertEqual(self.client.post("/api/photo/young").status_code, 409)
+            # 사진을 못 바꾸는 서버는 만들어 보지 않아도 영상을 만든다 (원본 사진 + 어린 목소리)
+            self.assertEqual(self.render().status_code, 200)
 
 
 if __name__ == "__main__":
