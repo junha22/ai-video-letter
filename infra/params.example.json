@@ -10,6 +10,8 @@
     "sessionSecret": { "value": "<긴 임의 문자열>" },
     "naverApiKey": { "value": "" },
     "kakaoJsKey": { "value": "" },
+    "clovaVoiceClientId": { "value": "" },
+    "clovaVoiceClientSecret": { "value": "" },
     "replyAnalysisEnabled": { "value": false },
     "replyLlmApiKey": { "value": "" },
     "gpuGatewayUrl": { "value": "https://<PC 이름>.<tailnet>.ts.net" },

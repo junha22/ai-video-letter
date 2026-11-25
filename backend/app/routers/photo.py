@@ -74,7 +74,7 @@ def make_young(user: User = Depends(current_user), db: Session = Depends(get_db)
     if not photo:
         raise HTTPException(400, "얼굴 사진을 먼저 올려 주세요.")
     if not settings.comfyui_url:
-        raise HTTPException(409, "이 서버에서는 어린 시절 사진을 만들 수 없어요. 원본 사진에 목소리만 어리게 바뀌어요.")
+        raise HTTPException(409, "이 서버에서는 어린 시절 사진을 만들 수 없어요. 원본 사진을 그대로 써요.")
     state = serialize.young_photo(db, user.id, photo)
     if state["making"]:
         return state

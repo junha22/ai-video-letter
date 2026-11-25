@@ -56,6 +56,12 @@ param replyAnalysisEnabled bool = false
 @description('답장 분석용 CLOVA Studio 키. 비우면 naverApiKey를 쓴다 (둘 다 비우면 분석이 바로 실패한다)')
 param replyLlmApiKey string = ''
 
+@description('타임 슬립 아이 목소리 TTS (CLOVA Voice Premium) Client ID. 네이버 클라우드 콘솔 > AI·NAVER API > Application 등록(CLOVA Voice 선택). 비우면 그 선택지가 안 보인다')
+param clovaVoiceClientId string = ''
+@secure()
+@description('CLOVA Voice Client Secret. Application을 등록하면 쓰지 않아도 매달 기본료가 붙는다 (docs/YOUNG_MODE.md)')
+param clovaVoiceClientSecret string = ''
+
 @description('동의 화면에 보이는 저장·처리 장소 안내')
 param dataProcessingNotice string = '목소리·사진·영상은 Microsoft Azure 클라우드에 저장되고, 음성과 영상은 연구팀 GPU 컴퓨터에서 만들어요.'
 @description('동의 문구를 바꾸면 같이 바꾼다')
@@ -168,6 +174,11 @@ var naverSecret = empty(naverApiKey) ? [] : [ { name: 'naver-api-key', value: na
 var naverEnv = empty(naverApiKey) ? [] : [ { name: 'NAVER_API_KEY', secretRef: 'naver-api-key' } ]
 var replyLlmSecret = empty(replyLlmApiKey) ? [] : [ { name: 'reply-llm-api-key', value: replyLlmApiKey } ]
 var replyLlmEnv = empty(replyLlmApiKey) ? [] : [ { name: 'REPLY_LLM_API_KEY', secretRef: 'reply-llm-api-key' } ]
+var clovaVoiceSecret = empty(clovaVoiceClientSecret) ? [] : [ { name: 'clova-voice-secret', value: clovaVoiceClientSecret } ]
+var clovaVoiceEnv = empty(clovaVoiceClientSecret) ? [] : [
+  { name: 'CLOVA_VOICE_CLIENT_ID', value: clovaVoiceClientId }
+  { name: 'CLOVA_VOICE_CLIENT_SECRET', secretRef: 'clova-voice-secret' }
+]
 
 // 공개 이미지면 저장소 로그인 정보 없이 받는다 (비공개로 바꾸면 registryUsername·registryPassword를 채운다)
 var registrySecret = empty(registryPassword) ? [] : [ { name: 'registry-password', value: registryPassword } ]
@@ -180,9 +191,9 @@ var backendSecrets = concat(registrySecret, [
   { name: 'session-secret', value: sessionSecret }
   { name: 'gpu-token', value: gpuGatewayToken }
   { name: 'ts-authkey', value: tailscaleAuthKey }
-], naverSecret, replyLlmSecret)
+], naverSecret, replyLlmSecret, clovaVoiceSecret)
 
-var backendEnv = concat(naverEnv, replyLlmEnv, [
+var backendEnv = concat(naverEnv, replyLlmEnv, clovaVoiceEnv, [
   { name: 'DATABASE_URL', secretRef: 'database-url' }
   { name: 'SESSION_SECRET', secretRef: 'session-secret' }
   { name: 'PUBLIC_BASE_URL', value: publicBaseUrl }
@@ -198,7 +209,7 @@ var backendEnv = concat(naverEnv, replyLlmEnv, [
   // HyperCLOVA(대본·답장 분석)는 프록시 없이 바로 부른다 (httpx가 이 환경 변수들을 따른다. DB(psycopg)는 영향 없음)
   { name: 'HTTPS_PROXY', value: 'http://127.0.0.1:1055' }
   { name: 'HTTP_PROXY', value: 'http://127.0.0.1:1055' }
-  { name: 'NO_PROXY', value: 'clovastudio.stream.ntruss.com,localhost,127.0.0.1' }
+  { name: 'NO_PROXY', value: 'clovastudio.stream.ntruss.com,naveropenapi.apigw.ntruss.com,localhost,127.0.0.1' }
   // 음색 학습: 워커에 GPU가 없어서 GPU PC의 학습 서버(gpu_worker/trainer.py)에 맡긴다 (step·적용 기준은 GPU PC .env)
   { name: 'S3GEN_TRAINING', value: 'true' }
   { name: 'S3GEN_REMOTE_URL', value: '${gpuGatewayUrl}/train' }

@@ -72,14 +72,14 @@ def make_younger(path: Path, pitch_hz: float, formant: float, pitch_range: float
     except parselmouth.PraatError as e:
         # 목소리 높이를 못 찾는 짧은·조용한 음성 등. 예전 방식으로라도 바꾼다
         log.warning("Praat으로 목소리를 바꾸지 못해서 음높이·울림을 함께 올립니다: %s", e)
-        _shift_all(path, FALLBACK_YOUNG_FACTOR)
+        shift_all(path, SIMPLE_YOUNG_FACTOR)
 
 
-FALLBACK_YOUNG_FACTOR = 1.25
+SIMPLE_YOUNG_FACTOR = 1.25  # 처음 방식 ('간단히 높이기' 선택지, Praat이 실패했을 때)
 
 
-def _shift_all(path: Path, factor: float) -> None:
-    """음높이와 울림을 같이 factor배로 올린다. 빠르게 재생했다가(둘 다 오른다) 원래 속도로 되돌려 길이는 그대로"""
+def shift_all(path: Path, factor: float) -> None:
+    """음높이와 울림을 같이 factor배로 올린다 (처음 방식, 단순 신호 처리). 빠르게 재생했다가(둘 다 오른다) 원래 속도로 되돌려 길이는 그대로"""
     with wave.open(str(path), "rb") as w:
         rate = w.getframerate()
     tmp = path.with_name(path.stem + ".young.wav")

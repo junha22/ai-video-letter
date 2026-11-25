@@ -14,6 +14,7 @@ from ..config import settings
 from ..db import get_db, utcnow
 from ..models import Message, Photo, SeniorReply, ShareLink, User, VoiceProfile
 from ..services import conversations, jobs, script_llm, storage
+from ..services import young as young_service
 from ..services import video as video_service  # 아래 video() 엔드포인트와 이름이 겹친다
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
@@ -196,7 +197,8 @@ def rewrite_script(
 
 class RenderIn(BaseModel):
     emotion: str = video_service.DEFAULT_EMOTION
-    young: bool = False  # 어린 시절 모습·목소리로 만들기 (services/young.py)
+    young: bool = False  # 어린 시절 모습으로 만들기 (services/young.py)
+    young_voice: str = ""  # 어린 시절 모드의 목소리 (services/young.VOICES). young이 아니면 무시한다
 
 
 @router.post("/{message_id}/render")
@@ -223,14 +225,18 @@ def render(
     if not photo:
         raise HTTPException(400, "얼굴 사진을 먼저 올려 주세요.")
     young = body.young if body else False
-    # 어린 시절 모드는 미리 만들어 본 사진으로 만든다 (routers/photo.py). 사진을 못 바꾸는 서버는 목소리만 바꾼다
+    # 어린 시절 모드는 미리 만들어 본 사진으로 만든다 (routers/photo.py). 사진을 못 바꾸는 서버는 원본 사진으로 만든다
     if young and settings.comfyui_url and not photo.young_path:
         raise HTTPException(409, "어린 시절 사진을 먼저 만들어 주세요.")
     m.status = "generating"
     m.error = None
     m.voice_profile_id = voice.id
     m.emotion = emotion
+    voice = (body.young_voice if body else "") if young else ""
+    if voice not in {o["key"] for o in young_service.voice_options()}:
+        raise HTTPException(400, "목소리를 다시 골라 주세요.")
     m.young = young
+    m.young_voice = voice or None
     # 사용자가 누른 생성·다시 만들기는 새 seed로 만들고, 작업 자동 재시도는 저장된 seed로 같은 음성을 만든다
     m.tts_seed = None
     jobs.enqueue(db, "video", user.id, m.id)

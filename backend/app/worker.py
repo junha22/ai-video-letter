@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import SessionLocal, init_db, iso, utcnow
 from .models import Job, Message, Notification, Photo, VoiceProfile, VoiceSample
-from .services import audio, face, jobs, korean, replies, reply_gpu, reply_llm, s3gen, s3gen_remote, storage, tts, video, wemeet_tts, young
+from .services import audio, clova_voice, face, jobs, korean, replies, reply_gpu, reply_llm, s3gen, s3gen_remote, storage, tts, video, wemeet_tts, young
 
 log = logging.getLogger("ongi.worker")
 
@@ -215,17 +215,26 @@ def run_video(db: Session, job: Job) -> None:
         raise RuntimeError("목소리나 사진이 등록되어 있지 않습니다.")
     out_dir = storage.message_dir(m.user_id, m.id)
 
+    # 어린 시절 모드의 목소리 (services/young.VOICES). 아이 목소리 TTS를 고르면 내 목소리 대신 CLOVA Voice로 읽는다
+    voice = (m.young_voice or "") if m.young else ""
     job.stage = "tts"
-    job.tts_provider = settings.tts_provider
+    job.tts_provider = "clova" if voice in clova_voice.SPEAKERS else settings.tts_provider
     db.commit()
     wav = out_dir / "audio.wav"
-    t = _synthesize(db, m, profile, wav)
+    if voice in clova_voice.SPEAKERS:
+        clova_voice.synthesize(m.script, voice, wav)
+        t = tts.TTSResult(provider="clova")
+    else:
+        t = _synthesize(db, m, profile, wav)
     # 영상 단계에서 실패해 작업이 다시 돌 때 같은 음성이 나오도록 seed를 바로 저장한다
     m.tts_seed = t.seed
     db.commit()
-    # 입 모양이 바뀐 목소리에 맞도록 영상(FLOAT)에 넣기 전에 바꾼다. 다시 돌 때는 TTS부터 새로 만들어서 두 번 바뀌지 않는다
-    if m.young and settings.young_voice_hz:
-        audio.make_younger(wav, settings.young_voice_hz, settings.young_voice_formant, settings.young_voice_range)
+    # 목소리 변환은 사용자가 고른 경우만. 입 모양이 바뀐 목소리에 맞도록 영상(FLOAT)에 넣기 전에 바꾼다.
+    # 다시 돌 때는 TTS부터 새로 만들어서 두 번 바뀌지 않는다
+    if voice == young.VOICE_SIMPLE:
+        audio.shift_all(wav, audio.SIMPLE_YOUNG_FACTOR)
+    elif voice == young.VOICE_PRAAT:
+        audio.make_younger(wav, settings.young_voice_hz or 270, settings.young_voice_formant, settings.young_voice_range)
 
     job.stage = "video"
     job.video_provider = settings.video_provider

@@ -40,13 +40,17 @@ export type PhotoInfo = {
 
 /** 어린 시절 모드 사진: 영상 전에 한 장 만들어 보고, 마음에 들지 않으면 다시 만든다 (GET /api/photo/young) */
 export type YoungPhotoState = {
-  /** 이 서버에서 사진을 바꿀 수 있는지. 아니면 원본 사진에 목소리만 어리게 바뀐다 */
+  /** 이 서버에서 사진을 바꿀 수 있는지. 아니면 원본 사진을 그대로 쓴다 */
   available: boolean;
   making: boolean;
   error: string | null;
   /** 영상에 쓰는 사진. 아직 안 만들었으면 null */
   url: string | null;
+  /** 이 서버에서 고를 수 있는 목소리 (아이 목소리 TTS는 CLOVA Voice 키가 있을 때만) */
+  voices: YoungVoiceOption[];
 };
+
+export type YoungVoiceOption = { key: string; label: string; description: string };
 
 export type Me = {
   user: {
@@ -126,7 +130,10 @@ export type Message = {
   audio_url: string | null;
   tts_seed: number | null;
   emotion: Emotion | null;
-  young: boolean; // 어린 시절 모습·목소리로 만들었는지
+  young: boolean; // 어린 시절 모습으로 만들었는지
+  /** 어린 시절 모드의 목소리. ""이면 내 목소리 그대로 (YoungVoiceOption.key) */
+  young_voice: string;
+  young_voice_label: string | null;
   job: Job | null;
   // 대기 중인 이유: 워커가 음색 학습(약 5분)을 처리하는 중. own_voice_train이면 내 목소리 학습
   wait: { reason: "own_voice_train" | "voice_train" | "reply_analysis"; seconds: number } | null;

@@ -17,6 +17,7 @@ import uuid
 import httpx
 
 from ..config import log, settings
+from . import clova_voice
 
 UNET = "qwen_image_2.1_turbo_int8_convrot.safetensors"
 CLIP = "qwen3vl_8b_int8_convrot.safetensors"
@@ -39,6 +40,29 @@ PROMPT = (
     "slightly further away: the child's head appears smaller in the frame, with more empty white space around the "
     "head and more of the shoulders and upper body visible."
 )
+
+
+# 타임 슬립 목소리 선택 (docs/YOUNG_MODE.md '목소리 비교'). 어느 쪽이 나은지 배포에서 비교해 보려고 여러 방식을 고르게 했다
+VOICE_SIMPLE, VOICE_PRAAT = "simple", "praat"
+VOICES = {
+    "": ("내 목소리 그대로", "목소리는 바꾸지 않아요."),
+    VOICE_SIMPLE: ("간단히 높이기", "음높이와 울림을 함께 1.25배 올려요. 처음에 쓴 단순한 방식이에요."),
+    VOICE_PRAAT: ("아이 목소리 높이로 맞추기", "목소리 높이를 아이 수준(270Hz)으로 맞추고 울림은 조금만 올려요. 기계음이 날 수 있어요."),
+    **{k: (f"아이 목소리 TTS · {v}", "진짜 아이 목소리로 대본을 읽어요. 내 목소리는 아니에요.") for k, v in clova_voice.SPEAKERS.items()},
+}
+
+
+def voice_options() -> list[dict]:
+    """이 서버에서 고를 수 있는 목소리. 아이 목소리 TTS는 CLOVA Voice 키가 있을 때만"""
+    return [
+        {"key": key, "label": label, "description": desc}
+        for key, (label, desc) in VOICES.items()
+        if key not in clova_voice.SPEAKERS or clova_voice.available()
+    ]
+
+
+def voice_label(key: str | None) -> str | None:
+    return VOICES[key][0] if key and key in VOICES else None
 
 
 class YoungPhotoError(RuntimeError):

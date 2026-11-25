@@ -227,8 +227,10 @@ class Message(Base):
     audio_path: Mapped[str | None] = mapped_column(String(500))
     tts_seed: Mapped[int | None] = mapped_column(Integer)  # 같은 seed로 다시 만들면 같은 음성이 나온다
     emotion: Mapped[str | None] = mapped_column(String(20))  # 영상 만들 때 사용자가 고른 표정 (video.EMOTIONS)
-    # 어린 시절 모습·목소리로 만들었는지. 기본값을 두지 않는다: PostgreSQL은 기존 표에 Boolean 칸을 DEFAULT 0으로 못 붙인다
+    # 어린 시절 모습으로 만들었는지. 기본값을 두지 않는다: PostgreSQL은 기존 표에 Boolean 칸을 DEFAULT 0으로 못 붙인다
     young: Mapped[bool | None] = mapped_column(Boolean)
+    # 어린 시절 모드의 목소리 (services/young.VOICES): None = 내 목소리 그대로, simple·praat = 변환, nhajun·ndain = 아이 목소리 TTS
+    young_voice: Mapped[str | None] = mapped_column(String(20))
     video_path: Mapped[str | None] = mapped_column(String(500))
     poster_path: Mapped[str | None] = mapped_column(String(500))
     captions: Mapped[list | None] = mapped_column(JSON)

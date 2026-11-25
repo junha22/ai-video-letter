@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import iso, utcnow
 from .models import Consent, Job, Message, ParentProfile, Photo, ShareLink, User, VoiceProfile, VoiceSample
-from .services import jobs, s3gen, script_llm, storage
+from .services import jobs, s3gen, script_llm, storage, young
 
 CONSENT_VERSION = settings.consent_version
 CONSENT_ITEMS = [
@@ -178,11 +178,12 @@ def young_photo(db: Session, user_id: int, p: Photo | None) -> dict:
         # 다시 만들면 파일이 바뀌어서 주소도 바꾼다 (브라우저가 예전 사진을 보여 주지 않게)
         url = f"/api/photo/young/image?v={storage.abs_path(p.young_path).stat().st_mtime_ns}"
     return {
-        # 이 서버에서 사진을 바꿀 수 있는지. 아니면 원본 사진에 목소리만 어리게 바뀐다
+        # 이 서버에서 사진을 바꿀 수 있는지. 아니면 원본 사진을 그대로 쓴다
         "available": bool(settings.comfyui_url),
         "making": bool(job and job.status in ("queued", "running")),
         "error": error,
         "url": url,
+        "voices": young.voice_options(),
     }
 
 
@@ -255,6 +256,8 @@ def message(db: Session, m: Message) -> dict:
         "tts_seed": m.tts_seed,
         "emotion": m.emotion,
         "young": bool(m.young),
+        "young_voice": m.young_voice or "",
+        "young_voice_label": young.voice_label(m.young_voice),
         "job": job(render_job),
         "wait": queue_wait(db, render_job, m.user_id) if m.status == "generating" else None,
         "share": {

@@ -34,6 +34,7 @@ export default function MessagePage() {
   const [error, setError] = useState<string | null>(null);
   const [emotion, setEmotion] = useState<Emotion>("neutral");
   const [young, setYoung] = useState(false);
+  const [youngVoice, setYoungVoice] = useState("");
   const youngPhoto = useYoungPhoto(young);
 
   const apply = useCallback((next: Message) => {
@@ -48,6 +49,9 @@ export default function MessagePage() {
   useEffect(() => {
     setYoung(m?.young ?? false);
   }, [m?.young]);
+  useEffect(() => {
+    setYoungVoice(m?.young_voice ?? "");
+  }, [m?.young_voice]);
 
   const load = useCallback(async () => {
     try {
@@ -90,7 +94,7 @@ export default function MessagePage() {
   const editable = EDITABLE.includes(m.status);
   const dirty = draft.trim() !== m.script;
   const chars = charCount(draft);
-  // 어린 시절 모드는 사진을 먼저 만들어 봐야 영상을 만들 수 있다 (사진을 못 바꾸는 서버는 목소리만 바뀌어서 바로 만든다)
+  // 어린 시절 모드는 사진을 먼저 만들어 봐야 영상을 만들 수 있다 (사진을 못 바꾸는 서버는 원본 사진으로 바로 만든다)
   const ys = youngPhoto.state;
   const youngBlocked = young && (!ys || (ys.available && !ys.url));
 
@@ -114,7 +118,7 @@ export default function MessagePage() {
   const save = () => api<Message>(`/api/messages/${m.id}`, { method: "PATCH", json: { script: draft.trim() } });
   const render = async () => {
     if (dirty) await save();
-    return api<Message>(`/api/messages/${m.id}/render`, { json: { emotion, young } });
+    return api<Message>(`/api/messages/${m.id}/render`, { json: { emotion, young, young_voice: young ? youngVoice : "" } });
   };
 
   return (
@@ -214,7 +218,7 @@ export default function MessagePage() {
                 <>
                   {m.status === "failed" && <Notice tone="error">{m.error ?? "영상을 만들지 못했어요."}</Notice>}
                   <EmotionPicker value={emotion} onChange={setEmotion} disabled={!!busy} />
-                  <YoungPanel value={young} onChange={setYoung} disabled={!!busy} photo={youngPhoto} />
+                  <YoungPanel value={young} onChange={setYoung} voice={youngVoice} onVoiceChange={setYoungVoice} disabled={!!busy} photo={youngPhoto} />
                   <Button
                     onClick={() => run("render", render)}
                     loading={busy === "render"}
@@ -249,7 +253,7 @@ export default function MessagePage() {
                 <p className="mt-2 text-center text-sm text-stone-500">
                   미리보기 · {formatSeconds(m.duration ?? 0)}
                   {m.emotion && ` · 표정 ${EMOTIONS.find((e) => e.key === m.emotion)?.label ?? m.emotion}`}
-                  {m.young && " · 어린 시절 모습"}
+                  {m.young && ` · 어린 시절 모습${m.young_voice_label ? ` · ${m.young_voice_label}` : ""}`}
                 </p>
               </Card>
             )}
@@ -266,7 +270,7 @@ export default function MessagePage() {
                   <Send className="h-5 w-5" /> 승인하고 보내기
                 </Button>
                 <EmotionPicker value={emotion} onChange={setEmotion} disabled={!!busy} />
-                <YoungPanel value={young} onChange={setYoung} disabled={!!busy} photo={youngPhoto} />
+                <YoungPanel value={young} onChange={setYoung} voice={youngVoice} onVoiceChange={setYoungVoice} disabled={!!busy} photo={youngPhoto} />
                 <Button
                   variant="secondary"
                   onClick={() => run("render", render)}
@@ -277,7 +281,7 @@ export default function MessagePage() {
                   <RefreshCw className="h-5 w-5" />{" "}
                   {dirty
                     ? "고친 대본으로 다시 만들기"
-                    : young !== m.young
+                    : young !== m.young || (young && youngVoice !== m.young_voice)
                       ? "이 설정으로 다시 만들기"
                       : emotion !== m.emotion
                         ? "이 표정으로 다시 만들기"
@@ -387,11 +391,15 @@ function useYoungPhoto(active: boolean) {
 function YoungPanel({
   value,
   onChange,
+  voice,
+  onVoiceChange,
   disabled,
   photo,
 }: {
   value: boolean;
   onChange: (v: boolean) => void;
+  voice: string;
+  onVoiceChange: (v: string) => void;
   disabled: boolean;
   photo: ReturnType<typeof useYoungPhoto>;
 }) {
@@ -408,17 +416,42 @@ function YoungPanel({
         />
         <span>
           <span className="block text-[15px] font-semibold text-[#493035]">어린 시절 모습으로 만들기 (테스트)</span>
-          <span className="block text-[12px] text-[#81645d]">사진과 목소리를 어린 시절처럼 바꿔요.</span>
+          <span className="block text-[12px] text-[#81645d]">사진을 어린 시절처럼 바꿔요. 목소리는 아래에서 고를 수 있어요.</span>
         </span>
       </label>
 
       {value && (
         <div className="mt-3 space-y-3 border-t border-[#ead9cd] pt-3">
+          {/* 목소리는 비교해 보려고 여러 방식 중에서 고른다 (docs/YOUNG_MODE.md '목소리 비교'). 목록은 서버가 정한다 */}
+          {s && s.voices.length > 1 && (
+            <fieldset>
+              <legend className="mb-2 text-[13px] font-semibold text-[#493035]">목소리</legend>
+              <div className="space-y-1.5">
+                {s.voices.map((o) => (
+                  <label key={o.key} className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="radio"
+                      name="young-voice"
+                      value={o.key}
+                      checked={voice === o.key}
+                      disabled={disabled}
+                      onChange={() => onVoiceChange(o.key)}
+                      className="mt-1 h-4 w-4 accent-[#c8493c]"
+                    />
+                    <span>
+                      <span className="block text-[14px] text-[#493035]">{o.label}</span>
+                      <span className="block text-[12px] text-[#81645d]">{o.description}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           {photo.error && <Notice tone="error">{photo.error}</Notice>}
           {!s ? (
             !photo.error && <Spinner />
           ) : !s.available ? (
-            <p className="text-[13px] text-[#81645d]">이 서버에서는 사진을 바꿀 수 없어서, 원본 사진에 목소리만 어리게 바뀌어요.</p>
+            <p className="text-[13px] text-[#81645d]">이 서버에서는 사진을 바꿀 수 없어서 원본 사진을 그대로 써요.</p>
           ) : (
             <>
               {s.making ? (

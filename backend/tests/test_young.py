@@ -1,9 +1,12 @@
 """어린 시절 모드: 목소리 변환과 ComfyUI 호출 (가짜 ComfyUI로 확인한다)."""
 
+import io
 import json
 import logging
 import unittest
+import wave
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -15,8 +18,8 @@ from sqlalchemy import select
 from _test_support import TEST_ROOT, app, db, settings, using_isolated_database
 from app import serialize, worker
 from app.db import utcnow
-from app.models import Message, ParentProfile, Photo, VoiceProfile
-from app.services import audio, jobs, storage, young
+from app.models import Job, Message, ParentProfile, Photo, VoiceProfile
+from app.services import audio, clova_voice, jobs, storage, young
 from app.services import face as face_service
 from app.worker import _young_photo
 
@@ -53,7 +56,7 @@ class MakeYoungerTest(unittest.TestCase):
         with patch.object(audio, "call", side_effect=audio.parselmouth.PraatError("no pitch")):
             audio.make_younger(path, 270, 1.15, 1.3)
         # 예전 방식: 음높이·울림을 함께 1.25배
-        self.assertAlmostEqual(peak_hz(path), 200 * audio.FALLBACK_YOUNG_FACTOR, delta=5)
+        self.assertAlmostEqual(peak_hz(path), 200 * audio.SIMPLE_YOUNG_FACTOR, delta=5)
 
 
 class FakeComfy:
@@ -204,6 +207,10 @@ class YoungPreviewTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
 
+    def photo_state(self):
+        """목소리 목록을 뺀 사진 상태"""
+        return {k: v for k, v in self.state().items() if k != "voices"}
+
     def make(self, data: bytes):
         """만들기(다시 만들기)를 누르고 워커가 그 작업을 처리한다"""
         self.assertTrue(self.client.post("/api/photo/young").json()["making"])
@@ -225,7 +232,7 @@ class YoungPreviewTest(unittest.TestCase):
             return session.scalar(select(Photo).where(Photo.user_id == self.uid))
 
     def test_make_then_render(self):
-        self.assertEqual(self.state(), {"available": True, "making": False, "error": None, "url": None})
+        self.assertEqual(self.photo_state(), {"available": True, "making": False, "error": None, "url": None})
         # 만들어 보기 전에는 어린 시절 모드로 영상을 만들 수 없다
         self.assertEqual(self.render().status_code, 409)
 
@@ -270,14 +277,131 @@ class YoungPreviewTest(unittest.TestCase):
             job = jobs.claim(session)
             with patch.object(young, "generate", side_effect=AssertionError("바뀐 사진으로 만들면 안 된다")):
                 worker.process(session, job)
-        self.assertEqual(self.state(), {"available": True, "making": False, "error": None, "url": None})
+        self.assertEqual(self.photo_state(), {"available": True, "making": False, "error": None, "url": None})
 
-    def test_without_comfyui_only_voice_changes(self):
+    def test_without_comfyui_uses_original_photo(self):
         with patch.object(settings, "comfyui_url", ""):
             self.assertFalse(self.state()["available"])
             self.assertEqual(self.client.post("/api/photo/young").status_code, 409)
-            # 사진을 못 바꾸는 서버는 만들어 보지 않아도 영상을 만든다 (원본 사진 + 어린 목소리)
+            # 사진을 못 바꾸는 서버는 만들어 보지 않아도 영상을 만든다 (원본 사진)
             self.assertEqual(self.render().status_code, 200)
+
+    def render_video(self, young: bool, voice: str):
+        """영상 만들기를 누르고 워커가 끝까지 처리한다 (TTS·영상 생성은 가짜). 어떤 목소리 처리를 불렀는지 돌려준다"""
+        response = self.client.post(f"/api/messages/{self.message_id}/render",
+                                    json={"emotion": "neutral", "young": young, "young_voice": voice})
+        self.assertEqual(response.status_code, 200, response.text)
+
+        def fake_tts(_db, _m, _profile, wav):
+            audio.write_wav(wav, np.zeros(SR))
+            return SimpleNamespace(seed=1, gpu_seconds=0.0, cost_usd=0.0)
+
+        def fake_child_tts(_text, _speaker, wav):
+            audio.write_wav(wav, np.zeros(SR))
+
+        rendered = SimpleNamespace(gpu_seconds=0.0, cost_usd=0.0, duration=1.5)
+        with db.SessionLocal() as session:
+            job = jobs.claim(session)
+            self.assertEqual(job.type, "video")
+            with patch.object(worker, "_synthesize", side_effect=fake_tts) as mine, \
+                    patch.object(clova_voice, "synthesize", side_effect=fake_child_tts) as child, \
+                    patch.object(worker.video, "render", return_value=rendered), \
+                    patch.object(audio, "make_younger") as praat, \
+                    patch.object(audio, "shift_all") as simple:
+                worker.process(session, job)
+            provider = session.get(Job, job.id).tts_provider
+        message = self.client.get(f"/api/messages/{self.message_id}").json()
+        self.assertEqual(message["status"], "ready")
+        used = [name for name, mock in (("내 TTS", mine), ("아이 TTS", child), ("praat", praat), ("simple", simple)) if mock.called]
+        return message, used, provider
+
+    def ready_for_video(self):
+        self.make(b"a")
+        with db.SessionLocal() as session:
+            session.scalar(select(VoiceProfile).where(VoiceProfile.user_id == self.uid)).reference_path = "voice/ref.wav"
+            session.commit()
+
+    def test_voice_options_depend_on_clova_key(self):
+        self.assertEqual([o["key"] for o in self.state()["voices"]], ["", "simple", "praat"])
+        with clova_keys():
+            self.assertEqual([o["key"] for o in self.state()["voices"]], ["", "simple", "praat", "nhajun", "ndain"])
+
+    def test_each_voice_choice(self):
+        self.ready_for_video()
+        cases = [
+            (True, "", ["내 TTS"], ""),  # 기본: 사진만 어리게, 목소리는 그대로
+            (True, "simple", ["내 TTS", "simple"], "simple"),  # 처음 방식
+            (True, "praat", ["내 TTS", "praat"], "praat"),
+            (False, "praat", ["내 TTS"], ""),  # 어린 시절 모드가 아니면 목소리 선택은 무시한다
+        ]
+        for young_mode, voice, expected, stored in cases:
+            with self.subTest(young=young_mode, voice=voice):
+                message, used, provider = self.render_video(young_mode, voice)
+                self.assertEqual(used, expected)
+                self.assertEqual((message["young_voice"], provider), (stored, settings.tts_provider))
+        with clova_keys():
+            message, used, provider = self.render_video(True, "ndain")
+        # 아이 목소리 TTS는 내 목소리 TTS를 부르지 않는다
+        self.assertEqual((used, provider), (["아이 TTS"], "clova"))
+        self.assertEqual(message["young_voice_label"], "아이 목소리 TTS · 여자아이 (다인)")
+
+    def test_unavailable_or_unknown_voice_is_rejected(self):
+        self.ready_for_video()
+        for voice in ("nhajun", "robot"):  # CLOVA 키가 없는 서버의 아이 TTS, 없는 선택지
+            with self.subTest(voice=voice):
+                response = self.client.post(f"/api/messages/{self.message_id}/render",
+                                            json={"emotion": "neutral", "young": True, "young_voice": voice})
+                self.assertEqual(response.status_code, 400)
+
+
+def clova_keys():
+    return patch.multiple(settings, clova_voice_client_id="test-id", clova_voice_client_secret="test-secret")
+
+
+def wav_bytes(rate: int) -> bytes:
+    """CLOVA가 돌려주는 WAV 대신: rate Hz, 0.5초"""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes((np.sin(2 * np.pi * 300 * np.arange(rate // 2) / rate) * 8000).astype(np.int16).tobytes())
+    return buf.getvalue()
+
+
+class ClovaVoiceTest(unittest.TestCase):
+    def test_sends_child_speaker_and_saves_our_wav_format(self):
+        sent = {}
+
+        def fake_post(url, headers, data, timeout):
+            sent.update(url=url, headers=headers, data=data)
+            return httpx.Response(200, content=wav_bytes(48000))
+
+        out = TEST_ROOT / "clova_child.wav"
+        with clova_keys(), patch.object(clova_voice.httpx, "post", side_effect=fake_post):
+            clova_voice.synthesize("엄마, 3시에 갈게요.", "nhajun", out)
+
+        self.assertEqual(sent["url"], "https://naveropenapi.apigw.ntruss.com/tts-premium/v1/tts")
+        self.assertEqual(sent["headers"], {"X-NCP-APIGW-API-KEY-ID": "test-id", "X-NCP-APIGW-API-KEY": "test-secret"})
+        self.assertEqual((sent["data"]["speaker"], sent["data"]["format"]), ("nhajun", "wav"))
+        self.assertNotIn("3", sent["data"]["text"])  # 숫자는 우리 TTS처럼 한글 읽기로 보낸다
+        # 영상·자막 단계가 읽는 형식(24kHz 모노 16비트)으로 맞춘다
+        with wave.open(str(out)) as w:
+            self.assertEqual((w.getframerate(), w.getnchannels(), w.getsampwidth()), (SR, 1, 2))
+        self.assertAlmostEqual(audio.wav_duration(out), 0.5, delta=0.02)
+
+    def test_input_errors_are_not_retried(self):
+        out = TEST_ROOT / "clova_error.wav"
+        for status, retryable in ((400, False), (429, False), (500, True)):
+            with self.subTest(status=status), clova_keys(), \
+                    patch.object(clova_voice.httpx, "post", return_value=httpx.Response(status, text="VS02")), \
+                    self.assertRaises(clova_voice.ClovaVoiceError) as ctx:
+                clova_voice.synthesize("안녕", "nhajun", out)
+            self.assertEqual(ctx.exception.retryable, retryable)
+        with clova_keys(), patch.object(clova_voice.httpx, "post", side_effect=httpx.ConnectError("down")), \
+                self.assertRaises(clova_voice.ClovaVoiceError) as ctx:
+            clova_voice.synthesize("안녕", "nhajun", out)
+        self.assertTrue(ctx.exception.retryable)
 
 
 if __name__ == "__main__":

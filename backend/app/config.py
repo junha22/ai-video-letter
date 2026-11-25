@@ -103,16 +103,20 @@ class Settings:
     s3gen_remote_key = os.getenv("S3GEN_REMOTE_KEY", "")
 
     # 어린 시절 모드 (영상 만들 때 고른다). 사진은 GPU PC의 ComfyUI에서 Qwen-Image-2.1 Turbo로 어리게 바꾼다 (docs/YOUNG_MODE.md).
-    # 비워 두면 원본 사진을 그대로 쓰고 목소리만 바꾼다 (GPU 없이 흐름을 확인할 때)
+    # 비워 두면 원본 사진을 그대로 쓴다 (GPU 없이 흐름과 목소리 변환을 확인할 때)
     comfyui_url = os.getenv("COMFYUI_URL", "").rstrip("/")
     comfyui_api_key = os.getenv("COMFYUI_API_KEY", "")  # 게이트웨이(/comfy)를 거칠 때 GPU_GATEWAY_TOKEN
     young_age = int(os.getenv("YOUNG_AGE", "6"))
-    # 목소리를 아이 목소리 높이(Hz)로 맞춘다. 원래 목소리가 낮든 높든 이 높이가 된다. 0이면 목소리는 그대로 둔다
+    # '아이 목소리 높이로 맞추기'(praat)를 골랐을 때 맞출 높이(Hz). 원래 목소리가 낮든 높든 이 높이가 된다. 목소리를 바꿀지는 사용자가 고른다
     young_voice_hz = _float("YOUNG_VOICE_HZ", 270)
     # 목소리 울림(포먼트) 배율. 아이는 성도가 짧아 울림이 높다. 너무 올리면 헬륨 목소리가 된다
     young_voice_formant = _float("YOUNG_VOICE_FORMANT", 1.15)
     # 높낮이 폭 배율. 1보다 크면 억양이 커진다. 1.3도 들어 봤지만 나아지지 않아서 원래 억양 그대로 둔다 (docs/YOUNG_MODE.md)
     young_voice_range = _float("YOUNG_VOICE_RANGE", 1.0)
+    # 타임 슬립에서 고르는 아이 목소리 TTS (CLOVA Voice Premium, services/clova_voice.py). 비우면 그 선택지가 안 보인다
+    # 네이버 클라우드 콘솔 > AI·NAVER API > Application 등록(CLOVA Voice 선택)의 Client ID·Secret. HyperCLOVA X 키와는 별개
+    clova_voice_client_id = os.getenv("CLOVA_VOICE_CLIENT_ID", "")
+    clova_voice_client_secret = os.getenv("CLOVA_VOICE_CLIENT_SECRET", "")
 
     # 부모님 답장 분석 (docs/REPLY_ANALYSIS.md). 기본 꺼짐: 꺼져 있으면 음성 답장·분석이 없고 지금과 똑같이 동작한다.
     # 음성 답장의 받아쓰기·운율은 GPU PC의 분석 서버(gpu_worker/reply_analysis_server.py), Azure에서는 게이트웨이 주소 + /analysis
