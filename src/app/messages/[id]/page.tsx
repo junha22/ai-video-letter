@@ -18,7 +18,6 @@ const EMOTIONS: { key: Emotion; label: string }[] = [
   { key: "neutral", label: "평온" },
   { key: "happy", label: "기쁨" },
   { key: "sad", label: "슬픔" },
-  { key: "surprise", label: "놀람" },
 ];
 
 function charCount(s: string) {
@@ -44,7 +43,7 @@ export default function MessagePage() {
 
   // 다시 만들 때는 지난번에 고른 표정·어린 시절 모드를 기본으로 둔다
   useEffect(() => {
-    if (m?.emotion) setEmotion(m.emotion);
+    setEmotion(EMOTIONS.find((choice) => choice.key === m?.emotion)?.key ?? "neutral");
   }, [m?.emotion]);
   useEffect(() => {
     setYoung(m?.young ?? false);
@@ -252,7 +251,7 @@ export default function MessagePage() {
                 />
                 <p className="mt-2 text-center text-sm text-stone-500">
                   미리보기 · {formatSeconds(m.duration ?? 0)}
-                  {m.emotion && ` · 표정 ${EMOTIONS.find((e) => e.key === m.emotion)?.label ?? m.emotion}`}
+                  {m.emotion && ` · 표정 ${EMOTIONS.find((e) => e.key === m.emotion)?.label ?? (m.emotion === "surprise" ? "놀람" : m.emotion)}`}
                   {m.young && ` · 어린 시절 모습${m.young_voice_label ? ` · ${m.young_voice_label}` : ""}`}
                 </p>
               </Card>

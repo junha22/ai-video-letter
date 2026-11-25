@@ -1,0 +1,7 @@
+av>=12
+mediapipe==0.10.14
+numpy>=1.24,<2
+opencv-contrib-python==4.11.0.86
+runpod
+scipy
+soundfile

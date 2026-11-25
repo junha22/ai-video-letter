@@ -1,6 +1,6 @@
 """사진 + 음성 -> 모바일용 MP4.
 
-runpod = FLOAT + 입 모양 LoRA를 RunPod에서 실행 (backend/gpu_worker/video_handler.py),
+runpod = RunPod에서 FLOAT와 선택한 최종 표정 모델을 실행 (backend/gpu_worker/video_handler.py).
 local = 사진에 천천히 확대되는 효과만 준 개발용 대체.
 어느 쪽이든 마지막 인코딩 단계에서 'AI로 만든 영상' 표시를 영상에 직접 입힌다.
 """
@@ -19,9 +19,8 @@ WIDTH, HEIGHT = 720, 900  # 4:5 세로 화면
 FPS = 25
 TAIL_SECONDS = 0.6
 LABEL = "AI로 만든 영상"
-# 영상 속 표정. 사용자가 영상 만들기 화면에서 고른다 (음성에서 추정하지 않는다).
-# FLOAT 감정 7개(angry, disgust, fear, happy, neutral, sad, surprise) 중 영상 편지에 맞는 것만 쓴다
-EMOTIONS = {"neutral": "평온", "happy": "기쁨", "sad": "슬픔", "surprise": "놀람"}
+# 최종 FLOAT 모델이 영상 편지에서 지원하는 표정
+EMOTIONS = {"neutral": "평온", "happy": "기쁨", "sad": "슬픔"}
 DEFAULT_EMOTION = "neutral"
 
 _FONT_CANDIDATES = [

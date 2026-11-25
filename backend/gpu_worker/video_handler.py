@@ -1,4 +1,4 @@
-"""RunPod 서버리스 영상 핸들러 (FLOAT + 입 모양 LoRA).
+"""RunPod 서버리스 영상 핸들러 (FLOAT + 최종 감정 모델).
 
 사진 1장 + 음성 -> 입이 움직이는 512x512 영상(소리 없음).
 백엔드(app/services/video.py)가 이 영상을 받아 4:5 화면 맞춤, 원래 음성 입히기, 'AI로 만든 영상' 표시를 한다.
@@ -10,7 +10,7 @@
   fps            int            선택. 25만 지원 (FLOAT 학습 기준)
   seed           int            선택. 주면 같은 입력에 항상 같은 영상, 없으면 매번 조금씩 다름
   lora_strength  float          선택. 0 = 원본 FLOAT, 1 = 입 모양 파인튜닝 (기본 1)
-  emo            str            선택. angry|disgust|fear|happy|neutral|sad|surprise. 비우면 음성에서 추정
+  emo            str            앱 선택값 neutral|happy|sad. 이 값에는 최종 감정 모델을 적용한다
   a_cfg_scale    float          선택. 음성 반영 강도 (기본 2)
   e_cfg_scale    float          선택. 감정 반영 강도 (기본 1)
   nfe            int            선택. ODE 단계 수 (기본 10)
@@ -25,11 +25,11 @@
   crop: 얼굴을 어떻게 잘랐는지 (float = FLOAT 검출기, face_box = 입력 face, center = 가운데)
   notes: 생성 조정 기록 (예: "깜빡임 6회 중 3회 남김")
 
-준비 (GPU 서버/이미지에서 한 번, Linux + CUDA):
+준비 (GPU 서버/이미지에서 한 번, Python 3.10 이상과 CUDA):
   git clone https://github.com/deepbrainai-research/float.git gpu_worker/float
   git -C gpu_worker/float checkout 3b5b2dfc3e65df26e7fbba17d9adb3f43747851c
   pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
-  pip install -r gpu_worker/float/requirements.txt runpod
+  pip install -r gpu_worker/float/requirements.txt -r gpu_worker/requirements-video.txt
   체크포인트 -> gpu_worker/float/checkpoints/
     float.pth                                   (cd gpu_worker/float && sh download_checkpoints.sh)
     wav2vec2-base-960h/                         (huggingface.co/facebook/wav2vec2-base-960h)
@@ -38,6 +38,7 @@
         예전 LoRA(float_lora_best.pt, FMT 32층)도 FLOAT_LORA_PATH로 지정하면 그대로 읽는다
   얼굴 검출 가중치(face_alignment)는 처음 실행할 때 자동으로 받는다. 이미지로 만들 때는 빌드 중에 한 번 실행해 둔다.
   경로는 환경변수 FLOAT_ROOT, FLOAT_CKPT_DIR, FLOAT_LORA_PATH로 바꿀 수 있다.
+  최종 감정 가중치는 저장소의 training/에서 읽는다. 별도로 배치한 경우 FLOAT_EMOTION_WEIGHTS_ROOT를 지정한다.
 
 Windows(Python 3.10)에서도 돈다. 이 PC에서 TTS 서버와 같이 띄우는 방법은 README '이 PC(Windows)에서 …' 참고.
 
@@ -48,13 +49,14 @@ Windows(Python 3.10)에서도 돈다. 이 PC에서 TTS 서버와 같이 띄우�
 라이선스: FLOAT는 비상업 라이선스(CC BY-NC)다. 비상업 연구·PoC 용도로만 쓴다.
 """
 
-from __future__ import annotations  # FLOAT 권장 환경(Python 3.8)에서도 tuple[...] 표기가 동작하도록
+from __future__ import annotations
 
 import argparse
 import base64
 import os
 import sys
 import tempfile
+import threading
 import time
 from collections import Counter
 from fractions import Fraction
@@ -88,8 +90,11 @@ import torch  # noqa: E402
 from generate import InferenceAgent, InferenceOptions  # noqa: E402  (FLOAT 원본 generate.py)
 
 import float_tuning as tuning  # noqa: E402  (같은 폴더)
+from learned_emotion.pipeline import EMOTIONS as LEARNED_EMOTIONS, FinalEmotionRenderer  # noqa: E402
 
-EMOTIONS = ("angry", "disgust", "fear", "happy", "neutral", "sad", "surprise")
+EMOTIONS = (*LEARNED_EMOTIONS, "angry", "disgust", "fear")
+EMOTION_ROOT = Path(os.getenv("FLOAT_EMOTION_WEIGHTS_ROOT") or HERE.parents[1] / "training")
+MODEL_LOCK = threading.Lock()
 
 
 class LoRA:
@@ -155,6 +160,7 @@ OPT = _options()
 AGENT = InferenceAgent(OPT)
 ADAPTER = LoRA(AGENT.G, LORA_PATH)  # InferenceAgent가 float.pth를 이미 불러온 뒤
 REF_GUIDANCE = tuning.RefGuidance(AGENT.G.fmt)
+FINAL_EMOTION = None
 print(f"[video_handler] FLOAT + LoRA({LORA_PATH.name}, {ADAPTER.layers}층 = fmt {ADAPTER.counts['fmt']} + "
       f"audio_encoder {ADAPTER.counts['audio_encoder']}) 준비 {time.monotonic() - _started:.1f}초", flush=True)
 
@@ -240,6 +246,8 @@ def _to_mp4(frames: torch.Tensor, fps: int, path: str) -> None:
 
 
 def handler(job):
+    global FINAL_EMOTION
+
     started = time.monotonic()
     inp = job["input"]
     if not inp.get("image_b64") or not inp.get("audio_b64"):
@@ -259,29 +267,41 @@ def handler(job):
         raise ValueError("사진을 열 수 없습니다")
     crop, how = _crop(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), inp.get("face"))
 
-    ADAPTER.set_strength(inp.get("lora_strength", 1.0))
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            audio_path = os.path.join(tmp, "audio.wav")
-            Path(audio_path).write_bytes(base64.b64decode(inp["audio_b64"]))
-            frames, notes = _generate(
-                crop, audio_path,
-                seed=seed, emo=emo,
-                a_cfg_scale=float(inp.get("a_cfg_scale", 2.0)),
-                e_cfg_scale=float(inp.get("e_cfg_scale", 1.0)),
-                nfe=int(inp.get("nfe", 10)),
-                **tune,
-            )
-            if notes:
-                print(f"[video_handler] {' | '.join(notes)}", flush=True)
-            mp4_path = os.path.join(tmp, "video.mp4")
-            _to_mp4(frames, fps, mp4_path)
-            video_b64 = base64.b64encode(Path(mp4_path).read_bytes()).decode()
-        n_frames, height, width = int(frames.shape[0]), int(frames.shape[2]), int(frames.shape[3])
-        del frames
-    finally:
-        # 한 PC에서 TTS 서버·음색 학습과 GPU를 나눠 쓸 수 있도록, 영상마다 생성에 쓴 메모리(약 4GB)를 돌려준다
-        torch.cuda.empty_cache()
+    with MODEL_LOCK:
+        try:
+            ADAPTER.set_strength(inp.get("lora_strength", 1.0))
+            with tempfile.TemporaryDirectory() as tmp:
+                audio_path = os.path.join(tmp, "audio.wav")
+                Path(audio_path).write_bytes(base64.b64decode(inp["audio_b64"]))
+                mp4_path = os.path.join(tmp, "video.mp4")
+                a_cfg_scale = float(inp.get("a_cfg_scale", 2.0))
+                e_cfg_scale = float(inp.get("e_cfg_scale", 1.0))
+                nfe = int(inp.get("nfe", 10))
+                if emo in LEARNED_EMOTIONS:
+                    if FINAL_EMOTION is None:
+                        FINAL_EMOTION = FinalEmotionRenderer(AGENT, EMOTION_ROOT, CKPT_DIR / "float.pth", LORA_PATH)
+                    REF_GUIDANCE.scale = 1.0
+                    use_seed = 15 if seed is None else seed
+                    OPT.nfe, OPT.fix_noise_seed, OPT.seed = nfe, True, use_seed
+                    n_frames, width, height, notes = FINAL_EMOTION.render(
+                        crop, audio_path, mp4_path, emotion=emo, seed=use_seed,
+                        a_cfg_scale=a_cfg_scale, e_cfg_scale=e_cfg_scale,
+                    )
+                else:
+                    frames, notes = _generate(
+                        crop, audio_path, seed=seed, emo=emo, a_cfg_scale=a_cfg_scale,
+                        e_cfg_scale=e_cfg_scale, nfe=nfe, **tune,
+                    )
+                    _to_mp4(frames, fps, mp4_path)
+                    n_frames, height, width = int(frames.shape[0]), int(frames.shape[2]), int(frames.shape[3])
+                    del frames
+                if notes:
+                    print(f"[video_handler] {' | '.join(notes)}", flush=True)
+                video_b64 = base64.b64encode(Path(mp4_path).read_bytes()).decode()
+            lora_strength = ADAPTER.strength
+        finally:
+            # TTS와 GPU를 공유하므로 렌더링 임시 메모리를 반환한다.
+            torch.cuda.empty_cache()
 
     return {
         "video_b64": video_b64,
@@ -290,7 +310,7 @@ def handler(job):
         "frames": n_frames,
         "fps": fps,
         "crop": how,
-        "lora_strength": ADAPTER.strength,
+        "lora_strength": lora_strength,
         "notes": notes,
         "seconds": round(time.monotonic() - started, 2),
     }

@@ -100,7 +100,7 @@ export type Candidate = {
 };
 
 // 영상 속 표정. 백엔드 services/video.py의 EMOTIONS와 같게 유지한다
-export type Emotion = "neutral" | "happy" | "sad" | "surprise";
+export type Emotion = "neutral" | "happy" | "sad";
 
 export type Message = {
   id: number;
@@ -129,7 +129,7 @@ export type Message = {
   poster_url: string | null;
   audio_url: string | null;
   tts_seed: number | null;
-  emotion: Emotion | null;
+  emotion: string | null;
   young: boolean; // 어린 시절 모습으로 만들었는지
   /** 어린 시절 모드의 목소리. ""이면 내 목소리 그대로 (YoungVoiceOption.key) */
   young_voice: string;

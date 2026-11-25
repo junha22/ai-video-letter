@@ -332,7 +332,7 @@ backend/gpu_worker/
   reply_analysis_server.py 답장 분석 서버 :8400 (Wemeet-reply 환경: 받아쓰기·운율)
   reply_stt.py / reply_audio.py  받아쓰기 자식 프로세스 / 받아쓰기 자르기·품질 검사·운율 측정
   tts_handler.py           RunPod용 Chatterbox TTS 핸들러 초안 (GPU에서 아직 실행 안 해 봄)
-  video_handler.py         RunPod용 영상 핸들러: FLOAT + 입 모양 LoRA
+  video_handler.py         RunPod용 영상 핸들러: FLOAT + 최종 표정 모델
   weights/lora_v2_B_best.pt    입 모양 LoRA 가중치 (rank 16, FMT 32층 + 음성 투영 1층, 9MB, 기본)
   weights/float_lora_best.pt   이전 LoRA (FMT 32층). FLOAT_LORA_PATH로 지정하면 쓴다
 ```
@@ -344,9 +344,10 @@ backend/gpu_worker/
 
 - **흐름**: 워커가 저장된 사진(최대 1280px)·얼굴 위치·TTS 음성을 핸들러에 보낸다. 핸들러는 FLOAT 방식으로 얼굴을 512×512로 잘라 영상을 만든다. 백엔드는 그 영상을 4:5 화면 가운데에 놓고 위아래를 흐린 배경으로 채운 뒤, 원래 음성과 'AI로 만든 영상' 표시를 입힌다.
 - **입출력 형식**: `backend/gpu_worker/video_handler.py` 맨 위 설명 참고. 기존 `{"image_b64", "audio_b64", "fps"} → {"video_b64"}`에 `face`와 선택 옵션(`seed`, `lora_strength`, `emo` …)이 더해졌다.
-- **표정(감정)**: 사용자가 영상 만들기 화면에서 평온·기쁨·슬픔·놀람 중에 고른다(기본 평온). FLOAT의 음성 감정 추정은 영어 음성으로 학습돼 한국어에서 부정확해서 쓰지 않는다. 고른 값은 `messages.emotion`에 남는다.
+- **표정(감정)**은 영상 만들기 화면의 평온·기쁨·슬픔 중에 고른다(기본 평온). RunPod 영상 워커는 이 값을 최종 모델에 전달한다. 평온과 기쁨은 공통 복원 모델을, 슬픔은 공통 입 개폐·표정 모델까지 사용한다. 고른 값은 `messages.emotion`에 남는다.
+- **최종 모델 준비**는 GPU 워커에서 `backend/gpu_worker/requirements-video.txt`의 의존성을 설치하고 저장소의 `training/` 체크포인트 5개를 함께 배치하면 된다. 다른 위치에 배치할 때는 GPU 워커의 `FLOAT_EMOTION_WEIGHTS_ROOT`가 가중치 디렉터리를 가리키도록 설정한다.
 - **옵션**: `backend/.env`의 `VIDEO_LORA_STRENGTH`(0 = 원본 FLOAT, 1 = LoRA), `VIDEO_E_CFG_SCALE`(표정 세기), `VIDEO_SEED` 등. 비우면 핸들러 기본값.
-- **사진 충실도·눈 후처리**: Kaggle 노트북(`float_infer.ipynb`)에서 고른 기능을 `gpu_worker/float_tuning.py`로 옮겼다. `VIDEO_R_CFG_SCALE`(사진 충실도), `VIDEO_REF_MODE`(적용 범위), `VIDEO_EYE_STABLE`(시선 안정), `VIDEO_BLINK_GAP`(깜빡임 간격), `VIDEO_DEJUMP`(튀는 곳만 다듬기). 비우면 핸들러 기본값(사진 충실도 4·free, 시선 안정 0.7, 튀는 곳 다듬기 켬, 깜빡임 간격 끔)을 쓴다. 기본값은 `float_tuning.DEFAULTS` 한곳에 있고, 끄는 값은 `.env.example` 참고.
+- **사진 충실도와 눈 움직임**은 최종 표정 경로의 학습 설정을 따른다. `gpu_worker/float_tuning.py`의 기존 옵션은 기본 FLOAT 경로에서 사용한다.
 - **GPU 필요**: FLOAT 코드가 `.cuda()`를 직접 불러서 CPU로는 돌지 않는다. GPU 없이 웹을 개발할 때는 `VIDEO_PROVIDER=local` 그대로 둔다.
 - **라이선스**: FLOAT는 비상업 라이선스(CC BY-NC)라 비상업 연구·PoC 용도로만 쓴다.
 
@@ -440,6 +441,6 @@ $env:TEST_DATABASE_URL = "postgresql+psycopg://user:pass@127.0.0.1:5432/ongi_tes
 - TTS 서버를 다른 머신에 둘 때: 서버를 `-HostAddr 0.0.0.0` + `WEMEET_API_KEY`로 띄우고 `WEMEET_TTS_URL`, `WEMEET_TTS_API_KEY` 설정
 - S3Gen 음색 학습: 적용 기준값(`S3GEN_MIN_VE_GAIN` 등) 확정, 실제 사용자 폰 녹음으로 효과 확인, 청취 평가
 - RunPod에 영상 핸들러(`gpu_worker/video_handler.py`, FLOAT + LoRA) 배포 → 엔드포인트 ID만 바꾸면 된다. 지금은 이 PC에서 TTS·음색 학습과 GPU를 나눠 쓴다 (위 '이 PC(Windows)에서 …')
-- 표정별(평온·기쁨·슬픔·놀람) 자연스러움, LoRA 0/1 비교 (PoC A/B 설문에 활용)
+- 표정별(평온·기쁨·슬픔) 자연스러움, LoRA 0/1 비교 (PoC A/B 설문에 활용)
 - 파일 저장소를 Blob 같은 객체 저장소로 (`services/storage.py`, 지금 배포는 Azure Files를 `/data`에 연결)
 - PoC A/B 설문, 운영자 화면(작업 큐·GPU 비용·삭제 기록)
