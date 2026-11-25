@@ -224,8 +224,8 @@ def run_video(db: Session, job: Job) -> None:
     m.tts_seed = t.seed
     db.commit()
     # 입 모양이 바뀐 목소리에 맞도록 영상(FLOAT)에 넣기 전에 바꾼다. 다시 돌 때는 TTS부터 새로 만들어서 두 번 바뀌지 않는다
-    if m.young and settings.young_voice_pitch != 1:
-        audio.make_younger(wav, settings.young_voice_pitch)
+    if m.young and settings.young_voice_hz:
+        audio.make_younger(wav, settings.young_voice_hz, settings.young_voice_formant, settings.young_voice_range)
 
     job.stage = "video"
     job.video_provider = settings.video_provider

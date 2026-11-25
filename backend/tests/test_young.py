@@ -31,18 +31,29 @@ def peak_hz(path) -> float:
     return float(np.fft.rfftfreq(len(samples), 1 / SR)[spectrum.argmax()])
 
 
+def tone(name: str, hz: float, seconds: float = 2.0):
+    path = TEST_ROOT / name
+    t = np.arange(int(seconds * SR)) / SR
+    audio.write_wav(path, 0.3 * np.sin(2 * np.pi * hz * t))
+    return path
+
+
 class MakeYoungerTest(unittest.TestCase):
-    def test_raises_pitch_and_keeps_length(self):
-        path = TEST_ROOT / "young_voice.wav"
-        t = np.arange(2 * SR) / SR
-        audio.write_wav(path, 0.3 * np.sin(2 * np.pi * 200 * t))
-        before = audio.wav_duration(path)
+    def test_low_and_high_voices_reach_same_child_pitch(self):
+        # 예전 방식(같은 배율)은 낮은 목소리가 아이 목소리 높이까지 못 올라갔다. 이제는 원래 높이와 상관없이 목표 높이가 된다
+        for hz in (110, 220):
+            path = tone(f"young_voice_{hz}.wav", hz)
+            before = audio.wav_duration(path)
+            audio.make_younger(path, 270, 1.15, 1.3)
+            self.assertAlmostEqual(peak_hz(path), 270, delta=8, msg=f"{hz}Hz에서 시작")
+            self.assertAlmostEqual(audio.wav_duration(path), before, delta=0.01)
 
-        audio.make_younger(path, 1.25)
-
-        # 립싱크가 어긋나지 않도록 길이는 그대로 (atempo 경계에서 몇 ms 차이)
-        self.assertAlmostEqual(audio.wav_duration(path), before, delta=0.03)
-        self.assertAlmostEqual(peak_hz(path), 250, delta=5)
+    def test_falls_back_when_praat_cannot_find_pitch(self):
+        path = tone("young_voice_fallback.wav", 200)
+        with patch.object(audio, "call", side_effect=audio.parselmouth.PraatError("no pitch")):
+            audio.make_younger(path, 270, 1.15, 1.3)
+        # 예전 방식: 음높이·울림을 함께 1.25배
+        self.assertAlmostEqual(peak_hz(path), 200 * audio.FALLBACK_YOUNG_FACTOR, delta=5)
 
 
 class FakeComfy:

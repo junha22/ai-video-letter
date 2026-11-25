@@ -107,8 +107,12 @@ class Settings:
     comfyui_url = os.getenv("COMFYUI_URL", "").rstrip("/")
     comfyui_api_key = os.getenv("COMFYUI_API_KEY", "")  # 게이트웨이(/comfy)를 거칠 때 GPU_GATEWAY_TOKEN
     young_age = int(os.getenv("YOUNG_AGE", "6"))
-    # 음높이와 목소리 울림을 이 배율로 올린다. 1이면 목소리는 그대로 둔다
-    young_voice_pitch = _float("YOUNG_VOICE_PITCH", 1.25)
+    # 목소리를 아이 목소리 높이(Hz)로 맞춘다. 원래 목소리가 낮든 높든 이 높이가 된다. 0이면 목소리는 그대로 둔다
+    young_voice_hz = _float("YOUNG_VOICE_HZ", 270)
+    # 목소리 울림(포먼트) 배율. 아이는 성도가 짧아 울림이 높다. 너무 올리면 헬륨 목소리가 된다
+    young_voice_formant = _float("YOUNG_VOICE_FORMANT", 1.15)
+    # 높낮이 폭 배율. 1보다 크면 억양이 커진다. 1.3도 들어 봤지만 나아지지 않아서 원래 억양 그대로 둔다 (docs/YOUNG_MODE.md)
+    young_voice_range = _float("YOUNG_VOICE_RANGE", 1.0)
 
     # 부모님 답장 분석 (docs/REPLY_ANALYSIS.md). 기본 꺼짐: 꺼져 있으면 음성 답장·분석이 없고 지금과 똑같이 동작한다.
     # 음성 답장의 받아쓰기·운율은 GPU PC의 분석 서버(gpu_worker/reply_analysis_server.py), Azure에서는 게이트웨이 주소 + /analysis
