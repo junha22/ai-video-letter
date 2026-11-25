@@ -121,8 +121,10 @@ export type PublicConversationThread = ConversationThread & { voice_reply?: Voic
 export type PublicConversationFeed = Omit<ConversationFeed, "recipient"> & {
   recipient: PublicRecipient; expires_at: string; voice_reply?: VoiceReplyState;
 };
-/** voice: 음성 답장의 자동 받아쓰기라 틀린 글자가 있을 수 있다 */
-export type PortfolioEvidence = { reply_id: number; text: string; date: string; voice?: boolean };
+export type ReplyLevel = "없음" | "살펴보기" | "바로 연락 필요";
+
+/** 한 달 흐름 캘린더의 하루 (답장 살펴보기를 켠 방). level은 그날 정리한 답장 중 가장 높은 수준, 정리 전이면 null */
+export type AnalysisDay = { date: string; analyzed: number; level: ReplyLevel | null; label: string; voice_down: boolean; mismatch: boolean };
 
 /** 월간 포트폴리오의 'AI가 정리한 한 달의 변화'. 답장 살펴보기를 켠 대화방에만 온다 (보고서에 저장하지 않고 볼 때마다 계산) */
 export type MonthAnalysisTrends = {
@@ -131,27 +133,25 @@ export type MonthAnalysisTrends = {
   analyzed: number;
   enough: boolean;
   few_text: string | null;
-  timeline: { reply_id: number; date: string; kind: "text" | "voice"; status: string; level: "없음" | "살펴보기" | "바로 연락 필요" | null; label: string; mood_text: string | null; voice: string | null; mismatch: boolean }[];
-  signals: { area: string; value: string; count: number; dates: string[]; evidence: string[] }[];
+  days: AnalysisDay[];
   voice: { points: { date: string; state: string }[]; down: number; mismatch: number } | null;
   compare: { prev_month: string; rows: { label: string; prev: number; now: number; unit: string }[]; length_text: string | null };
   starters: string[];
   summary: { text: string; generated_at: string; stale: boolean } | null;
+  /** 이번 달 나눈 이야기: CLOVA가 답장을 주제별로 묶은 것 (정리 문장과 같이 만들고 같이 낡는다) */
+  topics: { name: string; summary: string; count: number; dates: string[] }[] | null;
   can_summarize: boolean;
 };
+/** local_evidence_v1(예전에 저장한 보고서)에는 키워드 주제·날짜별 흐름 같은 칸이 더 있지만 화면은 쓰지 않는다 */
 export type MonthlyPortfolio = {
   id: number;
   generated_at: string;
-  source: "local_evidence_v1";
+  source: "local_evidence_v1" | "local_evidence_v2";
   title: string;
   summary: string;
   reply_count: number;
   active_days: number;
   days_in_month: number;
-  topics: { name: string; count: number; evidence: PortfolioEvidence[] }[];
-  daily_trends: { date: string; reply_count: number; characters: number; topics: string[] }[];
-  representative_replies: PortfolioEvidence[];
-  conversation_starters: string[];
   caveats: string[];
 };
 
@@ -161,6 +161,8 @@ export type MonthlyPortfolioResponse = {
   available_months: string[];
   reply_count: number;
   active_days: number;
+  /** 한 달 흐름 캘린더: 답글이 있는 날의 답글 수 (모든 대화방) */
+  calendar: { date: string; reply_count: number }[];
   stale: boolean;
   portfolio: MonthlyPortfolio | null;
   analysis_trends?: MonthAnalysisTrends;
@@ -229,18 +231,6 @@ export function portfolioAsText(report: MonthlyPortfolioResponse, recipientName:
     p.title,
     p.summary,
     `답글 ${p.reply_count}개 / 대화한 날 ${p.active_days}일`,
-    "",
-    "자주 나눈 이야기",
-    ...p.topics.map((topic) => `${topic.name} (${topic.count}회)\n${topic.evidence.map((e) => `  ${e.date} · ${e.text}`).join("\n")}`),
-    "",
-    "날짜별 답글",
-    ...p.daily_trends.map((day) => `${day.date} · 답글 ${day.reply_count}개 · ${day.characters}자${day.topics.length ? ` · ${day.topics.join(", ")}` : ""}`),
-    "",
-    "기억할 답글",
-    ...p.representative_replies.map((e) => `${e.date} · ${e.text}`),
-    "",
-    "다음 대화에 건넬 말",
-    ...p.conversation_starters,
     "",
     ...p.caveats,
     `작성: ${p.generated_at}${report.stale ? " (새 답글이 있어 다시 분석이 필요합니다.)" : ""}`,

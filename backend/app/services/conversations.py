@@ -377,85 +377,31 @@ def conversation_feed(db: Session, recipient: Recipient, before: str | None = No
     }
 
 
-TOPICS = {
-    "식사와 음식": ("밥", "식사", "먹", "맛있", "음식", "반찬", "국수", "김치"),
-    "가족과 안부": ("엄마", "아빠", "아들", "딸", "손주", "손자", "손녀", "가족", "보고 싶", "보고싶", "안부", "사랑"),
-    "일상과 활동": ("산책", "운동", "시장", "친구", "모임", "여행", "공원", "나들이", "텃밭", "경로당"),
-    "몸 상태와 휴식": ("아프", "아파", "병원", "약", "피곤", "잠", "쉬", "건강", "무릎", "허리"),
-    "날씨와 계절": ("날씨", "춥", "추워", "덥", "더워", "바람", "햇살", "봄", "여름", "가을", "겨울", "비가", "눈이"),
-    "고마움과 응원": ("고마", "감사", "잘했", "수고", "힘내", "응원", "기특", "대견"),
-}
-
-
-def reply_topics(text: str) -> list[str]:
-    return [name for name, words in TOPICS.items() if any(word in text for word in words)]
-
-
 def reply_fingerprint(replies: list[SeniorReply]) -> str:
     data = [[reply.id, reply.text, iso(reply.created_at)] for reply in replies]
     return hashlib.sha256(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
-def _evidence(reply: SeniorReply) -> dict:
-    item = {"reply_id": reply.id, "text": reply.text, "date": korea_date(reply.created_at)}
-    if reply.kind == "voice":
-        item["voice"] = True  # 음성 답장의 자동 받아쓰기 (틀린 글자가 있을 수 있다)
-    return item
-
-
 def build_portfolio(recipient: Recipient, month: str, replies: list[SeniorReply]) -> dict:
-    """Describe observed wording and participation, never infer diagnoses or health scores."""
-    by_day = defaultdict(list)
-    by_topic = defaultdict(list)
-    for reply in replies:
-        by_day[korea_date(reply.created_at)].append(reply)
-        for topic in reply_topics(reply.text):
-            by_topic[topic].append(reply)
-    topics = [{"name": name, "count": len(values), "evidence": [_evidence(reply) for reply in values[:3]]}
-              for name, values in sorted(by_topic.items(), key=lambda item: (-len(item[1]), item[0]))]
-    daily = []
-    for day, values in sorted(by_day.items()):
-        counts = Counter(topic for reply in values for topic in reply_topics(reply.text))
-        daily.append({"date": day, "reply_count": len(values), "characters": sum(len(reply.text) for reply in values),
-                      "topics": [topic for topic, _count in counts.most_common(3)]})
-    representatives = []
-    seen = set()
-    for values in by_day.values():
-        values = [item for item in values if item.text]  # 받아쓰기 전·불확실한 음성 답장은 글이 없다
-        if not values:
-            continue
-        reply = max(values, key=lambda item: (len(reply_topics(item.text)), len(item.text), -item.id))
-        if reply.text not in seen:
-            representatives.append(_evidence(reply))
-            seen.add(reply.text)
-        if len(representatives) >= 8:
-            break
-    main_topics = ", ".join(topic["name"] for topic in topics[:3]) or "등록된 주제 키워드에 해당하지 않는 일상 이야기"
-    summary = f"{month}에는 {len(by_day)}일에 걸쳐 답글 {len(replies)}개를 주고받았어요. 답글에서 자주 확인된 주제는 {main_topics}예요."
+    """한 달의 답글 수·대화한 날만 정리한다 (진단·점수는 쓰지 않는다).
+    local_evidence_v2 (2026-11-25): 키워드 주제·날짜별 흐름·대표 답글·대화 제안을 뺐다. 날짜별 흐름은 화면의 캘린더(portfolio_state의
+    calendar), 주제는 답장 살펴보기를 켠 방의 '이번 달 나눈 이야기'(reply_month)가 맡는다. 예전에 저장한 v1 보고서의 그 칸은 화면이 쓰지 않는다."""
+    days = {korea_date(reply.created_at) for reply in replies}
+    voice = sum(1 for reply in replies if reply.kind == "voice")
+    summary = f"{month}에는 {len(days)}일에 걸쳐 답글 {len(replies)}개를 주고받았어요."
+    if voice:
+        summary += f" 그중 음성 답장은 {voice}개예요."
     if len(replies) < 10:
         summary += " 아직 답글이 적어 한 달의 생활 전반을 설명하기에는 기록이 부족해요."
-    starters = {
-        "식사와 음식": "최근 맛있게 드신 음식이나 다음에 함께 먹고 싶은 음식을 여쭤보세요.",
-        "가족과 안부": "함께 기억하는 가족 이야기나 다음 만남에 대해 물어보세요.",
-        "일상과 활동": "최근 다녀오신 곳이나 즐거웠던 활동 이야기를 이어가 보세요.",
-        "몸 상태와 휴식": "편하게 쉬셨는지, 일상에서 도움이 필요한 일이 있는지 직접 여쭤보세요.",
-        "날씨와 계절": "계절 풍경이나 오늘 날씨 이야기를 나눠 보세요.",
-        "고마움과 응원": "전해 주신 응원에 고마움을 담아 답해 보세요.",
-    }
     return {
-        "source": "local_evidence_v1", "title": f"{recipient.nickname}님의 {month} 대화 포트폴리오",
-        "summary": summary, "reply_count": len(replies), "active_days": len(by_day),
+        "source": "local_evidence_v2", "title": f"{recipient.nickname}님의 {month} 대화 포트폴리오",
+        "summary": summary, "reply_count": len(replies), "active_days": len(days),
         "days_in_month": calendar.monthrange(*map(int, month.split("-")))[1],
-        "topics": topics, "daily_trends": daily, "representative_replies": representatives,
-        "conversation_starters": [starters[topic["name"]] for topic in topics[:3]] or ["최근 어떻게 지내셨는지 편하게 여쭤보세요."],
         "caveats": [
             "대화에 직접 남긴 답글만 정리한 기록이며 건강 상태, 감정, 인지 능력에 대한 진단이나 평가가 아닙니다.",
-            "주제는 정해진 한국어 키워드의 포함 여부로 집계합니다. 문맥, 부정 표현, 말투를 완전히 이해하지 못할 수 있습니다.",
-            "하나의 답글이 여러 주제에 포함될 수 있습니다. 주제의 개수는 답글의 개수와 다를 수 있습니다.",
             "답글이 없는 날의 상태는 알 수 없습니다. 공유 링크를 가진 사람이 작성했으며 작성자의 신원은 인증하지 않았습니다.",
             "현재 월의 보고서는 작성 시점까지의 부분 기록입니다. 새 답글이 오면 다시 작성해 주세요.",
-        ] + (["음성 답장은 자동 받아쓰기로 정리해서 틀린 글자가 있을 수 있습니다."]
-             if any(reply.kind == "voice" for reply in replies) else []),
+        ] + (["음성 답장은 자동 받아쓰기로 정리해서 틀린 글자가 있을 수 있습니다."] if voice else []),
     }
 
 
@@ -502,10 +448,13 @@ def portfolio_state(db: Session, recipient: Recipient, month: str | None = None,
     saved_months = db.scalars(select(MonthlyPortfolio.month).where(
         MonthlyPortfolio.recipient_id == recipient.id, MonthlyPortfolio.user_id == recipient.user_id,
     )).all()
+    per_day = Counter(korea_date(reply.created_at) for reply in replies)
     return {
         "recipient_id": recipient.id, "month": month,
         "available_months": sorted(set(reply_months) | set(saved_months) | {month}, reverse=True),
-        "reply_count": len(replies), "active_days": len({korea_date(reply.created_at) for reply in replies}),
+        "reply_count": len(replies), "active_days": len(per_day),
+        # 한 달 흐름 캘린더: 답글이 있는 날의 답글 수 (볼 때마다 센다. 위험도 색은 답장 살펴보기를 켠 방의 analysis_trends.days)
+        "calendar": [{"date": day, "reply_count": per_day[day]} for day in sorted(per_day)],
         "stale": bool(row and row.source_fingerprint != fingerprint),
         "portfolio": {**row.report, "id": row.id, "generated_at": iso(row.generated_at)} if row else None,
     }

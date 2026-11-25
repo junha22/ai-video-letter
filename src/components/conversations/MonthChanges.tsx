@@ -1,18 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, RefreshCw, Sparkles } from "lucide-react";
+import { RefreshCw, Sparkles } from "lucide-react";
 import { Button, Card } from "@/components/ui";
 import { api, errorText } from "@/lib/api";
-import { formatConversationDate, formatConversationMonth, type MonthAnalysisTrends } from "@/lib/conversations";
-import { LEVEL_TONE } from "./ReplyAnalysis";
+import { formatConversationMonth, type MonthAnalysisTrends } from "@/lib/conversations";
+import { MonthCalendar } from "./MonthCalendar";
 
 const shortDay = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
 
-/** 월간 포트폴리오 맨 위 'AI가 정리한 한 달의 변화'. 사실은 서버 규칙으로 세고, 정리 문장은 CLOVA가 만든다 (없거나 낡았으면 한 번 요청) */
-export function MonthChanges({ recipientId, trends, onTrends, onOpenDate }: {
+/** 월간 포트폴리오의 'AI가 정리한 한 달의 변화'. 사실은 서버 규칙으로 세고, 정리 문장과 주제 묶음은 CLOVA가 한 번에 만든다
+ *  (없거나 낡았으면 한 번 요청). counts는 캘린더의 날짜별 답장 수 (정리 전 답장도 센다) */
+export function MonthChanges({ recipientId, trends, counts, onTrends, onOpenDate }: {
   recipientId: number;
   trends: MonthAnalysisTrends;
+  counts: { date: string; reply_count: number }[];
   onTrends: (trends: MonthAnalysisTrends) => void;
   onOpenDate: (date: string) => void;
 }) {
@@ -53,30 +55,28 @@ export function MonthChanges({ recipientId, trends, onTrends, onOpenDate }: {
       {error && <div className="mt-3 flex flex-wrap items-center gap-2"><p role="alert" className="text-xs text-red-700">{error}</p><Button variant="secondary" onClick={() => { void summarize(); }} className="!min-h-9 !px-3 !text-xs">다시 정리하기</Button></div>}
     </div>
 
-    {trends.timeline.length > 0 && <section className="mt-6" aria-label="한 달 흐름">
+    {counts.length > 0 && <section className="mt-6" aria-label="한 달 흐름">
       <h4 className="text-sm font-bold text-[#4a3d30]">한 달 흐름</h4>
-      <p className="mt-1 text-xs text-stone-500">답장마다 AI가 정리한 정도예요. 누르면 그날 대화로 가요.</p>
-      <ol className="mt-3 flex flex-wrap gap-2">{trends.timeline.map((item) => {
-        const tone = item.level ? LEVEL_TONE[item.level] : { bg: "#ECE9E6", fg: "#57514B" };
-        return <li key={item.reply_id}><button type="button" onClick={() => onOpenDate(item.date)} title={formatConversationDate(item.date)} className="flex min-h-11 items-center gap-2 rounded-xl border border-[#ece5dc] bg-white px-3 py-1.5 text-left text-xs hover:border-[#cdbba6]">
-          <span className="font-semibold tabular-nums text-stone-500">{shortDay(item.date)}</span>
-          <span className="rounded-full px-2 py-0.5 font-bold" style={{ background: tone.bg, color: tone.fg }}>{item.label}</span>
-          {item.mood_text && <span className="text-stone-600">{item.mood_text}</span>}
-          {item.kind === "voice" && <span className="inline-flex items-center gap-0.5 text-stone-400"><Mic size={12} />{item.voice ?? "음성"}</span>}
-          {item.mismatch && <span className="font-semibold text-[#A8321E]">말·목소리 다름</span>}
-        </button></li>;
-      })}</ol>
+      <p className="mt-1 text-xs text-stone-500">날마다 가장 살펴볼 답장의 색이에요. 숫자는 그날 답장 수, 누르면 그날 대화로 가요.</p>
+      <div className="mt-3"><MonthCalendar month={trends.month} counts={counts} days={trends.days} onOpenDate={onOpenDate} /></div>
     </section>}
 
     <div className="mt-6 grid gap-5 lg:grid-cols-2">
-      <section aria-label="이어진 이야기" className="min-w-0">
-        <h4 className="text-sm font-bold text-[#4a3d30]">이번 달 이어진 이야기</h4>
-        {trends.signals.length === 0 ? <p className="mt-2 text-xs leading-6 text-stone-500">이번 달에는 확인해 볼 이야기가 없었어요.</p>
-          : <ul className="mt-3 space-y-3">{trends.signals.map((signal) => <li key={`${signal.area}-${signal.value}`} className="rounded-xl border border-[#F3E3C7] bg-[#FFFBF3] px-4 py-3">
-            <p className="text-sm font-bold text-[#7A4A00]">{signal.area} · {signal.value} <span className="font-semibold text-[#a07850]">{signal.count}번{signal.count > 1 ? " (이어짐)" : ""}</span></p>
-            <p className="mt-1 flex flex-wrap gap-x-2 text-xs">{signal.dates.map((date, index) => <button key={`${date}-${index}`} type="button" onClick={() => onOpenDate(date)} className="min-h-7 font-semibold text-[#8a6a45] underline underline-offset-2">{shortDay(date)}</button>)}</p>
-            {signal.evidence.map((quote) => <p key={quote} className="mt-1 text-xs leading-6 text-[#4b433c]">“{quote}”</p>)}
-          </li>)}</ul>}
+      <section aria-label="이번 달 나눈 이야기" className="min-w-0">
+        <h4 className="text-sm font-bold text-[#4a3d30]">이번 달 나눈 이야기</h4>
+        {trends.topics?.length
+          ? <>
+            <ul className="mt-3 space-y-3">{trends.topics.map((topic) => <li key={topic.name} className="rounded-xl border border-[#ece2d4] bg-[#fbf8f3] px-4 py-3">
+              <p className="text-sm font-bold text-[#5b4632]">{topic.name} <span className="font-semibold text-[#a08a72]">답장 {topic.count}개</span></p>
+              <p className="mt-1 text-xs leading-6 text-[#4b433c]">{topic.summary}</p>
+              <p className="mt-1 flex flex-wrap gap-x-2 text-xs">{topic.dates.map((date) => <button key={date} type="button" onClick={() => onOpenDate(date)} className="min-h-7 font-semibold text-[#8a6a45] underline underline-offset-2">{shortDay(date)}</button>)}</p>
+            </li>)}</ul>
+            <p className="mt-2 text-[11px] leading-5 text-stone-400">AI가 답장마다 정리한 내용을 주제별로 묶었어요.{trends.summary?.stale ? " 새 답장은 다시 정리하면 반영돼요." : ""}</p>
+          </>
+          : <p className="mt-2 text-xs leading-6 text-stone-500">{summarizing ? "AI가 이번 달 이야기를 주제별로 묶고 있어요…"
+            : !trends.enough ? trends.few_text
+              : !trends.can_summarize ? "CLOVA 키가 없어 주제별로 묶지 못했어요."
+                : "아직 주제별로 묶지 않았어요. 한 달 정리를 다시 하면 함께 묶어요."}</p>}
       </section>
 
       <div className="grid content-start gap-5">
@@ -95,8 +95,8 @@ export function MonthChanges({ recipientId, trends, onTrends, onOpenDate }: {
       </div>
     </div>
 
-    {trends.starters.length > 0 && <section aria-label="이어진 이야기로 건넬 안부" className="mt-6 rounded-2xl bg-[#f7f2e9] px-5 py-4">
-      <h4 className="text-sm font-bold text-[#826750]">이어진 이야기로 건넬 안부</h4>
+    {trends.starters.length > 0 && <section aria-label="이번 달 이야기로 건넬 안부" className="mt-6 rounded-2xl bg-[#f7f2e9] px-5 py-4">
+      <h4 className="text-sm font-bold text-[#826750]">이번 달 이야기로 건넬 안부</h4>
       <ul className="mt-2 space-y-1.5">{trends.starters.map((text) => <li key={text} className="text-sm leading-7 text-[#85715f]">· {text}</li>)}</ul>
     </section>}
   </Card>;

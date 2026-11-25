@@ -548,8 +548,11 @@ class ConversationIntegrationTests(unittest.TestCase):
             report = data["portfolio"]
             self.assertEqual(report["reply_count"], 2)
             self.assertEqual(report["days_in_month"], 31)
-            self.assertEqual({r["reply_id"] for r in report["representative_replies"]}, {first, last})
-            self.assertEqual({d["date"] for d in report["daily_trends"]}, {"2026-10-01", "2026-10-31"})
+            # 키워드 주제·날짜별 흐름·대표 답글·대화 제안은 v2에서 뺐다. 날짜별 흐름은 볼 때마다 세는 calendar가 맡는다
+            self.assertEqual(report["source"], "local_evidence_v2")
+            self.assertFalse({"topics", "daily_trends", "representative_replies", "conversation_starters"} & set(report))
+            self.assertEqual(data["calendar"], [{"date": "2026-10-01", "reply_count": 1}, {"date": "2026-10-31", "reply_count": 1}])
+            self.assertEqual(empty["calendar"], data["calendar"])  # 작성 전에도 캘린더는 있다
             rendered = str(report)
             for unrelated in ("9월에만", "11월에만", "다른 대상자의 비밀"):
                 self.assertNotIn(unrelated, rendered)
@@ -767,7 +770,9 @@ class ConversationIntegrationTests(unittest.TestCase):
         portfolio = f"/api/recipients/{rid}/portfolio?month=2026-10"
         with self.clock():
             report_id = self.assert_ok(self.client.post(portfolio))["portfolio"]["id"]
-            self.assertIn("100%_비밀", str(self.assert_ok(self.client.get(portfolio))["portfolio"]))
+            before = self.assert_ok(self.client.get(portfolio))["portfolio"]
+            self.assertEqual(before["reply_count"], 2)
+            self.assertNotIn("100%_비밀", str(before))  # v2 보고서는 답글 원문을 인용하지 않는다
             self.assertEqual(self.client.delete(f"/api/recipients/{rid}/replies/{other['id']}").status_code, 404)
             self.assert_ok(self.client.delete(f"/api/recipients/{rid}/replies/{gone['id']}"))
             self.assertEqual(self.client.delete(f"/api/recipients/{rid}/replies/{gone['id']}").status_code, 404)

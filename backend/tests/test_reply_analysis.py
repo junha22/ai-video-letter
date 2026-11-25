@@ -289,7 +289,7 @@ class ReplyAnalysisTests(unittest.TestCase):
         # 포트폴리오에는 자동 받아쓰기를 표시하고, 다음 영상 대본 맥락에도 받아쓰기가 들어간다 (분석 결과는 없음)
         portfolio = self.assert_ok(self.client.post(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"}))
         report = portfolio["portfolio"]
-        self.assertTrue(all(item.get("voice") for item in report["representative_replies"]))
+        self.assertIn("그중 음성 답장은 5개예요.", report["summary"])
         self.assertIn("음성 답장은 자동 받아쓰기로 정리해서 틀린 글자가 있을 수 있습니다.", report["caveats"])
         from app.routers.messages import _conversation_context
         with db.SessionLocal() as session:
@@ -595,35 +595,46 @@ class ReplyAnalysisTests(unittest.TestCase):
                 reply.created_at = datetime(2026, 11, day, 3) if day else datetime(2026, 10, 20, 3)
             session.commit()
 
-        trends = self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"}))["analysis_trends"]
-        self.assertEqual([(t["date"], t["label"], t["mood_text"]) for t in trends["timeline"]],
-                         [("2026-11-03", "평소와 같아요", "밝아 보여요"), ("2026-11-07", "살펴보기", "평온해 보여요"),
-                          ("2026-11-10", "살펴보기", "평온해 보여요"), ("2026-11-12", "평소와 같아요", "평온해 보여요")])
-        self.assertEqual(trends["timeline"][-1]["voice"], "평소 목소리 기록 중")
-        self.assertEqual(trends["signals"], [{"area": "건강", "value": "병원·약", "count": 2, "dates": ["2026-11-07", "2026-11-10"],
-                                              "evidence": ["무릎이 쑤셔서 병원에 다녀왔어", "또 무릎 때문에 병원 갔어"]}])
+        page = self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"}))
+        trends = page["analysis_trends"]
+        # 한 달 흐름은 날짜별 (캘린더): 그날 가장 높은 수준, 답장 수는 calendar
+        self.assertEqual([(d["date"], d["level"], d["label"], d["analyzed"], d["voice_down"]) for d in trends["days"]],
+                         [("2026-11-03", "없음", "평소와 같아요", 1, False), ("2026-11-07", "살펴보기", "살펴보기", 1, False),
+                          ("2026-11-10", "살펴보기", "살펴보기", 1, False), ("2026-11-12", "없음", "평소와 같아요", 1, False)])
+        self.assertEqual(page["calendar"], [{"date": d, "reply_count": 1} for d in ("2026-11-03", "2026-11-07", "2026-11-10", "2026-11-12")])
+        self.assertFalse({"timeline", "signals"} & set(trends))
+        self.assertIsNone(trends["topics"])
         self.assertEqual(trends["starters"], ["병원 다녀오신 뒤 어떠신지, 약은 잘 챙기시는지 여쭤보세요."])
         self.assertEqual({r["label"]: (r["prev"], r["now"]) for r in trends["compare"]["rows"]},
                          {"답장": (1, 4), "음성 답장": (0, 1), "살펴보기 이상": (0, 2), "바로 연락 필요": (0, 0)})
         self.assertEqual((trends["enough"], trends["summary"], trends["can_summarize"]), (True, None, True))
         self.assertEqual(trends["voice"]["points"], [{"date": "2026-11-12", "state": "평소 목소리 기록 중"}])
 
-        # CLOVA 정리: 답장 원문은 보내지 않고 답장별 AI 요약·분류와 센 숫자만
+        # CLOVA 정리: 답장 원문은 보내지 않고 답장별 AI 요약·분류와 센 숫자만. 정리 문장과 주제 묶음을 한 번에 받는다
         self.fake.llm_requests.clear()
-        self.fake.clova = [{"summary": "이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 두 번 이어졌어요."}]
+        self.fake.clova = [{"summary": "이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 두 번 이어졌어요.", "topics": [
+            {"name": "무릎과 병원", "summary": "무릎 때문에 병원에 두 번 다녀오셨대요.", "replies": [2, 3]},
+            {"name": "일상", "summary": "경로당에서 점심을 드시고 평소처럼 지내셨대요.", "replies": [1, 4, 9, 2]},  # 9는 없는 번호, 2는 이미 앞 주제
+            {"name": "치매 걱정", "summary": "치매가 걱정된다고 하셨대요.", "replies": [1]},                      # 금지어 → 버림
+        ]}]
         made = self.assert_ok(self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary", params={"month": "2026-11"}))
         self.assertEqual((made["summary"]["text"], made["summary"]["stale"]), ("이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 두 번 이어졌어요.", False))
+        self.assertEqual(made["topics"], [
+            {"name": "무릎과 병원", "summary": "무릎 때문에 병원에 두 번 다녀오셨대요.", "count": 2, "dates": ["2026-11-07", "2026-11-10"]},
+            {"name": "일상", "summary": "경로당에서 점심을 드시고 평소처럼 지내셨대요.", "count": 2, "dates": ["2026-11-03", "2026-11-12"]}])
         body = self.fake.llm_requests[0]["body"]
         self.assertEqual(body["messages"][0]["content"], reply_month.SUMMARY_SYSTEM)
-        self.assertEqual((body["responseFormat"]["schema"], body["maxCompletionTokens"]), (reply_month.SUMMARY_SCHEMA, 400))
+        self.assertEqual((body["responseFormat"]["schema"], body["maxCompletionTokens"]), (reply_month.SUMMARY_SCHEMA, 800))
         facts = body["messages"][1]["content"]
         self.assertIn("[부르는 말] 엄마", facts)
         self.assertIn("건강 병원·약 2번 (11월 7일, 11월 10일)", facts)
+        self.assertIn("- [2] 11월 7일 | 살펴보기", facts)   # 주제 묶음이 가리키는 답장 번호
         self.assertIn("요약: 무릎 때문에 병원에 다녀오셨대요.", facts)
         for raw in ("반찬이 맛있더라", "또 무릎 때문에 병원 갔어", "밥도 잘 먹고"):
             self.assertNotIn(raw, facts)
         again = self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"}))["analysis_trends"]
         self.assertFalse(again["summary"]["stale"])
+        self.assertEqual(again["topics"], made["topics"])
 
         # 새 답장이 정리되면 낡은 것으로 보인다
         self.fake.clova = [dict(CALM, summary="오늘도 잘 지내신대요.")]
@@ -646,6 +657,29 @@ class ReplyAnalysisTests(unittest.TestCase):
         with patch.object(settings, "reply_analysis_enabled", False):
             self.assertNotIn("analysis_trends", self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"})))
             self.assertEqual(self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary").status_code, 404)
+
+    def test_month_topics_cleaning_and_schema(self):
+        clean = reply_month._clean_topics
+        # 번호: 글자 숫자는 숫자로, 겹친 번호·참거짓·범위 밖은 뺀다. 이름은 앞뒤 빈칸을 지운다
+        self.assertEqual(clean([{"name": " 김장 준비 ", "summary": "김장 준비 이야기를 하셨대요.", "replies": ["2", 1, 1, True, 7]}], 3),
+                         [{"name": "김장 준비", "summary": "김장 준비 이야기를 하셨대요.", "replies": [1, 2]}])
+        calm = {"name": "일상", "summary": "평소처럼 지내셨대요."}
+        for broken in (None, "주제", [["목록"]], [dict(calm, replies="1")],
+                       [dict(calm, replies=[5])], [dict(calm, name="", replies=[1])]):  # 마지막 둘: 쓸 수 있는 주제가 없다
+            with self.assertRaises(ValueError):
+                clean(broken, 3)
+        # 형식 강제가 지원하는 키워드만 쓴다 (test_reply_rules의 답장 판단 JSON 틀과 같은 기준)
+        allowed = {"type", "enum", "items", "maxItems", "properties", "required"}
+
+        def keywords(schema):
+            for key, value in schema.items():
+                yield key
+                if key == "properties":
+                    for sub in value.values():
+                        yield from keywords(sub)
+                elif isinstance(value, dict):
+                    yield from keywords(value)
+        self.assertLessEqual(set(keywords(reply_month.SUMMARY_SCHEMA)), allowed)
 
 
 if __name__ == "__main__":

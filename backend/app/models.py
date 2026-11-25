@@ -315,8 +315,9 @@ class ReplyAnalysisConsent(Base):
 
 
 class ReplyAnalysisMonth(Base):
-    """월간 포트폴리오의 'AI가 정리한 한 달' 문장 (CLOVA). 그 달의 분석에서 규칙으로 센 사실만 보내 만든다.
-    사실이 바뀌면(fingerprint) 다시 만든다. 분석을 끄거나 답장을 지우거나 동의를 철회하면 같이 지운다."""
+    """월간 포트폴리오의 'AI가 정리한 한 달' 문장과 '이번 달 나눈 이야기'(주제 묶음) (CLOVA).
+    그 달의 분석에서 규칙으로 센 사실만 보내 만든다. 사실이 바뀌면(fingerprint) 다시 만든다.
+    분석을 끄거나 답장을 지우거나 동의를 철회하면 같이 지운다."""
 
     __tablename__ = "reply_analysis_months"
     __table_args__ = (UniqueConstraint("recipient_id", "month", name="uq_reply_month_recipient_month"),)
@@ -327,6 +328,8 @@ class ReplyAnalysisMonth(Base):
     month: Mapped[str] = mapped_column(String(7))
     fingerprint: Mapped[str] = mapped_column(String(64))
     summary: Mapped[str] = mapped_column(Text)
+    # [{name, summary, reply_ids, dates}] 주제마다 이름·한 문장·답장. 이 칸이 생기기 전에 만든 정리는 비어 있다 (다시 정리하면 채워진다)
+    topics: Mapped[list | None] = mapped_column(JSON, nullable=True)
     model: Mapped[str] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

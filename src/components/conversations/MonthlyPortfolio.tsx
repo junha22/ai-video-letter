@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Check, Clipboard, Download, FileText, RefreshCw, Sparkles } from "lucide-react";
+import { Check, Clipboard, Download, FileText, RefreshCw, Sparkles } from "lucide-react";
 import { api, errorText } from "@/lib/api";
-import { formatConversationDate, formatConversationMonth, kstMonth, portfolioAsText, type MonthlyPortfolioResponse, type PortfolioEvidence } from "@/lib/conversations";
+import { formatConversationMonth, kstMonth, portfolioAsText, type MonthlyPortfolioResponse } from "@/lib/conversations";
 import { Button, Card, Notice, Spinner } from "@/components/ui";
+import { MonthCalendar } from "./MonthCalendar";
 import { MonthChanges } from "./MonthChanges";
 
 export function MonthlyPortfolio({ recipientId, recipientName, onOpenDate }: {
@@ -49,6 +50,7 @@ export function MonthlyPortfolio({ recipientId, recipientName, onOpenDate }: {
 
   const current = data?.recipient_id === recipientId && data.month === month ? data : null;
   const portfolio = current?.portfolio;
+  const calendar = current?.calendar ?? [];
   const reportText = current ? portfolioAsText(current, recipientName) : "";
 
   const copy = async () => {
@@ -75,7 +77,7 @@ export function MonthlyPortfolio({ recipientId, recipientName, onOpenDate }: {
     <div className="space-y-6">
       <Card className="!border-[#ead9cd] !bg-[#fff5eb] sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div><h2 className="flex items-center gap-2 text-lg font-bold text-[#c8493c]"><FileText size={20} />한 달의 이야기</h2><p className="mt-2 max-w-xl text-sm leading-7 text-[#81645d]">{recipientName} 님이 남긴 한 달치 답글에서 자주 나눈 이야기와 기억할 말을 모아요. 답글이 쌓이는 중에도 작성할 수 있어요.</p></div>
+          <div><h2 className="flex items-center gap-2 text-lg font-bold text-[#c8493c]"><FileText size={20} />한 달의 이야기</h2><p className="mt-2 max-w-xl text-sm leading-7 text-[#81645d]">{recipientName} 님이 남긴 한 달치 답글을 날짜별로 모아 한 장으로 정리해요. 답글이 쌓이는 중에도 작성할 수 있어요.</p></div>
           <label className="text-xs font-semibold text-[#81645d]">분석할 달<input type="month" aria-label="포트폴리오 분석할 달" value={month} max={kstMonth()} disabled={generating} onChange={(e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) setMonth(e.target.value); }} className="mt-2 block min-h-11 rounded-xl border border-[#ead9cd] bg-white px-4 text-sm text-[#c8493c] outline-none focus:ring-2 focus:ring-[#b68e7e]" /></label>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-3"><Button loading={generating} disabled={!current || current.reply_count === 0 || loading} onClick={() => { void load(true); }}><Sparkles size={17} />{portfolio ? "다시 분석하기" : "포트폴리오 작성"}</Button><button type="button" onClick={() => { void load(); }} disabled={loading || generating} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-semibold text-[#81645d] disabled:opacity-50"><RefreshCw size={14} className={loading ? "animate-spin" : ""} />답글 현황 새로고침</button></div>
@@ -86,27 +88,27 @@ export function MonthlyPortfolio({ recipientId, recipientName, onOpenDate }: {
 
       {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
       {loading && !current && <Spinner label="한 달의 답글을 불러오고 있어요" />}
-      {/* 답장 살펴보기를 켠 대화방에만 온다. 보고서와 따로 볼 때마다 계산해서 '포트폴리오 작성' 전에도 보인다 */}
-      {current?.analysis_trends && <MonthChanges recipientId={recipientId} trends={current.analysis_trends} onOpenDate={onOpenDate}
-        onTrends={(trends) => setData((old) => old && old.month === trends.month ? { ...old, analysis_trends: trends } : old)} />}
+
+      {/* 포트폴리오 제목 카드: 월별 기록 바로 아래 (작성 전이면 작성 안내) */}
+      {portfolio && current && <Card className="sm:p-7"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold text-[#a17e67]">{formatConversationMonth(month)} · {recipientName}</p><h3 className="mt-2 text-2xl font-bold text-[#c8493c]">{portfolio.title}</h3></div><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={() => { void copy(); }} className="!min-h-10 !px-3 !py-2 !text-xs">{copied ? <Check size={15} /> : <Clipboard size={15} />}{copied ? "복사했어요" : "내용 복사"}</Button><Button variant="secondary" onClick={download} className="!min-h-10 !px-3 !py-2 !text-xs"><Download size={15} />파일로 저장</Button></div></div>
+        <p className="mt-5 whitespace-pre-wrap text-sm leading-8 text-stone-600">{portfolio.summary}</p>
+        <div className="mt-6 grid grid-cols-2 gap-3"><Metric title="누적 답글" value={`${portfolio.reply_count}개`} /><Metric title="대화를 나눈 날" value={`${portfolio.active_days}일`} /></div>
+        <p className="mt-5 text-xs text-stone-400">작성 {new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "medium", timeStyle: "short" }).format(new Date(portfolio.generated_at))} · 답글에 근거한 요약</p>
+      </Card>}
+      {current && !portfolio && <Card className="py-12 text-center"><FileText size={34} className="mx-auto text-[#81645d]" /><h3 className="mt-4 font-bold">{current.reply_count ? "쌓인 답글을 한 장의 기록으로" : "아직 이달의 답글이 없어요"}</h3><p className="mx-auto mt-3 max-w-md text-sm leading-7 text-stone-500">{current.reply_count ? "위의 ‘포트폴리오 작성’을 누르면 이달의 답글을 한 장으로 정리해서 내용 복사·파일로 저장할 수 있어요." : "영상 편지를 보내고 답글을 받아 보세요. 첫 답글부터 월간 기록에 차곡차곡 쌓여요."}</p></Card>}
       {current?.stale && <Notice>포트폴리오 작성 후 새 답글이 쌓였어요. 다시 분석하면 최신 답글까지 반영돼요.</Notice>}
-      {current && !portfolio && <Card className="py-12 text-center"><FileText size={34} className="mx-auto text-[#81645d]" /><h3 className="mt-4 font-bold">{current.reply_count ? "쌓인 답글을 한 장의 기록으로" : "아직 이달의 답글이 없어요"}</h3><p className="mx-auto mt-3 max-w-md text-sm leading-7 text-stone-500">{current.reply_count ? "위의 ‘포트폴리오 작성’을 누르면 관심 주제, 날짜별 대화 흐름, 다음에 건넬 안부를 확인할 수 있어요." : "영상 편지를 보내고 답글을 받아 보세요. 첫 답글부터 월간 기록에 차곡차곡 쌓여요."}</p></Card>}
 
-      {portfolio && current && <article className="space-y-6" aria-label={`${formatConversationMonth(month)} 대화 포트폴리오`}>
-        <Card className="sm:p-7"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold text-[#a17e67]">{formatConversationMonth(month)} · {recipientName}</p><h3 className="mt-2 text-2xl font-bold text-[#c8493c]">{portfolio.title}</h3></div><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={() => { void copy(); }} className="!min-h-10 !px-3 !py-2 !text-xs">{copied ? <Check size={15} /> : <Clipboard size={15} />}{copied ? "복사했어요" : "내용 복사"}</Button><Button variant="secondary" onClick={download} className="!min-h-10 !px-3 !py-2 !text-xs"><Download size={15} />파일로 저장</Button></div></div>
-          <p className="mt-5 whitespace-pre-wrap text-sm leading-8 text-stone-600">{portfolio.summary}</p>
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3"><Metric title="누적 답글" value={`${portfolio.reply_count}개`} /><Metric title="대화를 나눈 날" value={`${portfolio.active_days}일`} /><Metric title="발견한 이야기" value={`${portfolio.topics.length}가지`} /></div>
-          <p className="mt-5 text-xs text-stone-400">작성 {new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "medium", timeStyle: "short" }).format(new Date(portfolio.generated_at))} · 답글에 근거한 요약</p>
-        </Card>
+      {/* 답장 살펴보기를 켠 방: AI 정리 + 위험도 캘린더 + 나눈 이야기. 꺼진 방: 답장 수 캘린더만. 둘 다 볼 때마다 계산해서 '포트폴리오 작성' 전에도 보인다 */}
+      {current?.analysis_trends
+        ? <MonthChanges recipientId={recipientId} trends={current.analysis_trends} counts={calendar} onOpenDate={onOpenDate}
+          onTrends={(trends) => setData((old) => old && old.month === trends.month ? { ...old, analysis_trends: trends } : old)} />
+        : current && calendar.length > 0 && <Card className="sm:p-7"><section aria-label="한 달 흐름">
+          <h3 className="text-lg font-bold text-[#493035]">한 달 흐름</h3>
+          <p className="mt-1 text-xs leading-6 text-stone-500">날짜를 누르면 그날 대화로 가요.</p>
+          <div className="mt-4"><MonthCalendar month={month} counts={calendar} onOpenDate={onOpenDate} /></div>
+        </section></Card>}
 
-        <Card className="sm:p-7"><h3 className="text-lg font-bold text-[#493035]">자주 나눈 이야기</h3>{portfolio.topics.length === 0 ? <p className="mt-4 text-sm text-stone-500">주제를 분류할 만큼의 표현이 아직 모이지 않았어요.</p> : <ul className="mt-5 grid gap-4 md:grid-cols-2">{portfolio.topics.map((topic) => <li key={topic.name} className="rounded-2xl border border-[#ead9cd] p-5"><div className="flex justify-between gap-3"><h4 className="font-bold text-[#81645d]">{topic.name}</h4><span className="text-xs text-stone-500">답글 {topic.count}개</span></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#fff5eb]" aria-hidden="true"><div className="h-full rounded-full bg-[#81645d]" style={{ width: `${Math.min(100, topic.count / Math.max(1, portfolio.reply_count) * 100)}%` }} /></div><ul className="mt-4 space-y-3">{topic.evidence.map((item, index) => <li key={`${item.reply_id}-${index}`}><Evidence item={item} onOpenDate={onOpenDate} /></li>)}</ul></li>)}</ul>}</Card>
-
-        <Card className="sm:p-7"><h3 className="text-lg font-bold text-[#493035]">날짜별 대화 흐름</h3><p className="mt-2 text-xs leading-6 text-stone-500">막대를 누르면 그날의 대화를 볼 수 있어요. 답글 수는 대화량을 나타내요.</p><div className="mt-6 overflow-x-auto pb-3"><div className="flex h-40 min-w-[540px] items-end gap-1.5" aria-label="날짜별 답글 수">{portfolio.daily_trends.map((day) => <button key={day.date} type="button" onClick={() => onOpenDate(day.date)} aria-label={`${formatConversationDate(day.date)}, 답글 ${day.reply_count}개`} title={`${day.date} · 답글 ${day.reply_count}개`} className="group flex h-full min-w-3 flex-1 flex-col justify-end rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#c8493c]"><span className="mb-1 text-center text-[9px] text-stone-500">{day.reply_count || ""}</span><span className={`block min-h-1 rounded-t-md transition-colors ${day.reply_count ? "bg-[#81645d] group-hover:bg-[#81645d]" : "bg-[#ead9cd]"}`} style={{ height: `${Math.max(3, day.reply_count / Math.max(1, ...portfolio.daily_trends.map((d) => d.reply_count)) * 100)}px` }} /><span className="mt-2 text-center text-[9px] text-stone-400">{Number(day.date.slice(8))}</span></button>)}</div></div><details className="mt-4 border-t border-[#ead9cd] pt-4"><summary className="cursor-pointer text-xs font-semibold text-[#81645d]">날짜별 기록 자세히 보기</summary><div className="mt-4 overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-[#ead9cd] text-[#81645d]"><th className="p-3 font-semibold">날짜</th><th className="p-3 font-semibold">답글</th><th className="p-3 font-semibold">이야기</th></tr></thead><tbody>{portfolio.daily_trends.map((day) => <tr key={day.date} className="border-b border-[#fff5eb]"><td className="whitespace-nowrap p-3"><button type="button" onClick={() => onOpenDate(day.date)} className="min-h-8 font-semibold text-[#c8493c] underline underline-offset-4">{formatConversationDate(day.date)}</button></td><td className="p-3">{day.reply_count}개</td><td className="p-3 text-stone-500">{day.topics.join(", ") || "—"}</td></tr>)}</tbody></table></div></details></Card>
-
-        {portfolio.representative_replies.length > 0 && <Card className="sm:p-7"><h3 className="text-lg font-bold text-[#493035]">기억하고 싶은 답글</h3><ul className="mt-5 grid gap-4 sm:grid-cols-2">{portfolio.representative_replies.map((item, index) => <li key={`${item.reply_id}-${index}`} className="rounded-2xl bg-[#faf8f2] p-5"><Evidence item={item} onOpenDate={onOpenDate} /></li>)}</ul></Card>}
-        {portfolio.conversation_starters.length > 0 && <Card className="!bg-[#f7f2e9] sm:p-7"><h3 className="text-lg font-bold text-[#826750]">다음 안부에는 이런 말을</h3><ul className="mt-4 space-y-3">{portfolio.conversation_starters.map((text, index) => <li key={index} className="flex items-start gap-3 text-sm leading-7 text-[#85715f]"><span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-bold">{index + 1}</span>{text}</li>)}</ul></Card>}
-        <div className="rounded-2xl border border-[#ead9cd] bg-white/60 px-5 py-4 text-xs leading-7 text-stone-500"><p>이 기록은 상대가 직접 남긴 답글만 정리하며, 건강 상태나 심리 상태를 진단하지 않아요.</p>{portfolio.caveats.length > 0 && <ul className="mt-2 list-inside list-disc">{portfolio.caveats.map((text, index) => <li key={index}>{text}</li>)}</ul>}</div>
-      </article>}
+      {portfolio && current && <div className="rounded-2xl border border-[#ead9cd] bg-white/60 px-5 py-4 text-xs leading-7 text-stone-500"><p>이 기록은 상대가 직접 남긴 답글만 정리하며, 건강 상태나 심리 상태를 진단하지 않아요.</p>{portfolio.caveats.length > 0 && <ul className="mt-2 list-inside list-disc">{portfolio.caveats.map((text, index) => <li key={index}>{text}</li>)}</ul>}</div>}
       <p role="status" className="sr-only">{copied ? "포트폴리오를 클립보드에 복사했어요." : ""}</p>
     </div>
   );
@@ -114,8 +116,4 @@ export function MonthlyPortfolio({ recipientId, recipientName, onOpenDate }: {
 
 function Metric({ title, value }: { title: string; value: string }) {
   return <div className="rounded-2xl bg-[#fff5eb] px-5 py-4"><p className="text-xs text-[#81645d]">{title}</p><p className="mt-2 text-xl font-bold text-[#81645d]">{value}</p></div>;
-}
-
-function Evidence({ item, onOpenDate }: { item: PortfolioEvidence; onOpenDate: (date: string) => void }) {
-  return <blockquote>{item.voice && <p className="mb-1 text-[10px] font-semibold tracking-wide text-[#a08a72]">음성 답장 · 자동 받아쓰기</p>}<p className="whitespace-pre-wrap break-words text-sm leading-7 text-stone-600">“{item.text}”</p><button type="button" onClick={() => onOpenDate(item.date)} className="mt-2 inline-flex min-h-8 items-center gap-1 text-[11px] font-semibold text-[#81645d] hover:text-[#c8493c]">{formatConversationDate(item.date)} 대화 보기<ArrowUpRight size={12} /></button></blockquote>;
 }
