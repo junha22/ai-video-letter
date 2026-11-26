@@ -2,7 +2,7 @@
 
 그 달의 답장 분석(reply_analyses)에서 규칙으로 사실을 센다:
   한 달 흐름(날짜마다 가장 높은 수준·목소리 → 화면의 캘린더), 같은 신호가 나온 날짜, 목소리 흐름, 지난달과 비교, 다음 안부 제안.
-그 사실만 CLOVA Studio(HCX-007)에 보내, 2~3문장 정리와 '이번 달 나눈 이야기'(답장을 주제별로 묶은 것)를 한 번에 받는다
+그 사실만 CLOVA Studio(HCX-007)에 보내, 2~3문장 정리와 '이번 달 나눈 이야기'(답장을 다섯 갈래로 나눈 것)를 한 번에 받는다
 (답장 원문은 보내지 않고, 답장마다 AI가 만든 요약·분류와 센 숫자만).
 - 사실은 보고서(monthly_portfolios)에 저장하지 않고 볼 때마다 계산한다. 분석을 끄거나 답장을 지우면 저절로 사라진다.
 - CLOVA 정리문·주제 묶음만 reply_analysis_months에 저장한다 (사실이 바뀌면 stale). 분석 끄기·답장 지우기·동의 철회 때 같이 지운다.
@@ -58,61 +58,124 @@ SUMMARY_SYSTEM = """너는 자녀에게 부모님이 한 달 동안 남긴 답�
 - 진단하지 않는다. 병명, 점수, 등급, 진단 같은 말을 쓰지 않는다.
 - 부모님은 [부르는 말]로 부른다. 말투는 "~했어요", "~보여요"처럼 부드럽게 쓴다.
 [summary] 한 달 동안 무엇이 이어졌고, 달의 처음과 끝이 어떻게 달라졌는지를 2~3문장으로 쓴다. 날짜는 "11월 10일", "중순"처럼 쓴다. 지난달과 비교한 숫자가 있으면 한 번만 짧게 말한다. 숫자를 늘어놓지 않는다.
-[topics] 이번 달에 나눈 이야기를 주제별로 2~5개로 묶는다. 걱정되는 이야기뿐 아니라 일상 이야기도 주제로 묶는다. 이야기가 많이 나온 주제부터 쓴다.
-- name: 주제의 짧은 이름 (2~12자, 예: "무릎 통증", "김장 준비", "손주 소식")
-- summary: 그 주제로 나눈 이야기를 한 문장으로
-- replies: 그 주제에 해당하는 [답장별 정리]의 번호 목록. 답장 하나는 가장 가까운 주제 하나에만 넣고, 모든 답장이 어느 주제에든 들어가게 한다.
-출력은 JSON 하나: summary=정리한 2~3문장, topics=주제 목록."""
-TOPICS_MAX = 5
+[topics] 이번 달 답장을 아래 다섯 갈래로 나눈다. 답장이 없는 갈래는 쓰지 않고, 같은 갈래는 한 번만 쓴다. 답장이 많은 갈래부터 쓴다.
+- 건강: 몸, 아픔, 다침, 병원·약, 식사·잠
+- 마음·외로움: 외로움, 쓸쓸함, 의욕, 서운함 같은 마음 이야기
+- 생활·안전: 돈, 사기 의심 전화, 집 고장처럼 생활에서 생긴 일
+- 가족: 자녀·손주·가족 소식과 만남
+- 일상: 나들이, 취미, 음식, 날씨 같은 하루 이야기
+'확인해 볼 것'에 건강 신호가 있으면 건강, 마음 신호가 있으면 마음·외로움, 생활·안전 신호가 있으면 생활·안전에 넣는다(여럿이면 가장 중요한 하나). 신호가 없으면 가족이나 일상에 넣는다.
+- name: 갈래 이름 (위 다섯 가지 글자 그대로)
+- status: 그 갈래 이야기가 이번 달 어떻게 흘러갔는지 하나. 이어지는 중(살펴볼 일이 마지막 답장까지 이어짐) / 나아지는 중(살펴볼 일이 뒤 답장에서 나아지고 있지만 끝나지는 않음) / 해결 완료(살펴볼 일이 뒤 답장에서 끝났다고 확인됨) / 평소 이야기(살펴볼 일이 없던 갈래)
+- replies: 그 갈래에 넣은 [답장별 정리]의 번호 목록. 답장 하나는 한 갈래에만 넣고, 모든 답장이 어느 갈래에든 들어가게 한다.
+- steps: 그 갈래 이야기의 흐름을 보여 주는 답장 1~4개 (날짜 순). reply=그 답장의 번호, label=그 답장에서 있었던 일을 2~10자로 짧게 (예: "무릎 통증 시작", "정형외과·약", "계단 오를 만큼", "송금 멈춤")
+[resolved] '살펴보기'나 '바로 연락 필요'였던 답장 중, 그 뒤에 온 답장(같은 날 뒤 답장 포함)에서 그 일이 끝났다고 확인되는 답장의 번호 목록. 나아지고 있지만 끝나지 않은 일, 확실하지 않은 일은 넣지 않는다. 없으면 빈 목록.
+출력은 JSON 하나: summary=정리한 2~3문장, topics=갈래 목록, resolved=해결된 답장 번호 목록."""
+# 이번 달 나눈 이야기의 갈래 (2026-11-26: 주제를 CLOVA가 자유롭게 정하면 신호마다 갈래가 생겨 너무 잘게 나뉘어 다섯 갈래로 고정)
+CATEGORIES = ["건강", "마음·외로움", "생활·안전", "가족", "일상"]
+# 갈래의 흐름 상태 (CLOVA가 답장 흐름을 읽고 고르고, _clean_topics가 단계·해결 목록과 맞게 고친다)
+STATUSES = ["이어지는 중", "나아지는 중", "해결 완료", "평소 이야기"]
+TOPICS_MAX = len(CATEGORIES)
+STEPS_MAX = 4
 SUMMARY_SCHEMA = {"type": "object", "properties": {
     "summary": {"type": "string"},
     "topics": {"type": "array", "maxItems": TOPICS_MAX, "items": {"type": "object", "properties": {
-        "name": {"type": "string"},
-        "summary": {"type": "string"},
+        "name": {"type": "string", "enum": CATEGORIES},
+        "status": {"type": "string", "enum": STATUSES},
         "replies": {"type": "array", "items": {"type": "integer"}},
-    }, "required": ["name", "summary", "replies"]}},
-}, "required": ["summary", "topics"]}
-SUMMARY_PARAMS = {**rules.CLOVA_PARAMS, "maxCompletionTokens": 800}
+        "steps": {"type": "array", "maxItems": STEPS_MAX, "items": {"type": "object", "properties": {
+            "reply": {"type": "integer"},
+            "label": {"type": "string"},
+        }, "required": ["reply", "label"]}},
+    }, "required": ["name", "status", "replies", "steps"]}},
+    "resolved": {"type": "array", "items": {"type": "integer"}},
+}, "required": ["summary", "topics", "resolved"]}
+SUMMARY_PARAMS = {**rules.CLOVA_PARAMS, "maxCompletionTokens": 1000}
 BANNED = ("진단", "우울증", "치매", "점수", "질환", "장애")
 RANK = {level: i for i, level in enumerate(rules.LEVELS)}
 
 
-def _clean_topics(topics, count: int) -> list[dict]:
-    """CLOVA가 묶은 주제를 고쳐 쓴다. 번호가 범위 밖이거나 앞 주제에 이미 든 답장은 빼고,
-    이름·문장이 이상하거나 금지어가 있는 주제는 버린다. 쓸 수 있는 주제가 하나도 없으면 ValueError (seed+1로 한 번 더)"""
-    problem = ValueError("한 달 정리의 주제 묶음을 쓸 수 없어요 (topics)")
+def _number(n, count: int) -> int | None:
+    n = int(n) if isinstance(n, str) and n.strip().isdigit() else n
+    return n if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= count else None
+
+
+def _clean_topics(topics, levels: list[str]) -> list[dict]:
+    """CLOVA가 나눈 갈래를 고쳐 쓴다 (levels = [답장별 정리] 번호 순서의 수준). 다섯 갈래가 아닌 이름은 버리고,
+    같은 갈래가 두 번 오면 답장을 합친다. 번호가 범위 밖이거나 이미 다른 갈래에 든 답장은 뺀다.
+    흐름 단계는 그 갈래 답장만, 이름(2~14자)이 이상하거나 금지어가 있으면 뺀다. 상태는 _settle에서 맞춘다.
+    답장이 많은 갈래부터 (같으면 CATEGORIES 순서). 쓸 수 있는 갈래가 하나도 없으면 ValueError (seed+1로 한 번 더)"""
+    problem = ValueError("한 달 정리의 갈래 묶음을 쓸 수 없어요 (topics)")
     if not isinstance(topics, list):
         raise problem
-    cleaned, used = [], set()
-    for topic in topics[:TOPICS_MAX]:
+    count = len(levels)
+    merged: dict[str, dict] = {}
+    used = set()
+    for topic in topics[:TOPICS_MAX * 2]:
         if not isinstance(topic, dict):
             raise problem
-        name, text, numbers = topic.get("name"), topic.get("summary"), topic.get("replies")
-        if not isinstance(name, str) or not isinstance(text, str) or not isinstance(numbers, list):
+        name, status, numbers, steps = topic.get("name"), topic.get("status"), topic.get("replies"), topic.get("steps")
+        if not isinstance(name, str) or not isinstance(numbers, list):
             raise problem
-        name, text = name.strip(), text.strip()
+        name = name.strip()
+        if name not in CATEGORIES:
+            continue
         picked = []
         for n in numbers:
-            n = int(n) if isinstance(n, str) and n.strip().isdigit() else n
-            if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= count and n not in used and n not in picked:
+            n = _number(n, count)
+            if n and n not in used and n not in picked:
                 picked.append(n)
-        if (not picked or rules.hangul_len(name) < 1 or len(name) > 20 or rules.hangul_len(text) < 5 or len(text) > 200
-                or any(word in name + text for word in BANNED)):
+        if not picked:
             continue
         used.update(picked)
-        cleaned.append({"name": name, "summary": text, "replies": sorted(picked)})
-    if not cleaned:
+        group = merged.setdefault(name, {"name": name, "status": status if status in STATUSES else None,
+                                         "replies": [], "steps": []})
+        group["replies"] = sorted(group["replies"] + picked)
+        for step in steps if isinstance(steps, list) else []:
+            n = _number(step.get("reply"), count) if isinstance(step, dict) else None
+            label = step.get("label").strip() if n and isinstance(step.get("label"), str) else ""
+            if (n in picked and 1 <= rules.hangul_len(label) and len(label) <= 14
+                    and not any(word in label for word in BANNED) and all(s["reply"] != n for s in group["steps"])):
+                group["steps"].append({"reply": n, "label": label})
+    if not merged:
         raise problem
-    return cleaned
+    for group in merged.values():
+        group["steps"] = sorted(group["steps"], key=lambda s: s["reply"])[:STEPS_MAX]
+    return sorted(merged.values(), key=lambda g: (-len(g["replies"]), CATEGORIES.index(g["name"])))
 
 
-def _check_summary(out, count: int) -> None:
-    """정리 문장을 보고, 주제 묶음은 고친 목록으로 바꿔 둔다 (count = [답장별 정리]의 답장 수)"""
+def _settle(topics: list[dict], resolved, levels: list[str]) -> list[int]:
+    """해결된 답장 번호를 고르고 갈래 상태를 그것과 맞춘다 (코드 규칙으로 한 번 더).
+    - 해결: '살펴보기' 이상이고, 같은 갈래에 뒤 답장이 있는 것만 (확실한 끝이 뒤 답장에 있어야 한다)
+    - 상태: 살펴볼 답장이 없으면 평소 이야기, 살펴볼 답장이 모두 해결됐으면 해결 완료,
+      남았는데 해결 완료라고 하면 나아지는 중, 남았는데 평소 이야기(또는 상태 없음)라고 하면 이어지는 중"""
+    topic_of = {n: t for t in topics for n in t["replies"]}
+    fixed = set()
+    for n in resolved if isinstance(resolved, list) else []:
+        n = _number(n, len(levels))
+        if n and levels[n - 1] != "없음" and n in topic_of and max(topic_of[n]["replies"]) > n:
+            fixed.add(n)
+    for t in topics:
+        flagged = [n for n in t["replies"] if levels[n - 1] != "없음"]
+        if not flagged:
+            t["status"] = "평소 이야기"
+        elif all(n in fixed for n in flagged):
+            t["status"] = "해결 완료"
+        elif t["status"] == "해결 완료":
+            t["status"] = "나아지는 중"
+        elif t["status"] in (None, "평소 이야기"):
+            t["status"] = "이어지는 중"
+    return sorted(fixed)
+
+
+def _check_summary(out, levels: list[str]) -> None:
+    """정리 문장을 보고, 갈래 묶음·해결 목록은 고친 것으로 바꿔 둔다 (levels = [답장별 정리] 번호 순서의 수준)"""
     text = out.get("summary") if isinstance(out, dict) else None
     if (not isinstance(text, str) or rules.hangul_len(text) < 10 or len(text) > 500
             or any(word in text for word in BANNED)):
         raise ValueError("한 달 정리 문장을 쓸 수 없어요 (summary)")
-    out["topics"] = _clean_topics(out.get("topics"), count)
+    out["topics"] = _clean_topics(out.get("topics"), levels)
+    out["resolved"] = _settle(out["topics"], out.get("resolved"), levels)
 
 
 def _prev_month(month: str) -> str:
@@ -142,7 +205,71 @@ def _counts(db: Session, recipient: Recipient, start, end, rows) -> dict:
     return {"replies": count(), "voice": count(SeniorReply.kind == "voice"),
             "check": sum(1 for a in done if a.level != "없음"),
             "urgent": sum(1 for a in done if a.level == "바로 연락 필요"),
-            "lengths": [a.reply_chars for a in done if a.reply_chars]}
+            "lengths": [a.reply_chars for a in done if a.reply_chars],
+            **_voice_tally([a for a, _r in rows], done)}
+
+
+# 지난달과 비교의 목소리 줄: 운율 항목마다 '평소보다 처진' 음성 답장 수 (reply_analysis.PROSODY_FEATS의 키)
+FEAT_ROWS = {"rate": "말이 느려진 답장", "loudness_db": "목소리가 작아진 답장", "pitch_st": "목소리가 낮아진 답장",
+             "pitch_range_st": "높낮이가 단조로워진 답장", "pause_ratio": "자주 멈춘 답장"}
+
+
+def _voice_tally(analyses, done) -> dict:
+    """평소 목소리와 비교한 음성 답장(기록 중·측정 못 함은 빼고)에서 처진 답장, 말·목소리가 다른 답장, 항목별 처짐을 센다"""
+    compared = [a for a in analyses if a.kind == "voice" and (a.voice or {}).get("status") == "비교"]
+    feats = {key: sum(1 for a in compared if any(item.get("key") == key and item.get("state") == "처짐"
+                                                 for item in a.voice.get("items", [])))
+             for key in FEAT_ROWS}
+    return {"voice_compared": len(compared), "voice_down": sum(1 for a in compared if a.voice.get("voice_down")),
+            "mismatch": sum(1 for a in done if a.voice_mismatch), "feats": feats}
+
+
+def _compare_rows(now: dict, prev: dict) -> list[dict]:
+    """지난달과 비교: 답장 줄 4개 + 음성 답장이 있으면 목소리 줄 (처진 답장·말과 목소리가 다른 답장은 늘 보이고,
+    운율 항목은 두 달 중 한 번이라도 처진 것만)"""
+    def row(group, label, key, unit, sub=None):
+        get = (lambda c: c[key][sub]) if sub else (lambda c: c[key])
+        return {"group": group, "label": label, "prev": get(prev), "now": get(now), "unit": unit}
+    # 답장 수·음성 답장 수 줄은 뺐다 (2026-11-26, 캘린더·원형 그래프와 겹친다)
+    rows = [row("답장", "살펴보기 이상", "check", "번"), row("답장", "바로 연락 필요", "urgent", "번")]
+    if now["voice_compared"] or prev["voice_compared"]:
+        rows += [row("목소리", "평소보다 처진 답장", "voice_down", "번"), row("목소리", "말과 목소리가 다른 답장", "mismatch", "번")]
+        rows += [row("목소리", label, "feats", "번", key) for key, label in FEAT_ROWS.items()
+                 if now["feats"][key] or prev["feats"][key]]
+    return rows
+
+
+RESOLVED_LABEL = "해결 완료"
+PENDING_LABELS = {"queued": "정리 중", "running": "정리 중", "stt_uncertain": "받아쓰기 불확실", "failed": "정리하지 못함"}
+
+
+def _items(rows) -> list[dict]:
+    """답장마다 화면에 쓰는 값 (캘린더·그날 답장·원형 그래프). 정리 전이면 level·summary가 None"""
+    out = []
+    for a, r in rows:
+        done = a.status == "done" and bool(a.result)
+        out.append({"reply_id": r.id, "date": korea_date(r.created_at), "status": a.status,
+                    "level": a.level if done else None, "summary": a.result.get("summary") if done else None,
+                    "voice": a.kind == "voice", "voice_down": a.kind == "voice" and _voice_state(a.voice) == "처짐",
+                    "mismatch": done and bool(a.voice_mismatch)})
+    return out
+
+
+def _label(item: dict, resolved: set[int]) -> str:
+    if item["level"] is None:
+        return PENDING_LABELS.get(item["status"], "정리 전")
+    return RESOLVED_LABEL if item["reply_id"] in resolved else rules.LEVEL_UI[item["level"]][0]
+
+
+def _levels(items: list[dict], resolved: set[int]) -> list[dict]:
+    """이번 달 답장 상태 (원형 그래프): 정리한 답장의 수준별 수 (해결 완료된 답장은 따로) + 정리 전 답장 수"""
+    open_ = [i for i in items if i["level"] and i["reply_id"] not in resolved]
+    out = [{"key": level, "label": rules.LEVEL_UI[level][0], "count": sum(1 for i in open_ if i["level"] == level)}
+           for level in rules.LEVELS]
+    out.append({"key": "resolved", "label": RESOLVED_LABEL,
+                "count": sum(1 for i in items if i["level"] and i["reply_id"] in resolved)})
+    out.append({"key": "pending", "label": "정리 전", "count": sum(1 for i in items if not i["level"])})
+    return out
 
 
 def _voice_state(voice: dict | None) -> str | None:
@@ -165,31 +292,36 @@ def _length_text(now: list[int], prev: list[int]) -> str | None:
     return "답장 길이는 지난달과 비슷해요"
 
 
-def _days(rows) -> list[dict]:
-    """캘린더용: 날짜마다 정리한 답장 수, 가장 높은 수준(없으면 정리 상태), 목소리가 처진 답장·말과 목소리가 다른 답장이 있었는지"""
+def _days(items: list[dict], resolved: set[int]) -> list[dict]:
+    """캘린더용: 날짜마다 정리한 답장 수, 해결되지 않은 답장 중 가장 높은 수준, 목소리가 처진 답장·말과 목소리가 다른 답장이 있었는지.
+    그날 살펴볼 답장이 모두 해결 완료면 resolved (수준은 '없음', 이름은 해결 완료)"""
     days: dict[str, dict] = {}
-    for a, r in rows:
-        day = days.setdefault(korea_date(r.created_at), {"date": korea_date(r.created_at), "analyzed": 0, "level": None,
-                                                         "label": "", "voice_down": False, "mismatch": False, "_status": set()})
-        if a.status == "done" and a.result:
+    for item in items:
+        day = days.setdefault(item["date"], {"date": item["date"], "analyzed": 0, "level": None, "label": "",
+                                             "resolved": False, "voice_down": False, "mismatch": False,
+                                             "_fixed": False, "_status": set()})
+        if item["level"]:
             day["analyzed"] += 1
-            if day["level"] is None or RANK[a.level] > RANK[day["level"]]:
-                day["level"] = a.level
-            day["mismatch"] = day["mismatch"] or bool(a.voice_mismatch)
+            level = "없음" if item["reply_id"] in resolved else item["level"]
+            day["_fixed"] = day["_fixed"] or item["reply_id"] in resolved
+            if day["level"] is None or RANK[level] > RANK[day["level"]]:
+                day["level"] = level
         else:
-            day["_status"].add(a.status)
-        if a.kind == "voice" and _voice_state(a.voice) == "처짐":
-            day["voice_down"] = True
+            day["_status"].add(item["status"])
+        day["voice_down"] = day["voice_down"] or item["voice_down"]
+        day["mismatch"] = day["mismatch"] or item["mismatch"]
     for day in days.values():
-        status = day.pop("_status")
-        day["label"] = (rules.LEVEL_UI[day["level"]][0] if day["level"]
+        status, fixed = day.pop("_status"), day.pop("_fixed")
+        day["resolved"] = fixed and day["level"] == "없음"
+        day["label"] = (RESOLVED_LABEL if day["resolved"] else rules.LEVEL_UI[day["level"]][0] if day["level"]
                         else "정리 중" if status & {"queued", "running"}
                         else "받아쓰기 불확실" if "stt_uncertain" in status else "정리하지 못함")
     return [days[d] for d in sorted(days)]
 
 
-def _build(db: Session, recipient: Recipient, month: str | None) -> tuple[dict, str, list[tuple[int, str]]]:
-    """화면에 보낼 사실, CLOVA에 보낼 글(이름을 가린 것), 그 글의 답장 번호 순서 [(답장 ID, 날짜)]"""
+def _build(db: Session, recipient: Recipient, month: str | None) -> tuple[dict, str, list[dict]]:
+    """화면에 보낼 사실(캘린더·갈래는 _fill이 채운다), CLOVA에 보낼 글(이름을 가린 것), 답장마다의 값(_items, 날짜 순).
+    CLOVA 글의 답장 번호는 items 중 정리한 답장(level이 있는 것)의 순서다"""
     month, start, end = month_bounds(month)
     rows = _rows(db, recipient, start, end)
     done = [(a, r) for a, r in rows if a.status == "done" and a.result]
@@ -207,21 +339,16 @@ def _build(db: Session, recipient: Recipient, month: str | None) -> tuple[dict, 
     signals = sorted(groups.values(), key=lambda g: (-g["count"], g["dates"][0]))
     starters = list(dict.fromkeys(STARTERS[g["value"]] for g in signals if g["value"] in STARTERS))[:3]
 
-    points = [{"date": korea_date(r.created_at), "state": VOICE_WORDS[s]}
-              for a, r in rows if a.kind == "voice" and (s := _voice_state(a.voice))]
-    voice = {"points": points,
-             "down": sum(1 for a, _r in rows if _voice_state(a.voice) == "처짐"),
-             "mismatch": sum(1 for a, _r in done if a.voice_mismatch)} if points else None
+    # 목소리 횟수: CLOVA에 보내는 사실에만 쓴다 (화면의 '목소리 흐름'은 2026-11-26에 뺐다. 목소리는 지난달과 비교의 목소리 줄과 캘린더 🎤)
+    voiced = [a for a, _r in rows if a.kind == "voice" and _voice_state(a.voice)]
+    voice = {"count": len(voiced), "down": sum(1 for a in voiced if _voice_state(a.voice) == "처짐"),
+             "mismatch": sum(1 for a, _r in done if a.voice_mismatch)} if voiced else None
 
     now = _counts(db, recipient, start, end, rows)
     prev_month = _prev_month(month)
     _m, prev_start, prev_end = month_bounds(prev_month)
     prev = _counts(db, recipient, prev_start, prev_end, _rows(db, recipient, prev_start, prev_end))
-    compare = {"prev_month": prev_month,
-               "rows": [{"label": "답장", "prev": prev["replies"], "now": now["replies"], "unit": "개"},
-                        {"label": "음성 답장", "prev": prev["voice"], "now": now["voice"], "unit": "개"},
-                        {"label": "살펴보기 이상", "prev": prev["check"], "now": now["check"], "unit": "번"},
-                        {"label": "바로 연락 필요", "prev": prev["urgent"], "now": now["urgent"], "unit": "번"}],
+    compare = {"prev_month": prev_month, "rows": _compare_rows(now, prev),
                "length_text": _length_text(now["lengths"], prev["lengths"])}
 
     # CLOVA에 보낼 사실: 답장 원문 없이 답장마다 AI 요약·분류와 센 숫자만. 이름은 가린다
@@ -240,16 +367,16 @@ def _build(db: Session, recipient: Recipient, month: str | None) -> tuple[dict, 
     lines.append("[이어진 이야기] " + (" / ".join(
         f"{g['area']} {g['value']} {g['count']}번 ({', '.join(_day_text(d) for d in g['dates'])})" for g in signals) or "없음"))
     if voice:
-        lines.append(f"[목소리] 음성 답장 {len(points)}개 중 평소보다 처진 답장 {voice['down']}번, 말과 목소리가 다른 답장 {voice['mismatch']}번")
+        lines.append(f"[목소리] 음성 답장 {voice['count']}개 중 평소보다 처진 답장 {voice['down']}번, 말과 목소리가 다른 답장 {voice['mismatch']}번")
     user = db.get(User, recipient.user_id)
     names = reply_llm.names_to_hide(user.name if user else None, recipient.child_call_name, recipient.nickname)
     facts = reply_llm.hide_names("\n".join(lines), names)
 
     trends = {"month": month, "notice": NOTICE, "analyzed": len(done), "enough": len(done) >= ENOUGH,
-              "few_text": FEW_TEXT if len(done) < ENOUGH else None, "days": _days(rows),
-              "voice": voice, "compare": compare, "starters": starters, "summary": None, "topics": None,
+              "few_text": FEW_TEXT if len(done) < ENOUGH else None,
+              "compare": compare, "starters": starters, "summary": None,
               "can_summarize": len(done) >= ENOUGH and bool(reply_llm.api_key())}
-    return trends, facts, [(r.id, korea_date(r.created_at)) for _a, r in done]
+    return trends, facts, _items(rows)
 
 
 def _fingerprint(facts: str) -> str:
@@ -257,38 +384,61 @@ def _fingerprint(facts: str) -> str:
     return hashlib.sha256(f"{rules.PROMPT_ID}\n{SUMMARY_SYSTEM}\n{schema}\n{facts}".encode()).hexdigest()
 
 
-def _topics_view(topics: list[dict] | None) -> list[dict] | None:
-    return [{"name": t["name"], "summary": t["summary"], "count": len(t["reply_ids"]), "dates": t["dates"]}
-            for t in topics] if topics else None
+def _fill(trends: dict, items: list[dict], topics: list[dict] | None, resolved_ids: list[int] | None) -> dict:
+    """저장한 갈래 묶음·해결 목록(없으면 None)으로 화면 값을 채운다.
+    - days: 캘린더 (해결 완료 반영), levels: 원형 그래프, replies: 날짜를 눌렀을 때 그날 답장 (AI 한 줄 요약·갈래)
+    - topics: 갈래마다 상태 배지, 흐름 단계(날짜·짧은 이름·수준), 캘린더에서 강조할 날짜.
+    해결 목록·갈래는 정리할 때의 답장 ID라서, 그 뒤 지워진 답장은 건너뛴다"""
+    resolved = set(resolved_ids or [])
+    by_id = {item["reply_id"]: item for item in items}
+    topic_of = {reply_id: t["name"] for t in topics or [] for reply_id in t["reply_ids"]}
+    trends["days"] = _days(items, resolved)
+    trends["levels"] = _levels(items, resolved)
+    trends["replies"] = [{"reply_id": i["reply_id"], "date": i["date"], "level": i["level"], "label": _label(i, resolved),
+                          "resolved": i["reply_id"] in resolved and bool(i["level"]), "summary": i["summary"],
+                          "topic": topic_of.get(i["reply_id"]), "voice": i["voice"], "voice_down": i["voice_down"]}
+                         for i in items]
+    trends["topics"] = None
+    if topics:
+        # 이 형식 전에 저장한 정리(상태·흐름 단계 없음)도 화면이 깨지지 않게 (판단 기준이 바뀌어 낡은 것으로 보이고 다시 정리된다)
+        trends["topics"] = [{
+            "name": t["name"], "status": t.get("status"), "count": len(t["reply_ids"]),
+            "dates": sorted({by_id[r]["date"] for r in t["reply_ids"] if r in by_id}),
+            "steps": [{"date": by_id[s["reply_id"]]["date"], "label": s["label"], "level": by_id[s["reply_id"]]["level"],
+                       "resolved": s["reply_id"] in resolved}
+                      for s in t.get("steps", []) if s["reply_id"] in by_id],
+        } for t in topics]
+    return trends
 
 
 def month_trends(db: Session, recipient: Recipient, month: str | None) -> dict | None:
     """기능이 켜져 있고 자녀가 이 대상자에 답장 살펴보기를 켰을 때만. 아니면 None (포트폴리오 응답에 칸을 넣지 않는다)"""
     if not settings.reply_analysis_enabled or "child" not in parties(db, recipient.user_id, recipient.id):
         return None
-    trends, facts, _order = _build(db, recipient, month)
+    trends, facts, items = _build(db, recipient, month)
     saved = db.scalar(select(ReplyAnalysisMonth).where(
         ReplyAnalysisMonth.recipient_id == recipient.id, ReplyAnalysisMonth.user_id == recipient.user_id,
         ReplyAnalysisMonth.month == trends["month"],
     ))
     if saved:
-        # 주제 묶음이 없는 정리(이 기능 전에 만든 것)는 판단 기준이 바뀌어 fingerprint도 달라서 낡은 것으로 보인다 → 화면이 다시 정리한다
+        # 판단 기준·JSON 틀이 바뀌면 fingerprint도 달라서 낡은 것으로 보인다 → 화면이 다시 정리한다
         trends["summary"] = {"text": saved.summary, "generated_at": iso(saved.created_at),
                              "stale": saved.fingerprint != _fingerprint(facts)}
-        trends["topics"] = _topics_view(saved.topics)
-    return trends
+    return _fill(trends, items, saved.topics if saved else None, saved.resolved if saved else None)
 
 
 def summarize(db: Session, recipient: Recipient, month: str | None) -> dict:
     """사실을 CLOVA로 2~3문장 정리하고 주제별로 묶어 저장한다 (자녀가 포트폴리오를 열었을 때 없거나 낡았으면 화면이 부른다)"""
     if not settings.reply_analysis_enabled or "child" not in parties(db, recipient.user_id, recipient.id):
         raise HTTPException(409, "답장 살펴보기가 꺼져 있어요.")
-    trends, facts, order = _build(db, recipient, month)
+    trends, facts, items = _build(db, recipient, month)
     if not trends["enough"]:
         raise HTTPException(409, FEW_TEXT)
+    order = [item for item in items if item["level"]]  # CLOVA 글의 답장 번호 순서 (번호 n = order[n - 1])
+    levels = [item["level"] for item in order]
     try:
         out = reply_llm.complete_json(SUMMARY_SYSTEM, facts, SUMMARY_SCHEMA, SUMMARY_PARAMS,
-                                      lambda result: _check_summary(result, len(order)))
+                                      lambda result: _check_summary(result, levels))
     except AnalysisError as e:
         raise HTTPException(503 if e.retryable else 502, f"한 달 정리를 만들지 못했어요. {e}")
     month = trends["month"]
@@ -307,16 +457,19 @@ def summarize(db: Session, recipient: Recipient, month: str | None) -> dict:
             if row is None:
                 raise
     row.summary, row.fingerprint = out["json"]["summary"].strip(), _fingerprint(facts)
-    # 주제의 답장 번호를 답장 ID·날짜로 바꿔 저장한다 (번호는 이번에 보낸 글에서만 뜻이 있다)
-    row.topics = [{"name": t["name"], "summary": t["summary"], "reply_ids": [order[n - 1][0] for n in t["replies"]],
-                   "dates": sorted({order[n - 1][1] for n in t["replies"]})} for t in out["json"]["topics"]]
+    # 답장 번호를 답장 ID로 바꿔 저장한다 (번호는 이번에 보낸 글에서만 뜻이 있다)
+    rid = lambda n: order[n - 1]["reply_id"]  # noqa: E731
+    row.topics = [{"name": t["name"], "status": t["status"], "reply_ids": [rid(n) for n in t["replies"]],
+                   "dates": sorted({order[n - 1]["date"] for n in t["replies"]}),
+                   "steps": [{"reply_id": rid(s["reply"]), "label": s["label"]} for s in t["steps"]]}
+                  for t in out["json"]["topics"]]
+    row.resolved = [rid(n) for n in out["json"]["resolved"]]
     row.model, row.created_at = out["model"], utcnow()
     db.commit()
-    log.info("한 달 정리 %s #%s (%.1f초, 시도 %s, 주제 %s개, 토큰 %s→%s)", month, recipient.id, out["seconds"], out["attempts"],
-             len(row.topics), out["prompt_tokens"], out["completion_tokens"])
+    log.info("한 달 정리 %s #%s (%.1f초, 시도 %s, 갈래 %s개, 해결 %s개, 토큰 %s→%s)", month, recipient.id, out["seconds"],
+             out["attempts"], len(row.topics), len(row.resolved), out["prompt_tokens"], out["completion_tokens"])
     trends["summary"] = {"text": row.summary, "generated_at": iso(row.created_at), "stale": False}
-    trends["topics"] = _topics_view(row.topics)
-    return trends
+    return _fill(trends, items, row.topics, row.resolved)
 
 
 def delete_months(db: Session, user_id: int, recipient_id: int | None = None, month: str | None = None) -> int:
@@ -349,14 +502,16 @@ def ping() -> int:
         return 1
     try:
         out = reply_llm.complete_json(SUMMARY_SYSTEM, PING_FACTS, SUMMARY_SCHEMA, SUMMARY_PARAMS,
-                                      lambda result: _check_summary(result, 3))
+                                      lambda result: _check_summary(result, ["없음", "살펴보기", "살펴보기"]))
     except AnalysisError as e:
         print(f"실패: {e} ({'나중에 다시 하면 될 수 있음' if e.retryable else '설정이나 JSON 틀을 고쳐야 함'})")
         return 1
     print(f"성공: {out['seconds']}초, 시도 {out['attempts']}번, 토큰 {out['prompt_tokens']}→{out['completion_tokens']}")
     print("정리:", out["json"]["summary"])
     for topic in out["json"]["topics"]:
-        print(f"주제: {topic['name']} (답장 {topic['replies']}) {topic['summary']}")
+        steps = " → ".join(f"{s['reply']}번 {s['label']}" for s in topic["steps"])
+        print(f"갈래: {topic['name']} · {topic['status']} (답장 {topic['replies']}) {steps}")
+    print("해결 완료로 본 답장:", out["json"]["resolved"] or "없음")
     return 0
 
 

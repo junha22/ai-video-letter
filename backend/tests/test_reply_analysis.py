@@ -604,27 +604,51 @@ class ReplyAnalysisTests(unittest.TestCase):
         self.assertEqual(page["calendar"], [{"date": d, "reply_count": 1} for d in ("2026-11-03", "2026-11-07", "2026-11-10", "2026-11-12")])
         self.assertFalse({"timeline", "signals"} & set(trends))
         self.assertIsNone(trends["topics"])
+        # 원형 그래프: 정리한 답장의 수준별 수 (+ 해결 완료, 정리 전)
+        self.assertEqual([(l["key"], l["label"], l["count"]) for l in trends["levels"]],
+                         [("없음", "평소와 같아요", 2), ("살펴보기", "살펴보기", 2), ("바로 연락 필요", "바로 연락해 보세요", 0),
+                          ("resolved", "해결 완료", 0), ("pending", "정리 전", 0)])
+        # 날짜를 누르면 보이는 그날 답장: AI 한 줄 요약 (갈래는 한 달 정리 전이라 아직 없다)
+        self.assertEqual([(r["date"], r["label"], r["summary"], r["topic"]) for r in trends["replies"]][:2],
+                         [("2026-11-03", "평소와 같아요", "경로당에서 점심을 드셨대요.", None),
+                          ("2026-11-07", "살펴보기", "무릎 때문에 병원에 다녀오셨대요.", None)])
+        # 음성 답장은 아직 평소 목소리를 기록하는 중이라 목소리 줄은 없다
+        self.assertEqual({r["group"] for r in trends["compare"]["rows"]}, {"답장"})
         self.assertEqual(trends["starters"], ["병원 다녀오신 뒤 어떠신지, 약은 잘 챙기시는지 여쭤보세요."])
+        # 답장 수·음성 답장 수 줄은 없다 (캘린더·원형 그래프와 겹쳐서 뺐다)
         self.assertEqual({r["label"]: (r["prev"], r["now"]) for r in trends["compare"]["rows"]},
-                         {"답장": (1, 4), "음성 답장": (0, 1), "살펴보기 이상": (0, 2), "바로 연락 필요": (0, 0)})
+                         {"살펴보기 이상": (0, 2), "바로 연락 필요": (0, 0)})
         self.assertEqual((trends["enough"], trends["summary"], trends["can_summarize"]), (True, None, True))
-        self.assertEqual(trends["voice"]["points"], [{"date": "2026-11-12", "state": "평소 목소리 기록 중"}])
+        self.assertNotIn("voice", trends)  # 목소리 흐름 칸은 뺐다 (CLOVA에 보내는 사실에는 목소리 횟수가 남는다)
 
         # CLOVA 정리: 답장 원문은 보내지 않고 답장별 AI 요약·분류와 센 숫자만. 정리 문장과 주제 묶음을 한 번에 받는다
         self.fake.llm_requests.clear()
+        # 답장 번호: 1 = 11/3 없음, 2 = 11/7 살펴보기, 3 = 11/10 살펴보기, 4 = 11/12 없음(음성)
         self.fake.clova = [{"summary": "이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 두 번 이어졌어요.", "topics": [
-            {"name": "무릎과 병원", "summary": "무릎 때문에 병원에 두 번 다녀오셨대요.", "replies": [2, 3]},
-            {"name": "일상", "summary": "경로당에서 점심을 드시고 평소처럼 지내셨대요.", "replies": [1, 4, 9, 2]},  # 9는 없는 번호, 2는 이미 앞 주제
-            {"name": "치매 걱정", "summary": "치매가 걱정된다고 하셨대요.", "replies": [1]},                      # 금지어 → 버림
-        ]}]
+            {"name": "일상", "status": "평소 이야기", "replies": [1, 4, 9],                  # 9는 없는 번호
+             "steps": [{"reply": 1, "label": "경로당 점심"}, {"reply": 2, "label": "다른 갈래"}]},   # 2는 이 갈래가 아님 → 뺌
+            {"name": "건강", "status": "평소 이야기", "replies": [2, 3],                     # 살펴볼 답장이 남았는데 평소 이야기 → 이어지는 중
+             "steps": [{"reply": 2, "label": "무릎 병원"}, {"reply": 3, "label": "치매 걱정"}]},    # 금지어 단계 → 뺌
+            {"name": "무릎 걱정", "status": "이어지는 중", "replies": [3], "steps": []},         # 다섯 갈래가 아님 → 버림
+        ], "resolved": [2, 1, 3]}]   # 2만 해결 (1은 살펴볼 일이 아니고, 3은 같은 갈래에 뒤 답장이 없다)
         made = self.assert_ok(self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary", params={"month": "2026-11"}))
         self.assertEqual((made["summary"]["text"], made["summary"]["stale"]), ("이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 두 번 이어졌어요.", False))
-        self.assertEqual(made["topics"], [
-            {"name": "무릎과 병원", "summary": "무릎 때문에 병원에 두 번 다녀오셨대요.", "count": 2, "dates": ["2026-11-07", "2026-11-10"]},
-            {"name": "일상", "summary": "경로당에서 점심을 드시고 평소처럼 지내셨대요.", "count": 2, "dates": ["2026-11-03", "2026-11-12"]}])
+        self.assertEqual(made["topics"], [  # 답장이 많은 갈래부터 (같으면 건강·…·일상 순서)
+            {"name": "건강", "status": "이어지는 중", "count": 2, "dates": ["2026-11-07", "2026-11-10"],
+             "steps": [{"date": "2026-11-07", "label": "무릎 병원", "level": "살펴보기", "resolved": True}]},
+            {"name": "일상", "status": "평소 이야기", "count": 2, "dates": ["2026-11-03", "2026-11-12"],
+             "steps": [{"date": "2026-11-03", "label": "경로당 점심", "level": "없음", "resolved": False}]}])
+        # 해결 완료: 캘린더(11/7은 해결 완료 색), 원형 그래프(해결 완료 1), 그날 답장(해결 완료 + 갈래)
+        self.assertEqual([(d["date"], d["level"], d["label"], d["resolved"]) for d in made["days"]],
+                         [("2026-11-03", "없음", "평소와 같아요", False), ("2026-11-07", "없음", "해결 완료", True),
+                          ("2026-11-10", "살펴보기", "살펴보기", False), ("2026-11-12", "없음", "평소와 같아요", False)])
+        self.assertEqual({l["key"]: l["count"] for l in made["levels"]},
+                         {"없음": 2, "살펴보기": 1, "바로 연락 필요": 0, "resolved": 1, "pending": 0})
+        self.assertEqual([(r["label"], r["resolved"], r["topic"]) for r in made["replies"] if r["date"] == "2026-11-07"],
+                         [("해결 완료", True, "건강")])
         body = self.fake.llm_requests[0]["body"]
         self.assertEqual(body["messages"][0]["content"], reply_month.SUMMARY_SYSTEM)
-        self.assertEqual((body["responseFormat"]["schema"], body["maxCompletionTokens"]), (reply_month.SUMMARY_SCHEMA, 800))
+        self.assertEqual((body["responseFormat"]["schema"], body["maxCompletionTokens"]), (reply_month.SUMMARY_SCHEMA, 1000))
         facts = body["messages"][1]["content"]
         self.assertIn("[부르는 말] 엄마", facts)
         self.assertIn("건강 병원·약 2번 (11월 7일, 11월 10일)", facts)
@@ -634,7 +658,7 @@ class ReplyAnalysisTests(unittest.TestCase):
             self.assertNotIn(raw, facts)
         again = self.assert_ok(self.client.get(f"/api/recipients/{rid}/portfolio", params={"month": "2026-11"}))["analysis_trends"]
         self.assertFalse(again["summary"]["stale"])
-        self.assertEqual(again["topics"], made["topics"])
+        self.assertEqual((again["topics"], again["days"], again["levels"]), (made["topics"], made["days"], made["levels"]))
 
         # 새 답장이 정리되면 낡은 것으로 보인다
         self.fake.clova = [dict(CALM, summary="오늘도 잘 지내신대요.")]
@@ -659,15 +683,32 @@ class ReplyAnalysisTests(unittest.TestCase):
             self.assertEqual(self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary").status_code, 404)
 
     def test_month_topics_cleaning_and_schema(self):
-        clean = reply_month._clean_topics
-        # 번호: 글자 숫자는 숫자로, 겹친 번호·참거짓·범위 밖은 뺀다. 이름은 앞뒤 빈칸을 지운다
-        self.assertEqual(clean([{"name": " 김장 준비 ", "summary": "김장 준비 이야기를 하셨대요.", "replies": ["2", 1, 1, True, 7]}], 3),
-                         [{"name": "김장 준비", "summary": "김장 준비 이야기를 하셨대요.", "replies": [1, 2]}])
-        calm = {"name": "일상", "summary": "평소처럼 지내셨대요."}
-        for broken in (None, "주제", [["목록"]], [dict(calm, replies="1")],
-                       [dict(calm, replies=[5])], [dict(calm, name="", replies=[1])]):  # 마지막 둘: 쓸 수 있는 주제가 없다
+        clean, settle = reply_month._clean_topics, reply_month._settle
+        calm3 = ["없음", "없음", "없음"]
+        # 번호: 글자 숫자는 숫자로, 겹친 번호·참거짓·범위 밖은 뺀다. 이름은 앞뒤 빈칸을 지운다. 단계는 그 갈래 답장만
+        self.assertEqual(clean([{"name": " 가족 ", "status": "평소 이야기", "replies": ["2", 1, 1, True, 7],
+                                 "steps": [{"reply": 2, "label": " 손주 소식 "}, {"reply": 3, "label": "남의 답장"}, {"reply": 1, "label": ""}]}], calm3),
+                         [{"name": "가족", "status": "평소 이야기", "replies": [1, 2], "steps": [{"reply": 2, "label": "손주 소식"}]}])
+        # 같은 갈래가 두 번 오면 합치고, 답장이 많은 갈래부터 (같으면 건강·마음·외로움·생활·안전·가족·일상 순서)
+        self.assertEqual([(t["name"], t["replies"]) for t in clean([
+            {"name": "일상", "status": "평소 이야기", "replies": [1], "steps": []},
+            {"name": "건강", "status": "이어지는 중", "replies": [2, 3], "steps": []},
+            {"name": "일상", "status": "평소 이야기", "replies": [3, 4], "steps": []}], calm3 + ["없음"])], [("건강", [2, 3]), ("일상", [1, 4])])
+        calm = {"name": "일상", "status": "평소 이야기", "steps": []}
+        for broken in (None, "주제", [["목록"]], [dict(calm, replies="1")],     # 마지막 셋: 쓸 수 있는 갈래가 없다
+                       [dict(calm, replies=[5])], [dict(calm, name="무릎 통증", replies=[1])], [dict(calm, name="", replies=[1])]):
             with self.assertRaises(ValueError):
-                clean(broken, 3)
+                clean(broken, calm3)
+        # 해결: 살펴볼 일이고 같은 갈래에 뒤 답장이 있어야. 상태는 해결 목록과 맞춘다
+        levels = ["바로 연락 필요", "없음", "살펴보기", "살펴보기", "없음"]
+        topics = [{"name": "생활·안전", "status": "이어지는 중", "replies": [1, 2], "steps": []},   # 살펴볼 일 모두 해결 → 해결 완료
+                  {"name": "건강", "status": "해결 완료", "replies": [3, 4], "steps": []},         # 4가 남았는데 해결 완료 → 나아지는 중
+                  {"name": "일상", "status": "이어지는 중", "replies": [5], "steps": []}]          # 살펴볼 일 없음 → 평소 이야기
+        self.assertEqual(settle(topics, [1, 3, 4, 5, "x"], levels), [1, 3])   # 4는 뒤 답장이 없고, 5는 살펴볼 일이 아니다
+        self.assertEqual([t["status"] for t in topics], ["해결 완료", "나아지는 중", "평소 이야기"])
+        self.assertEqual(settle([{"name": "건강", "status": None, "replies": [3], "steps": []}], None, levels), [])
+        self.assertEqual(reply_month.SUMMARY_SCHEMA["properties"]["topics"]["items"]["properties"]["name"]["enum"], reply_month.CATEGORIES)
+        self.assertEqual(reply_month.SUMMARY_SCHEMA["properties"]["topics"]["items"]["properties"]["status"]["enum"], reply_month.STATUSES)
         # 형식 강제가 지원하는 키워드만 쓴다 (test_reply_rules의 답장 판단 JSON 틀과 같은 기준)
         allowed = {"type", "enum", "items", "maxItems", "properties", "required"}
 
@@ -680,6 +721,28 @@ class ReplyAnalysisTests(unittest.TestCase):
                 elif isinstance(value, dict):
                     yield from keywords(value)
         self.assertLessEqual(set(keywords(reply_month.SUMMARY_SCHEMA)), allowed)
+
+    def test_month_compare_voice_rows(self):
+        from types import SimpleNamespace as A
+
+        def voice(down=False, *slow):
+            return {"status": "비교", "voice_down": down,
+                    "items": [{"key": k, "state": "처짐" if k in slow else "비슷"} for k in reply_month.FEAT_ROWS]}
+        prev_rows = [A(kind="voice", voice=voice(False, "rate"), voice_mismatch=False)]
+        now_rows = [A(kind="voice", voice=voice(True, "rate", "loudness_db"), voice_mismatch=True),
+                    A(kind="voice", voice=voice(False), voice_mismatch=False),
+                    A(kind="voice", voice={"status": "기록 중"}, voice_mismatch=False),   # 평소 기록 중은 세지 않는다
+                    A(kind="text", voice=None, voice_mismatch=False)]
+        base = {"replies": 4, "voice": 3, "check": 1, "urgent": 0}
+        now = {**base, **reply_month._voice_tally(now_rows, now_rows)}
+        prev = {**base, "replies": 1, "voice": 1, **reply_month._voice_tally(prev_rows, prev_rows)}
+        rows = reply_month._compare_rows(now, prev)
+        self.assertEqual([(r["group"], r["label"], r["prev"], r["now"]) for r in rows if r["group"] == "목소리"],
+                         [("목소리", "평소보다 처진 답장", 0, 1), ("목소리", "말과 목소리가 다른 답장", 0, 1),
+                          ("목소리", "말이 느려진 답장", 1, 1), ("목소리", "목소리가 작아진 답장", 0, 1)])  # 두 달 다 0인 항목은 뺀다
+        # 두 달 모두 평소 목소리와 비교한 음성 답장이 없으면 목소리 줄도 없다
+        empty = {**base, **reply_month._voice_tally([], [])}
+        self.assertEqual({r["group"] for r in reply_month._compare_rows(empty, empty)}, {"답장"})
 
 
 if __name__ == "__main__":
