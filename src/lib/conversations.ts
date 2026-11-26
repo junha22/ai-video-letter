@@ -123,8 +123,18 @@ export type PublicConversationFeed = Omit<ConversationFeed, "recipient"> & {
 };
 export type ReplyLevel = "없음" | "살펴보기" | "바로 연락 필요";
 
-/** 한 달 흐름 캘린더의 하루 (답장 살펴보기를 켠 방). level은 그날 정리한 답장 중 가장 높은 수준, 정리 전이면 null */
-export type AnalysisDay = { date: string; analyzed: number; level: ReplyLevel | null; label: string; voice_down: boolean; mismatch: boolean };
+/** 한 달 흐름 캘린더의 하루 (답장 살펴보기를 켠 방). level은 그날 해결되지 않은 답장 중 가장 높은 수준, 정리 전이면 null.
+ *  resolved: 그날 살펴볼 답장이 모두 뒤 답장에서 해결 완료로 확인됨 (level은 "없음", label은 "해결 완료") */
+export type AnalysisDay = { date: string; analyzed: number; level: ReplyLevel | null; label: string; resolved: boolean; voice_down: boolean; mismatch: boolean };
+
+/** 날짜를 누르면 보이는 그날 답장: AI 한 줄 요약과 갈래 (정리 전이면 level·summary가 null) */
+export type TrendReply = {
+  reply_id: number; date: string; level: ReplyLevel | null; label: string; resolved: boolean;
+  summary: string | null; topic: string | null; voice: boolean; voice_down: boolean;
+};
+
+/** 갈래의 흐름 상태 (CLOVA가 답장 흐름을 읽고 고르고, 서버 규칙이 해결 목록과 맞춘다) */
+export type TopicStatus = "이어지는 중" | "나아지는 중" | "해결 완료" | "평소 이야기";
 
 /** 월간 포트폴리오의 'AI가 정리한 한 달의 변화'. 답장 살펴보기를 켠 대화방에만 온다 (보고서에 저장하지 않고 볼 때마다 계산) */
 export type MonthAnalysisTrends = {
@@ -134,12 +144,19 @@ export type MonthAnalysisTrends = {
   enough: boolean;
   few_text: string | null;
   days: AnalysisDay[];
-  voice: { points: { date: string; state: string }[]; down: number; mismatch: number } | null;
-  compare: { prev_month: string; rows: { label: string; prev: number; now: number; unit: string }[]; length_text: string | null };
+  /** 이번 달 답장 상태 (원형 그래프): 수준별 답장 수 (해결 완료는 "resolved"로 따로) + "pending" = 정리 전·정리하지 못한 답장 */
+  levels: { key: ReplyLevel | "resolved" | "pending"; label: string; count: number }[];
+  replies: TrendReply[];
+  /** group "목소리": 평소 목소리와 비교한 음성 답장에서 센 줄 (음성 답장이 있을 때만) */
+  compare: { prev_month: string; rows: { group: "답장" | "목소리"; label: string; prev: number; now: number; unit: string }[]; length_text: string | null };
   starters: string[];
   summary: { text: string; generated_at: string; stale: boolean } | null;
-  /** 이번 달 나눈 이야기: CLOVA가 답장을 주제별로 묶은 것 (정리 문장과 같이 만들고 같이 낡는다) */
-  topics: { name: string; summary: string; count: number; dates: string[] }[] | null;
+  /** 이번 달 나눈 이야기: CLOVA가 답장을 다섯 갈래(건강·마음·외로움·생활·안전·가족·일상)로 나눈 것 (정리 문장과 같이 만들고 같이 낡는다).
+   *  status: 흐름 상태 배지 (예전 형식이면 null), dates: 캘린더에서 강조할 날, steps: 흐름 단계 1~4개 (날짜·짧은 이름·그 답장의 수준) */
+  topics: {
+    name: string; status: TopicStatus | null; count: number; dates: string[];
+    steps: { date: string; label: string; level: ReplyLevel | null; resolved: boolean }[];
+  }[] | null;
   can_summarize: boolean;
 };
 /** local_evidence_v1(예전에 저장한 보고서)에는 키워드 주제·날짜별 흐름 같은 칸이 더 있지만 화면은 쓰지 않는다 */

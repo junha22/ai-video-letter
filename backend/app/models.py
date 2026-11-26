@@ -330,8 +330,11 @@ class ReplyAnalysisMonth(Base):
     month: Mapped[str] = mapped_column(String(7))
     fingerprint: Mapped[str] = mapped_column(String(64))
     summary: Mapped[str] = mapped_column(Text)
-    # [{name, summary, reply_ids, dates}] 주제마다 이름·한 문장·답장. 이 칸이 생기기 전에 만든 정리는 비어 있다 (다시 정리하면 채워진다)
+    # [{name, status, reply_ids, dates, steps: [{reply_id, label}]}] 갈래마다 상태·답장·흐름 단계.
+    # 이 칸이 생기기 전에 만든 정리는 비어 있고, 2026-11-26 전 형식에는 status·steps가 없다 (다시 정리하면 채워진다)
     topics: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # 해결 완료로 본 답장 ID ('살펴보기' 이상이었는데 그 뒤 답장에서 끝났다고 확인된 것, 2026-11-26)
+    resolved: Mapped[list | None] = mapped_column(JSON, nullable=True)
     model: Mapped[str] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
