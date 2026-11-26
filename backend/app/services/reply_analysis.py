@@ -1,6 +1,7 @@
 """부모님 답장 분석 규칙: 판단 기준·JSON 틀, 후처리, 운율 평소 비교, LLM 대화 형식, 자녀 화면 문구 (docs/REPLY_ANALYSIS.md).
 
 정답지는 Kaggle 실험에서 확정한 reply_analysis_reference.py다. 값과 동작을 바꾸지 않는다.
+예외 하나 (2026-11-27, 사용자 결정): postprocess에 "신호가 없는데 살펴보기면 없음으로 내림"을 더했다 (CLOVA HCX-007 대응).
 프롬프트나 JSON 틀을 고치면 PROMPT_ID가 바뀐다 (backend/tests/test_reply_rules.py가 알려 준다).
 받아쓰기·운율 측정·LLM 실행은 GPU PC의 분석 서버(gpu_worker/reply_analysis_server.py)가 하고, 여기서는 판단 규칙만 다룬다.
 LLM에는 목소리 정보를 넣지 않는다. 목소리는 compare_prosody(코드 규칙)로만 판단한다.
@@ -142,6 +143,11 @@ def postprocess(out, reply_text, hist, voice_mismatch=False):
     has_signal = any(out[k] != "없음" for k in ("health", "mind", "life"))
     if has_signal and out["level"] == "없음":
         out["level"] = "살펴보기"; reasons.append("신호가 있는데 수준이 '없음'이라 올림")
+    # 2026-11-27 정답지에 더한 규칙: 판단 기준의 [수준] "신호가 없으면 없음"을 코드로도 지킨다.
+    # CLOVA HCX-007은 신호가 모두 '없음'인 평범한 답장도 '살펴보기'로 내는 일이 많았다(시연 답장 24개 중 평소 0개).
+    # 아래의 말·목소리 불일치, 가라앉은 기분 3번 연속은 이 뒤에 다시 올린다. '바로 연락 필요'는 내리지 않고 애매로만 표시
+    if not has_signal and out["level"] == "살펴보기":
+        out["level"] = "없음"; reasons.append("신호가 없는데 수준이 '살펴보기'라 '없음'으로 내림 (판단 기준: 신호가 없으면 없음)")
     if not has_signal and out["level"] == "바로 연락 필요":
         out["confidence"] = "애매"; reasons.append("신호 없이 '바로 연락 필요'라 확신도를 애매로 표시")
     # 말·목소리 불일치: 글로는 밝음·평온·판단 어려움인데 목소리가 평소보다 처짐 → 말로 숨긴 신호일 수 있어 살펴보기 (기준서 규칙을 운율에 맞게 바꿈)

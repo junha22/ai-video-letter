@@ -99,6 +99,16 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("말·목소리 불일치", r["level_reasons"][0])
         self.assertEqual(ra.postprocess(dict(CALM), REPLY, [])["level"], "없음")
 
+    def test_check_without_signal_drops_to_none(self):
+        # 판단 기준 "신호가 없으면 없음" (HCX-007이 평범한 답장도 살펴보기로 내서 2026-11-27에 더함)
+        r = ra.postprocess(dict(CALM, level="살펴보기"), REPLY, [])
+        self.assertEqual(r["level"], "없음")
+        self.assertIn("신호가 없는데", r["level_reasons"][0])
+        # 내린 뒤에도 말·목소리 불일치, 가라앉은 기분 3번 연속은 다시 올린다
+        self.assertEqual(ra.postprocess(dict(CALM, level="살펴보기"), REPLY, [], voice_mismatch=True)["level"], "살펴보기")
+        low = dict(CALM, level="살펴보기", mood="가라앉음(쓸쓸·우울)")
+        self.assertEqual(ra.postprocess(low, REPLY, hist(2, mood="가라앉음(쓸쓸·우울)"))["level"], "살펴보기")
+
     def test_urgent_without_signal_marks_unsure(self):
         r = ra.postprocess(dict(CALM, level="바로 연락 필요"), REPLY, [])
         self.assertEqual((r["level"], r["confidence"]), ("바로 연락 필요", "애매"))

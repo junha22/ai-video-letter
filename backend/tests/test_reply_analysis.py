@@ -726,6 +726,24 @@ class ReplyAnalysisTests(unittest.TestCase):
         self.assertEqual(settle(topics, pairs, levels, signals), [1, 6])
         self.assertEqual([t["status"] for t in topics], ["해결 완료", "나아지는 중", "평소 이야기"])
         self.assertEqual(settle([{"name": "건강", "status": None, "replies": [3], "steps": []}], None, levels, signals), [])
+        # CLOVA가 빠뜨린 답장: 신호대로 갈래에 넣고(건강 → 마음·외로움 → 생활·안전 순), 신호가 없으면 일상
+        filled = reply_month._fill_missing([{"name": "가족", "status": "평소 이야기", "replies": [1], "steps": []}],
+                                           [set(), {("health", "아픔")}, set(), {("life", "사기 의심"), ("mind", "외로움")}])
+        self.assertEqual([(t["name"], t["replies"]) for t in filled],
+                         [("건강", [2]), ("마음·외로움", [4]), ("가족", [1]), ("일상", [3])])
+        # 해결되지 않은 '바로 연락 필요' 날짜가 정리 문장에 없으면: 첫 검사는 다시 만들게 하고, 두 번째는 그 날 문장을 붙인다
+        calm_end = {"summary": "6일에는 산책을 하셨고 이번 달은 평온하게 끝났어요.", "topics": [
+            {"name": "일상", "status": "평소 이야기", "replies": [1], "steps": []},
+            {"name": "건강", "status": "이어지는 중", "replies": [2], "steps": []}], "resolved": []}
+        args = (["없음", "바로 연락 필요"], [set(), {("health", "넘어짐·다침")}], ["2026-11-06", "2026-11-26"])
+        with self.assertRaises(ValueError):
+            reply_month._check_summary(json.loads(json.dumps(calm_end)), *args, strict=True)
+        lenient = json.loads(json.dumps(calm_end))
+        reply_month._check_summary(lenient, *args)
+        self.assertTrue(lenient["summary"].endswith("11월 26일에는 바로 연락이 필요한 답장이 있었어요."))
+        mentioned = dict(json.loads(json.dumps(calm_end)), summary="11월 26일 넘어지신 일이 있어 바로 연락해 보시면 좋겠어요.")
+        reply_month._check_summary(mentioned, *args, strict=True)   # 날짜가 있으면 그대로 받는다
+        self.assertEqual(mentioned["summary"], "11월 26일 넘어지신 일이 있어 바로 연락해 보시면 좋겠어요.")
         self.assertEqual(reply_month.SUMMARY_SCHEMA["properties"]["topics"]["items"]["properties"]["name"]["enum"], reply_month.CATEGORIES)
         self.assertEqual(reply_month.SUMMARY_SCHEMA["properties"]["topics"]["items"]["properties"]["status"]["enum"], reply_month.STATUSES)
         # 형식 강제가 지원하는 키워드만 쓴다 (test_reply_rules의 답장 판단 JSON 틀과 같은 기준)

@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import logging
+import re
 import statistics
 
 from fastapi import HTTPException
@@ -57,7 +58,7 @@ SUMMARY_SYSTEM = """너는 자녀에게 부모님이 한 달 동안 남긴 답�
 - 입력에 있는 사실만 쓴다. 없는 일을 짐작하거나 원인을 추측하지 않는다.
 - 진단하지 않는다. 병명, 점수, 등급, 진단 같은 말을 쓰지 않는다.
 - 부모님은 [부르는 말]로 부른다. 말투는 "~했어요", "~보여요"처럼 부드럽게 쓴다.
-[summary] 한 달 동안 무엇이 이어졌고, 달의 처음과 끝이 어떻게 달라졌는지를 2~3문장으로 쓴다. 날짜는 "11월 10일", "중순"처럼 쓴다. 지난달과 비교한 숫자가 있으면 한 번만 짧게 말한다. 숫자를 늘어놓지 않는다.
+[summary] 한 달 동안 무엇이 이어졌고, 달의 처음과 끝이 어떻게 달라졌는지를 2~3문장으로 쓴다. 날짜는 "11월 10일", "중순"처럼 쓴다. 지난달과 비교한 숫자가 있으면 한 번만 짧게 말한다. 숫자를 늘어놓지 않는다. '바로 연락 필요' 답장 중 뒤에서 해결되지 않은 것이 있으면 그 날짜와 일을 꼭 쓰고, 그런 달은 끝이 평온했다고 쓰지 않는다.
 [topics] 이번 달 답장을 아래 다섯 갈래로 나눈다. 답장이 없는 갈래는 쓰지 않고, 같은 갈래는 한 번만 쓴다. 답장이 많은 갈래부터 쓴다.
 - 건강: 몸, 아픔, 다침, 병원·약, 식사·잠
 - 마음·외로움: 외로움, 쓸쓸함, 의욕, 서운함 같은 마음 이야기
@@ -67,7 +68,7 @@ SUMMARY_SYSTEM = """너는 자녀에게 부모님이 한 달 동안 남긴 답�
 '확인해 볼 것'에 건강 신호가 있으면 건강, 마음 신호가 있으면 마음·외로움, 생활·안전 신호가 있으면 생활·안전에 넣는다(여럿이면 가장 중요한 하나). 신호가 없어도 앞 답장의 걱정되는 일이 이어지거나 끝난 이야기(예: "이제 괜찮아", "병원 다녀왔어", "돈 안 보냈어")면 그 일의 갈래에 넣는다. 그 밖에 신호가 없으면 가족이나 일상에 넣는다.
 - name: 갈래 이름 (위 다섯 가지 글자 그대로)
 - status: 그 갈래 이야기가 이번 달 어떻게 흘러갔는지 하나. 이어지는 중(살펴볼 일이 마지막 답장까지 이어짐) / 나아지는 중(살펴볼 일이 뒤 답장에서 나아지고 있지만 끝나지는 않음) / 해결 완료(살펴볼 일이 뒤 답장에서 끝났다고 확인됨) / 평소 이야기(살펴볼 일이 없던 갈래)
-- replies: 그 갈래에 넣은 [답장별 정리]의 번호 목록. 답장 하나는 한 갈래에만 넣고, 모든 답장이 어느 갈래에든 들어가게 한다.
+- replies: 그 갈래에 넣은 [답장별 정리]의 번호 목록. 답장 하나는 한 갈래에만 넣고, 평범한 답장도 가족이나 일상에 넣어 하나도 빠뜨리지 않는다.
 - steps: 그 갈래 이야기의 흐름을 보여 주는 답장 1~4개 (날짜 순). reply=그 답장의 번호, label=그 답장에서 있었던 일을 2~10자로 짧게 (예: "무릎 통증 시작", "정형외과·약", "계단 오를 만큼", "송금 멈춤")
 [resolved] '살펴보기'나 '바로 연락 필요'였던 답장 중, 그 뒤에 온 '평소와 같아요' 답장(같은 날 뒤 답장 포함)에서 바로 그 일이 끝났다고 확인되는 것의 목록. reply=끝난 일의 답장 번호, by=끝났다고 알려 준 뒤 답장 번호. 나아지고 있지만 끝나지 않은 일, 다른 일을 말한 답장, 확실하지 않은 것은 넣지 않는다. 없으면 빈 목록.
 출력은 JSON 하나: summary=정리한 2~3문장, topics=갈래 목록, resolved=해결된 답장 목록."""
@@ -178,14 +179,48 @@ def _settle(topics: list[dict], resolved, levels: list[str], signals: list[set])
     return sorted(fixed)
 
 
-def _check_summary(out, levels: list[str], signals: list[set]) -> None:
-    """정리 문장을 보고, 갈래 묶음·해결 목록은 고친 것으로 바꿔 둔다 (levels·signals = [답장별 정리] 번호 순서의 수준·신호)"""
+SIGNAL_TOPIC = {"health": "건강", "mind": "마음·외로움", "life": "생활·안전"}
+
+
+def _fill_missing(topics: list[dict], signals: list[set]) -> list[dict]:
+    """CLOVA가 어느 갈래에도 넣지 않은 답장을 코드로 넣는다 (2026-11-27, 시연에서 24개 중 10개만 묶인 일이 있었다).
+    신호가 있으면 그 신호의 갈래(건강 → 마음·외로움 → 생활·안전 순서로 먼저 있는 것), 없으면 일상.
+    새로 생긴 갈래는 흐름 단계가 없고 상태는 _settle이 정한다"""
+    used = {n for t in topics for n in t["replies"]}
+    by_name = {t["name"]: t for t in topics}
+    for n in range(1, len(signals) + 1):
+        if n in used:
+            continue
+        keys = {key for key, _value in signals[n - 1]}
+        name = next((SIGNAL_TOPIC[key] for key in SIGNAL_TOPIC if key in keys), "일상")
+        if name not in by_name:
+            by_name[name] = {"name": name, "status": None, "replies": [], "steps": []}
+            topics.append(by_name[name])
+        by_name[name]["replies"] = sorted(by_name[name]["replies"] + [n])
+    return sorted(topics, key=lambda g: (-len(g["replies"]), CATEGORIES.index(g["name"])))
+
+
+def _urgent_left(levels: list[str], fixed: list[int], dates: list[str]) -> list[str]:
+    """해결되지 않은 '바로 연락 필요' 답장의 날짜"""
+    return sorted({dates[n - 1] for n in range(1, len(levels) + 1) if levels[n - 1] == "바로 연락 필요" and n not in fixed})
+
+
+def _check_summary(out, levels: list[str], signals: list[set], dates: list[str] | None = None, strict: bool = False) -> None:
+    """정리 문장을 보고, 갈래 묶음·해결 목록은 고친 것으로 바꿔 둔다 (levels·signals·dates = [답장별 정리] 번호 순서의 수준·신호·날짜).
+    해결되지 않은 '바로 연락 필요' 날짜가 문장에 없으면 strict일 때는 ValueError(seed+1로 한 번 더),
+    아니면 그 날의 문장을 끝에 붙인다 (CLOVA가 11/26 넘어짐을 빼고 '평온하게 끝났다'고 쓴 일이 있었다)"""
     text = out.get("summary") if isinstance(out, dict) else None
     if (not isinstance(text, str) or rules.hangul_len(text) < 10 or len(text) > 500
             or any(word in text for word in BANNED)):
         raise ValueError("한 달 정리 문장을 쓸 수 없어요 (summary)")
-    out["topics"] = _clean_topics(out.get("topics"), levels)
+    out["topics"] = _fill_missing(_clean_topics(out.get("topics"), levels), signals)
     out["resolved"] = _settle(out["topics"], out.get("resolved"), levels, signals)
+    missing = [d for d in _urgent_left(levels, out["resolved"], dates or [])
+               if not re.search(rf"(?<!\d){int(d[8:])}일", text)]
+    if missing and strict:
+        raise ValueError("한 달 정리 문장에 바로 연락이 필요했던 날이 빠졌어요 (summary)")
+    if missing:
+        out["summary"] = text.rstrip() + " " + " ".join(f"{_day_text(d)}에는 바로 연락이 필요한 답장이 있었어요." for d in missing)
 
 
 def _prev_month(month: str) -> str:
@@ -449,9 +484,14 @@ def summarize(db: Session, recipient: Recipient, month: str | None) -> dict:
         raise HTTPException(409, FEW_TEXT)
     order = [item for item in items if item["level"]]  # CLOVA 글의 답장 번호 순서 (번호 n = order[n - 1])
     levels = [item["level"] for item in order]
+    checks = []  # 첫 검사는 엄하게(바로 연락 날짜가 빠지면 seed+1로 다시), 두 번째는 빠진 날 문장을 붙여서 받는다
+
+    def check(result) -> None:
+        checks.append(1)
+        _check_summary(result, levels, [item["signals"] for item in order], [item["date"] for item in order],
+                       strict=len(checks) == 1)
     try:
-        out = reply_llm.complete_json(SUMMARY_SYSTEM, facts, SUMMARY_SCHEMA, SUMMARY_PARAMS,
-                                      lambda result: _check_summary(result, levels, [item["signals"] for item in order]))
+        out = reply_llm.complete_json(SUMMARY_SYSTEM, facts, SUMMARY_SCHEMA, SUMMARY_PARAMS, check)
     except AnalysisError as e:
         raise HTTPException(503 if e.retryable else 502, f"한 달 정리를 만들지 못했어요. {e}")
     month = trends["month"]
