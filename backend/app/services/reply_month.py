@@ -64,13 +64,13 @@ SUMMARY_SYSTEM = """너는 자녀에게 부모님이 한 달 동안 남긴 답�
 - 생활·안전: 돈, 사기 의심 전화, 집 고장처럼 생활에서 생긴 일
 - 가족: 자녀·손주·가족 소식과 만남
 - 일상: 나들이, 취미, 음식, 날씨 같은 하루 이야기
-'확인해 볼 것'에 건강 신호가 있으면 건강, 마음 신호가 있으면 마음·외로움, 생활·안전 신호가 있으면 생활·안전에 넣는다(여럿이면 가장 중요한 하나). 신호가 없으면 가족이나 일상에 넣는다.
+'확인해 볼 것'에 건강 신호가 있으면 건강, 마음 신호가 있으면 마음·외로움, 생활·안전 신호가 있으면 생활·안전에 넣는다(여럿이면 가장 중요한 하나). 신호가 없어도 앞 답장의 걱정되는 일이 이어지거나 끝난 이야기(예: "이제 괜찮아", "병원 다녀왔어", "돈 안 보냈어")면 그 일의 갈래에 넣는다. 그 밖에 신호가 없으면 가족이나 일상에 넣는다.
 - name: 갈래 이름 (위 다섯 가지 글자 그대로)
 - status: 그 갈래 이야기가 이번 달 어떻게 흘러갔는지 하나. 이어지는 중(살펴볼 일이 마지막 답장까지 이어짐) / 나아지는 중(살펴볼 일이 뒤 답장에서 나아지고 있지만 끝나지는 않음) / 해결 완료(살펴볼 일이 뒤 답장에서 끝났다고 확인됨) / 평소 이야기(살펴볼 일이 없던 갈래)
 - replies: 그 갈래에 넣은 [답장별 정리]의 번호 목록. 답장 하나는 한 갈래에만 넣고, 모든 답장이 어느 갈래에든 들어가게 한다.
 - steps: 그 갈래 이야기의 흐름을 보여 주는 답장 1~4개 (날짜 순). reply=그 답장의 번호, label=그 답장에서 있었던 일을 2~10자로 짧게 (예: "무릎 통증 시작", "정형외과·약", "계단 오를 만큼", "송금 멈춤")
-[resolved] '살펴보기'나 '바로 연락 필요'였던 답장 중, 그 뒤에 온 답장(같은 날 뒤 답장 포함)에서 그 일이 끝났다고 확인되는 답장의 번호 목록. 나아지고 있지만 끝나지 않은 일, 확실하지 않은 일은 넣지 않는다. 없으면 빈 목록.
-출력은 JSON 하나: summary=정리한 2~3문장, topics=갈래 목록, resolved=해결된 답장 번호 목록."""
+[resolved] '살펴보기'나 '바로 연락 필요'였던 답장 중, 그 뒤에 온 '평소와 같아요' 답장(같은 날 뒤 답장 포함)에서 바로 그 일이 끝났다고 확인되는 것의 목록. reply=끝난 일의 답장 번호, by=끝났다고 알려 준 뒤 답장 번호. 나아지고 있지만 끝나지 않은 일, 다른 일을 말한 답장, 확실하지 않은 것은 넣지 않는다. 없으면 빈 목록.
+출력은 JSON 하나: summary=정리한 2~3문장, topics=갈래 목록, resolved=해결된 답장 목록."""
 # 이번 달 나눈 이야기의 갈래 (2026-11-26: 주제를 CLOVA가 자유롭게 정하면 신호마다 갈래가 생겨 너무 잘게 나뉘어 다섯 갈래로 고정)
 CATEGORIES = ["건강", "마음·외로움", "생활·안전", "가족", "일상"]
 # 갈래의 흐름 상태 (CLOVA가 답장 흐름을 읽고 고르고, _clean_topics가 단계·해결 목록과 맞게 고친다)
@@ -88,7 +88,10 @@ SUMMARY_SCHEMA = {"type": "object", "properties": {
             "label": {"type": "string"},
         }, "required": ["reply", "label"]}},
     }, "required": ["name", "status", "replies", "steps"]}},
-    "resolved": {"type": "array", "items": {"type": "integer"}},
+    "resolved": {"type": "array", "items": {"type": "object", "properties": {
+        "reply": {"type": "integer"},
+        "by": {"type": "integer"},
+    }, "required": ["reply", "by"]}},
 }, "required": ["summary", "topics", "resolved"]}
 SUMMARY_PARAMS = {**rules.CLOVA_PARAMS, "maxCompletionTokens": 1000}
 BANNED = ("진단", "우울증", "치매", "점수", "질환", "장애")
@@ -144,16 +147,23 @@ def _clean_topics(topics, levels: list[str]) -> list[dict]:
     return sorted(merged.values(), key=lambda g: (-len(g["replies"]), CATEGORIES.index(g["name"])))
 
 
-def _settle(topics: list[dict], resolved, levels: list[str]) -> list[int]:
+def _settle(topics: list[dict], resolved, levels: list[str], signals: list[set]) -> list[int]:
     """해결된 답장 번호를 고르고 갈래 상태를 그것과 맞춘다 (코드 규칙으로 한 번 더).
-    - 해결: '살펴보기' 이상이고, 같은 갈래에 뒤 답장이 있는 것만 (확실한 끝이 뒤 답장에 있어야 한다)
+    levels·signals = [답장별 정리] 번호 순서의 수준과 신호({(칸, 값)}).
+    - 해결: CLOVA가 준 {reply, by} 짝마다, reply가 '살펴보기' 이상이고 by가 그 뒤에 온 '평소와 같아요' 답장이어야 한다.
+      갈래는 보지 않는다 ("이제 괜찮아" 같은 답장은 신호가 없어 다른 갈래로 갈 수 있다).
+      by 뒤에 같은 신호(칸·값)가 다시 '살펴보기' 이상으로 나오면 그 일은 끝나지 않은 것이라 받지 않는다.
     - 상태: 살펴볼 답장이 없으면 평소 이야기, 살펴볼 답장이 모두 해결됐으면 해결 완료,
       남았는데 해결 완료라고 하면 나아지는 중, 남았는데 평소 이야기(또는 상태 없음)라고 하면 이어지는 중"""
-    topic_of = {n: t for t in topics for n in t["replies"]}
+    count = len(levels)
     fixed = set()
-    for n in resolved if isinstance(resolved, list) else []:
-        n = _number(n, len(levels))
-        if n and levels[n - 1] != "없음" and n in topic_of and max(topic_of[n]["replies"]) > n:
+    for pair in resolved if isinstance(resolved, list) else []:
+        n = _number(pair.get("reply"), count) if isinstance(pair, dict) else None
+        m = _number(pair.get("by"), count) if isinstance(pair, dict) else None
+        if not n or not m or levels[n - 1] == "없음" or m <= n or levels[m - 1] != "없음":
+            continue
+        reopened = any(levels[k - 1] != "없음" and signals[k - 1] & signals[n - 1] for k in range(m + 1, count + 1))
+        if not reopened:
             fixed.add(n)
     for t in topics:
         flagged = [n for n in t["replies"] if levels[n - 1] != "없음"]
@@ -168,14 +178,14 @@ def _settle(topics: list[dict], resolved, levels: list[str]) -> list[int]:
     return sorted(fixed)
 
 
-def _check_summary(out, levels: list[str]) -> None:
-    """정리 문장을 보고, 갈래 묶음·해결 목록은 고친 것으로 바꿔 둔다 (levels = [답장별 정리] 번호 순서의 수준)"""
+def _check_summary(out, levels: list[str], signals: list[set]) -> None:
+    """정리 문장을 보고, 갈래 묶음·해결 목록은 고친 것으로 바꿔 둔다 (levels·signals = [답장별 정리] 번호 순서의 수준·신호)"""
     text = out.get("summary") if isinstance(out, dict) else None
     if (not isinstance(text, str) or rules.hangul_len(text) < 10 or len(text) > 500
             or any(word in text for word in BANNED)):
         raise ValueError("한 달 정리 문장을 쓸 수 없어요 (summary)")
     out["topics"] = _clean_topics(out.get("topics"), levels)
-    out["resolved"] = _settle(out["topics"], out.get("resolved"), levels)
+    out["resolved"] = _settle(out["topics"], out.get("resolved"), levels, signals)
 
 
 def _prev_month(month: str) -> str:
@@ -244,12 +254,15 @@ PENDING_LABELS = {"queued": "정리 중", "running": "정리 중", "stt_uncertai
 
 
 def _items(rows) -> list[dict]:
-    """답장마다 화면에 쓰는 값 (캘린더·그날 답장·원형 그래프). 정리 전이면 level·summary가 None"""
+    """답장마다 화면에 쓰는 값 (캘린더·그날 답장·원형 그래프). 정리 전이면 level·summary가 None.
+    signals는 해결 판정용 신호 {(칸, 값)} (화면에는 보내지 않는다)"""
     out = []
     for a, r in rows:
         done = a.status == "done" and bool(a.result)
         out.append({"reply_id": r.id, "date": korea_date(r.created_at), "status": a.status,
                     "level": a.level if done else None, "summary": a.result.get("summary") if done else None,
+                    "signals": {(key, a.result[key]) for key, _area in rules.SIG_NAMES
+                                if a.result.get(key, "없음") != "없음"} if done else set(),
                     "voice": a.kind == "voice", "voice_down": a.kind == "voice" and _voice_state(a.voice) == "처짐",
                     "mismatch": done and bool(a.voice_mismatch)})
     return out
@@ -438,7 +451,7 @@ def summarize(db: Session, recipient: Recipient, month: str | None) -> dict:
     levels = [item["level"] for item in order]
     try:
         out = reply_llm.complete_json(SUMMARY_SYSTEM, facts, SUMMARY_SCHEMA, SUMMARY_PARAMS,
-                                      lambda result: _check_summary(result, levels))
+                                      lambda result: _check_summary(result, levels, [item["signals"] for item in order]))
     except AnalysisError as e:
         raise HTTPException(503 if e.retryable else 502, f"한 달 정리를 만들지 못했어요. {e}")
     month = trends["month"]
@@ -502,7 +515,8 @@ def ping() -> int:
         return 1
     try:
         out = reply_llm.complete_json(SUMMARY_SYSTEM, PING_FACTS, SUMMARY_SCHEMA, SUMMARY_PARAMS,
-                                      lambda result: _check_summary(result, ["없음", "살펴보기", "살펴보기"]))
+                                      lambda result: _check_summary(result, ["없음", "살펴보기", "살펴보기"],
+                                                                    [set(), {("health", "아픔")}, {("health", "아픔")}]))
     except AnalysisError as e:
         print(f"실패: {e} ({'나중에 다시 하면 될 수 있음' if e.retryable else '설정이나 JSON 틀을 고쳐야 함'})")
         return 1

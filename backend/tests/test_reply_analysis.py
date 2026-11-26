@@ -626,26 +626,35 @@ class ReplyAnalysisTests(unittest.TestCase):
         # 답장 번호: 1 = 11/3 없음, 2 = 11/7 살펴보기, 3 = 11/10 살펴보기, 4 = 11/12 없음(음성)
         self.fake.clova = [{"summary": "이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 두 번 이어졌어요.", "topics": [
             {"name": "일상", "status": "평소 이야기", "replies": [1, 4, 9],                  # 9는 없는 번호
-             "steps": [{"reply": 1, "label": "경로당 점심"}, {"reply": 2, "label": "다른 갈래"}]},   # 2는 이 갈래가 아님 → 뺌
-            {"name": "건강", "status": "평소 이야기", "replies": [2, 3],                     # 살펴볼 답장이 남았는데 평소 이야기 → 이어지는 중
-             "steps": [{"reply": 2, "label": "무릎 병원"}, {"reply": 3, "label": "치매 걱정"}]},    # 금지어 단계 → 뺌
+             "steps": [{"reply": 1, "label": "경로당 점심"}, {"reply": 2, "label": "다른 갈래"},     # 2는 이 갈래가 아님 → 뺌
+                       {"reply": 4, "label": "치매 걱정"}]},                                     # 금지어 단계 → 뺌
+            {"name": "건강", "status": "해결 완료", "replies": [2, 3],                       # 2가 남았는데 해결 완료 → 나아지는 중
+             "steps": [{"reply": 2, "label": "무릎 병원"}, {"reply": 3, "label": "다시 병원"}]},
             {"name": "무릎 걱정", "status": "이어지는 중", "replies": [3], "steps": []},         # 다섯 갈래가 아님 → 버림
-        ], "resolved": [2, 1, 3]}]   # 2만 해결 (1은 살펴볼 일이 아니고, 3은 같은 갈래에 뒤 답장이 없다)
+        ], "resolved": [
+            {"reply": 2, "by": 3},   # 알려 준 답장(3)이 아직 살펴보기 → 받지 않음
+            {"reply": 3, "by": 4},   # 받음: 4는 뒤에 온 평소 답장. 갈래(일상)가 달라도 된다
+            {"reply": 1, "by": 4},   # 1은 살펴볼 일이 아님 → 받지 않음
+            {"reply": 4, "by": 2},   # 알려 준 답장이 앞 → 받지 않음
+            7, {"reply": 3},         # 형식이 틀림 → 건너뜀
+        ]}]
         made = self.assert_ok(self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary", params={"month": "2026-11"}))
         self.assertEqual((made["summary"]["text"], made["summary"]["stale"]), ("이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 두 번 이어졌어요.", False))
         self.assertEqual(made["topics"], [  # 답장이 많은 갈래부터 (같으면 건강·…·일상 순서)
-            {"name": "건강", "status": "이어지는 중", "count": 2, "dates": ["2026-11-07", "2026-11-10"],
-             "steps": [{"date": "2026-11-07", "label": "무릎 병원", "level": "살펴보기", "resolved": True}]},
+            {"name": "건강", "status": "나아지는 중", "count": 2, "dates": ["2026-11-07", "2026-11-10"],
+             "steps": [{"date": "2026-11-07", "label": "무릎 병원", "level": "살펴보기", "resolved": False},
+                       {"date": "2026-11-10", "label": "다시 병원", "level": "살펴보기", "resolved": True}]},
             {"name": "일상", "status": "평소 이야기", "count": 2, "dates": ["2026-11-03", "2026-11-12"],
              "steps": [{"date": "2026-11-03", "label": "경로당 점심", "level": "없음", "resolved": False}]}])
-        # 해결 완료: 캘린더(11/7은 해결 완료 색), 원형 그래프(해결 완료 1), 그날 답장(해결 완료 + 갈래)
+        # 해결 완료: 캘린더(11/10은 해결 완료 색), 원형 그래프(해결 완료 1), 그날 답장(해결 완료 + 갈래)
         self.assertEqual([(d["date"], d["level"], d["label"], d["resolved"]) for d in made["days"]],
-                         [("2026-11-03", "없음", "평소와 같아요", False), ("2026-11-07", "없음", "해결 완료", True),
-                          ("2026-11-10", "살펴보기", "살펴보기", False), ("2026-11-12", "없음", "평소와 같아요", False)])
+                         [("2026-11-03", "없음", "평소와 같아요", False), ("2026-11-07", "살펴보기", "살펴보기", False),
+                          ("2026-11-10", "없음", "해결 완료", True), ("2026-11-12", "없음", "평소와 같아요", False)])
         self.assertEqual({l["key"]: l["count"] for l in made["levels"]},
                          {"없음": 2, "살펴보기": 1, "바로 연락 필요": 0, "resolved": 1, "pending": 0})
-        self.assertEqual([(r["label"], r["resolved"], r["topic"]) for r in made["replies"] if r["date"] == "2026-11-07"],
+        self.assertEqual([(r["label"], r["resolved"], r["topic"]) for r in made["replies"] if r["date"] == "2026-11-10"],
                          [("해결 완료", True, "건강")])
+        self.assertNotIn("signals", made["replies"][0])   # 해결 판정용 신호는 화면에 보내지 않는다
         body = self.fake.llm_requests[0]["body"]
         self.assertEqual(body["messages"][0]["content"], reply_month.SUMMARY_SYSTEM)
         self.assertEqual((body["responseFormat"]["schema"], body["maxCompletionTokens"]), (reply_month.SUMMARY_SCHEMA, 1000))
@@ -699,14 +708,24 @@ class ReplyAnalysisTests(unittest.TestCase):
                        [dict(calm, replies=[5])], [dict(calm, name="무릎 통증", replies=[1])], [dict(calm, name="", replies=[1])]):
             with self.assertRaises(ValueError):
                 clean(broken, calm3)
-        # 해결: 살펴볼 일이고 같은 갈래에 뒤 답장이 있어야. 상태는 해결 목록과 맞춘다
-        levels = ["바로 연락 필요", "없음", "살펴보기", "살펴보기", "없음"]
-        topics = [{"name": "생활·안전", "status": "이어지는 중", "replies": [1, 2], "steps": []},   # 살펴볼 일 모두 해결 → 해결 완료
-                  {"name": "건강", "status": "해결 완료", "replies": [3, 4], "steps": []},         # 4가 남았는데 해결 완료 → 나아지는 중
-                  {"name": "일상", "status": "이어지는 중", "replies": [5], "steps": []}]          # 살펴볼 일 없음 → 평소 이야기
-        self.assertEqual(settle(topics, [1, 3, 4, 5, "x"], levels), [1, 3])   # 4는 뒤 답장이 없고, 5는 살펴볼 일이 아니다
+        # 해결: {reply, by} 짝. reply는 살펴볼 일, by는 그 뒤의 평소 답장 (갈래는 보지 않는다).
+        # by 뒤에 같은 신호가 다시 살펴볼 일로 나오면 끝나지 않은 것. 상태는 해결 목록과 맞춘다
+        levels = ["바로 연락 필요", "없음", "살펴보기", "살펴보기", "없음", "살펴보기", "없음", "살펴보기", "없음"]
+        knee, ankle = {("health", "아픔")}, {("health", "넘어짐·다침")}
+        signals = [{("life", "사기 의심")}, set(), knee, knee, set(), knee, set(), ankle, set()]
+        topics = [{"name": "생활·안전", "status": "이어지는 중", "replies": [1], "steps": []},        # 살펴볼 일 모두 해결 → 해결 완료
+                  {"name": "건강", "status": "해결 완료", "replies": [3, 4, 6, 8], "steps": []},     # 남은 게 있는데 해결 완료 → 나아지는 중
+                  {"name": "일상", "status": "이어지는 중", "replies": [2, 5, 7, 9], "steps": []}]   # 살펴볼 일 없음 → 평소 이야기
+        pairs = [{"reply": 1, "by": 2},   # 받음: 해결 답장(2)은 다른 갈래(일상)여도 된다 (사기 전화 → "돈 안 보냈어")
+                 {"reply": 3, "by": 4},   # 알려 준 답장이 아직 살펴보기 → 받지 않음
+                 {"reply": 4, "by": 5},   # 5 뒤 6에서 같은 무릎 신호가 다시 살펴보기 → 끝나지 않은 일
+                 {"reply": 6, "by": 9},   # 받음: 9 뒤에 무릎이 다시 나오지 않는다 (8 발목은 다른 일이고 9 앞이다)
+                 {"reply": 8, "by": 7},   # 알려 준 답장이 앞 → 받지 않음
+                 {"reply": 2, "by": 5},   # 2는 살펴볼 일이 아님 → 받지 않음
+                 3, "x", {"reply": 99, "by": 100}]
+        self.assertEqual(settle(topics, pairs, levels, signals), [1, 6])
         self.assertEqual([t["status"] for t in topics], ["해결 완료", "나아지는 중", "평소 이야기"])
-        self.assertEqual(settle([{"name": "건강", "status": None, "replies": [3], "steps": []}], None, levels), [])
+        self.assertEqual(settle([{"name": "건강", "status": None, "replies": [3], "steps": []}], None, levels, signals), [])
         self.assertEqual(reply_month.SUMMARY_SCHEMA["properties"]["topics"]["items"]["properties"]["name"]["enum"], reply_month.CATEGORIES)
         self.assertEqual(reply_month.SUMMARY_SCHEMA["properties"]["topics"]["items"]["properties"]["status"]["enum"], reply_month.STATUSES)
         # 형식 강제가 지원하는 키워드만 쓴다 (test_reply_rules의 답장 판단 JSON 틀과 같은 기준)
