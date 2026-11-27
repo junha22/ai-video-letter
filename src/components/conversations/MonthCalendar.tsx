@@ -55,6 +55,7 @@ export function MonthCalendar({ month, counts, days, onOpenDate, onPick, selecte
         const voice = !!info && (info.voice_down || info.mismatch);
         const dim = !!bright && !bright.has(date);
         const label = [formatConversationDate(date), `답장 ${count}개`, info?.label,
+          info?.any_resolved && !info.resolved ? "해결 완료된 답장 있음" : "",
           info?.mismatch ? "말과 목소리가 달랐던 답장 있음" : info?.voice_down ? "목소리가 평소보다 처진 답장 있음" : ""].filter(Boolean).join(" · ");
         return <button key={date} type="button" onClick={() => (onPick ? onPick(date) : onOpenDate(date))} aria-label={label} title={label}
           aria-pressed={onPick ? selected === date : undefined}
@@ -62,7 +63,7 @@ export function MonthCalendar({ month, counts, days, onOpenDate, onPick, selecte
           style={{ background: tone.bg, color: tone.fg }}>
           <span className="text-[11px] font-semibold leading-none opacity-80">{day}</span>
           <span className="text-xs font-extrabold leading-none tabular-nums sm:text-sm">{count}<span className="text-[10px] font-bold">개</span></span>
-          {info?.resolved && <CircleCheck size={13} aria-hidden="true" className="absolute -left-1 -top-1 rounded-full bg-white text-[#2F4C80]" />}
+          {(info?.resolved || info?.any_resolved) && <CircleCheck size={13} aria-hidden="true" className="absolute -left-1 -top-1 rounded-full bg-white text-[#2F4C80]" />}
           {voice && <Mic size={10} aria-hidden="true" className="absolute right-1 top-1" />}
         </button>;
       })}
@@ -70,6 +71,7 @@ export function MonthCalendar({ month, counts, days, onOpenDate, onPick, selecte
     {days
       ? <ul className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-[11px] text-stone-500">
         {LEGEND.map((item) => <li key={item.label} className="flex items-center gap-1.5"><span className="h-3 w-3 rounded" style={{ background: item.tone.bg }} />{item.label}</li>)}
+        <li className="flex items-center gap-1"><CircleCheck size={11} className="text-[#2F4C80]" />해결 완료된 답장이 있는 날</li>
         <li className="flex items-center gap-1"><Mic size={11} />목소리가 평소보다 처진 날</li>
       </ul>
       : <p className="mt-3 text-[11px] text-stone-500">색칠한 날은 답장이 온 날이에요. 숫자는 그날 받은 답장 수예요.</p>}

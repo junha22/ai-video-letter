@@ -125,7 +125,12 @@ export type ReplyLevel = "없음" | "살펴보기" | "바로 연락 필요";
 
 /** 한 달 흐름 캘린더의 하루 (답장 살펴보기를 켠 방). level은 그날 해결되지 않은 답장 중 가장 높은 수준, 정리 전이면 null.
  *  resolved: 그날 살펴볼 답장이 모두 뒤 답장에서 해결 완료로 확인됨 (level은 "없음", label은 "해결 완료") */
-export type AnalysisDay = { date: string; analyzed: number; level: ReplyLevel | null; label: string; resolved: boolean; voice_down: boolean; mismatch: boolean };
+export type AnalysisDay = {
+  date: string; analyzed: number; level: ReplyLevel | null; label: string; resolved: boolean;
+  /** 해결 완료된 답장이 하나라도 있는 날 (✓ 배지. 남은 살펴보기가 있으면 색은 그 수준) */
+  any_resolved: boolean;
+  voice_down: boolean; mismatch: boolean;
+};
 
 /** 날짜를 누르면 보이는 그날 답장: AI 한 줄 요약과 갈래 (정리 전이면 level·summary가 null) */
 export type TrendReply = {

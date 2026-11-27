@@ -717,7 +717,7 @@ class ReplyAnalysisTests(unittest.TestCase):
                   {"name": "건강", "status": "해결 완료", "replies": [3, 4, 6, 8], "steps": []},     # 남은 게 있는데 해결 완료 → 나아지는 중
                   {"name": "일상", "status": "이어지는 중", "replies": [2, 5, 7, 9], "steps": []}]   # 살펴볼 일 없음 → 평소 이야기
         pairs = [{"reply": 1, "by": 2},   # 받음: 해결 답장(2)은 다른 갈래(일상)여도 된다 (사기 전화 → "돈 안 보냈어")
-                 {"reply": 3, "by": 4},   # 알려 준 답장이 아직 살펴보기 → 받지 않음
+                 {"reply": 3, "by": 4},   # 알려 준 답장이 같은 단계(살펴보기) → 받지 않음
                  {"reply": 4, "by": 5},   # 5 뒤 6에서 같은 무릎 신호가 다시 살펴보기 → 끝나지 않은 일
                  {"reply": 6, "by": 9},   # 받음: 9 뒤에 무릎이 다시 나오지 않는다 (8 발목은 다른 일이고 9 앞이다)
                  {"reply": 8, "by": 7},   # 알려 준 답장이 앞 → 받지 않음
@@ -726,6 +726,26 @@ class ReplyAnalysisTests(unittest.TestCase):
         self.assertEqual(settle(topics, pairs, levels, signals), [1, 6])
         self.assertEqual([t["status"] for t in topics], ["해결 완료", "나아지는 중", "평소 이야기"])
         self.assertEqual(settle([{"name": "건강", "status": None, "replies": [3], "steps": []}], None, levels, signals), [])
+        # 바로 연락 → 뒤 답장이 더 낮은 단계(살펴보기)면 해결로 받는다 (11/19 사기 전화 → "돈 안 보냈어"도 사기 이야기라 살펴보기)
+        scam = {("life", "사기 의심")}
+        life = [{"name": "생활·안전", "status": "이어지는 중", "replies": [1, 2, 3], "steps": []}]
+        self.assertEqual(settle(life, [{"reply": 1, "by": 2}], ["바로 연락 필요", "살펴보기", "살펴보기", "없음"],
+                                [scam, scam, scam, set()]), [1])   # 3도 사기 신호지만 원래(바로 연락)보다 낮아 다시 나온 게 아니다
+        self.assertEqual(life[0]["status"], "이어지는 중")          # 2·3이 아직 살펴보기라 갈래는 해결 완료가 아니다
+        # 같은 신호가 원래와 같은 단계로 다시 나오면 끝나지 않은 일
+        self.assertEqual(settle(life, [{"reply": 1, "by": 2}], ["바로 연락 필요", "살펴보기", "바로 연락 필요", "없음"],
+                                [scam, scam, scam, set()]), [])
+        # 해결되지 않은 바로 연락은 흐름 점에 꼭 넣는다 (이름이 없으면 신호 값). 4개가 넘으면 두 번째 점부터 줄인다
+        health = [{"name": "건강", "status": "이어지는 중", "replies": [1, 2, 3, 4, 5], "steps": [
+            {"reply": 1, "label": "무릎 통증 시작"}, {"reply": 2, "label": "정형외과"}, {"reply": 3, "label": "약"},
+            {"reply": 4, "label": "거의 나음"}]}]
+        reply_month._keep_urgent_steps(health, ["살펴보기", "살펴보기", "살펴보기", "없음", "바로 연락 필요"],
+                                       [knee, knee, knee, set(), ankle], [])
+        self.assertEqual([(s["reply"], s["label"]) for s in health[0]["steps"]],
+                         [(1, "무릎 통증 시작"), (3, "약"), (4, "거의 나음"), (5, "넘어짐·다침")])
+        reply_month._keep_urgent_steps(health, ["살펴보기", "살펴보기", "살펴보기", "없음", "바로 연락 필요"],
+                                       [knee, knee, knee, set(), ankle], [5])   # 해결된 바로 연락은 억지로 넣지 않는다
+        self.assertEqual(len(health[0]["steps"]), 4)
         # CLOVA가 빠뜨린 답장: 신호대로 갈래에 넣고(건강 → 마음·외로움 → 생활·안전 순), 신호가 없으면 일상
         filled = reply_month._fill_missing([{"name": "가족", "status": "평소 이야기", "replies": [1], "steps": []}],
                                            [set(), {("health", "아픔")}, set(), {("life", "사기 의심"), ("mind", "외로움")}])

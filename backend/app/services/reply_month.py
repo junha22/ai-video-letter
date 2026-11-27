@@ -69,8 +69,8 @@ SUMMARY_SYSTEM = """너는 자녀에게 부모님이 한 달 동안 남긴 답�
 - name: 갈래 이름 (위 다섯 가지 글자 그대로)
 - status: 그 갈래 이야기가 이번 달 어떻게 흘러갔는지 하나. 이어지는 중(살펴볼 일이 마지막 답장까지 이어짐) / 나아지는 중(살펴볼 일이 뒤 답장에서 나아지고 있지만 끝나지는 않음) / 해결 완료(살펴볼 일이 뒤 답장에서 끝났다고 확인됨) / 평소 이야기(살펴볼 일이 없던 갈래)
 - replies: 그 갈래에 넣은 [답장별 정리]의 번호 목록. 답장 하나는 한 갈래에만 넣고, 평범한 답장도 가족이나 일상에 넣어 하나도 빠뜨리지 않는다.
-- steps: 그 갈래 이야기의 흐름을 보여 주는 답장 1~4개 (날짜 순). reply=그 답장의 번호, label=그 답장에서 있었던 일을 2~10자로 짧게 (예: "무릎 통증 시작", "정형외과·약", "계단 오를 만큼", "송금 멈춤")
-[resolved] '살펴보기'나 '바로 연락 필요'였던 답장 중, 그 뒤에 온 '평소와 같아요' 답장(같은 날 뒤 답장 포함)에서 바로 그 일이 끝났다고 확인되는 것의 목록. reply=끝난 일의 답장 번호, by=끝났다고 알려 준 뒤 답장 번호. 나아지고 있지만 끝나지 않은 일, 다른 일을 말한 답장, 확실하지 않은 것은 넣지 않는다. 없으면 빈 목록.
+- steps: 그 갈래 이야기의 흐름을 보여 주는 답장 1~4개 (날짜 순). 첫 상황과 마지막 상황(특히 '바로 연락 필요'나 해결된 일)은 꼭 넣는다. reply=그 답장의 번호, label=그 답장에서 있었던 일을 2~10자로 짧게 (예: "무릎 통증 시작", "정형외과·약", "계단 오를 만큼", "송금 멈춤")
+[resolved] '살펴보기'나 '바로 연락 필요'였던 답장 중, 그 뒤에 온 답장(같은 날 뒤 답장 포함, 살펴볼 정도가 원래보다 낮은 답장)에서 바로 그 일이 끝났거나 위험이 지나갔다고 확인되는 것의 목록. reply=끝난 일의 답장 번호, by=끝났다고 알려 준 뒤 답장 번호. 나아지고 있지만 끝나지 않은 일, 다른 일을 말한 답장, 확실하지 않은 것은 넣지 않는다. 없으면 빈 목록.
 출력은 JSON 하나: summary=정리한 2~3문장, topics=갈래 목록, resolved=해결된 답장 목록."""
 # 이번 달 나눈 이야기의 갈래 (2026-11-26: 주제를 CLOVA가 자유롭게 정하면 신호마다 갈래가 생겨 너무 잘게 나뉘어 다섯 갈래로 고정)
 CATEGORIES = ["건강", "마음·외로움", "생활·안전", "가족", "일상"]
@@ -151,9 +151,11 @@ def _clean_topics(topics, levels: list[str]) -> list[dict]:
 def _settle(topics: list[dict], resolved, levels: list[str], signals: list[set]) -> list[int]:
     """해결된 답장 번호를 고르고 갈래 상태를 그것과 맞춘다 (코드 규칙으로 한 번 더).
     levels·signals = [답장별 정리] 번호 순서의 수준과 신호({(칸, 값)}).
-    - 해결: CLOVA가 준 {reply, by} 짝마다, reply가 '살펴보기' 이상이고 by가 그 뒤에 온 '평소와 같아요' 답장이어야 한다.
+    - 해결: CLOVA가 준 {reply, by} 짝마다, reply가 '살펴보기' 이상이고 by가 그 뒤에 온 **reply보다 낮은 단계**의 답장이어야 한다
+      (바로 연락 → 살펴보기·평소, 살펴보기 → 평소). 2026-11-27: 사기 전화 뒤 "돈 안 보냈어" 답장도 사기 이야기라 살펴보기로 나와서,
+      '평소와 같아요'만 받던 규칙으로는 바로 연락이 해결 완료가 되지 못했다. 같은 단계(살펴보기 → 살펴보기)는 여전히 받지 않는다.
       갈래는 보지 않는다 ("이제 괜찮아" 같은 답장은 신호가 없어 다른 갈래로 갈 수 있다).
-      by 뒤에 같은 신호(칸·값)가 다시 '살펴보기' 이상으로 나오면 그 일은 끝나지 않은 것이라 받지 않는다.
+      by 뒤에 같은 신호(칸·값)가 reply와 같거나 더 높은 단계로 다시 나오면 그 일은 끝나지 않은 것이라 받지 않는다.
     - 상태: 살펴볼 답장이 없으면 평소 이야기, 살펴볼 답장이 모두 해결됐으면 해결 완료,
       남았는데 해결 완료라고 하면 나아지는 중, 남았는데 평소 이야기(또는 상태 없음)라고 하면 이어지는 중"""
     count = len(levels)
@@ -161,9 +163,10 @@ def _settle(topics: list[dict], resolved, levels: list[str], signals: list[set])
     for pair in resolved if isinstance(resolved, list) else []:
         n = _number(pair.get("reply"), count) if isinstance(pair, dict) else None
         m = _number(pair.get("by"), count) if isinstance(pair, dict) else None
-        if not n or not m or levels[n - 1] == "없음" or m <= n or levels[m - 1] != "없음":
+        if not n or not m or levels[n - 1] == "없음" or m <= n or RANK[levels[m - 1]] >= RANK[levels[n - 1]]:
             continue
-        reopened = any(levels[k - 1] != "없음" and signals[k - 1] & signals[n - 1] for k in range(m + 1, count + 1))
+        reopened = any(RANK[levels[k - 1]] >= RANK[levels[n - 1]] and signals[k - 1] & signals[n - 1]
+                       for k in range(m + 1, count + 1))
         if not reopened:
             fixed.add(n)
     for t in topics:
@@ -200,6 +203,29 @@ def _fill_missing(topics: list[dict], signals: list[set]) -> list[dict]:
     return sorted(topics, key=lambda g: (-len(g["replies"]), CATEGORIES.index(g["name"])))
 
 
+def _signal_label(signals: set) -> str:
+    """흐름 점 이름을 CLOVA가 주지 않았을 때: 그 답장의 신호 값 (건강 → 마음 → 생활·안전 순)"""
+    values = dict(signals)
+    return next((values[key] for key in SIGNAL_TOPIC if key in values), "바로 연락 필요")
+
+
+def _keep_urgent_steps(topics: list[dict], levels: list[str], signals: list[set], fixed: list[int]) -> None:
+    """해결되지 않은 '바로 연락 필요' 답장은 그 갈래의 흐름 점에 꼭 넣는다 (2026-11-27, CLOVA가 11/26 넘어짐을 빼고
+    앞쪽 무릎 이야기만 고른 일이 있었다). 4개가 넘으면 첫 점과 꼭 넣을 점은 남기고 두 번째 점부터 줄인다"""
+    for t in topics:
+        must = [n for n in t["replies"] if levels[n - 1] == "바로 연락 필요" and n not in fixed]
+        have = {s["reply"] for s in t["steps"]}
+        steps = t["steps"] + [{"reply": n, "label": _signal_label(signals[n - 1])} for n in must if n not in have]
+        steps.sort(key=lambda s: s["reply"])
+        while len(steps) > STEPS_MAX:
+            drop = next((i for i in range(1, len(steps)) if steps[i]["reply"] not in must), None)
+            if drop is None:
+                steps = steps[-STEPS_MAX:]
+                break
+            del steps[drop]
+        t["steps"] = steps
+
+
 def _urgent_left(levels: list[str], fixed: list[int], dates: list[str]) -> list[str]:
     """해결되지 않은 '바로 연락 필요' 답장의 날짜"""
     return sorted({dates[n - 1] for n in range(1, len(levels) + 1) if levels[n - 1] == "바로 연락 필요" and n not in fixed})
@@ -215,6 +241,7 @@ def _check_summary(out, levels: list[str], signals: list[set], dates: list[str] 
         raise ValueError("한 달 정리 문장을 쓸 수 없어요 (summary)")
     out["topics"] = _fill_missing(_clean_topics(out.get("topics"), levels), signals)
     out["resolved"] = _settle(out["topics"], out.get("resolved"), levels, signals)
+    _keep_urgent_steps(out["topics"], levels, signals, out["resolved"])
     missing = [d for d in _urgent_left(levels, out["resolved"], dates or [])
                if not re.search(rf"(?<!\d){int(d[8:])}일", text)]
     if missing and strict:
@@ -342,16 +369,17 @@ def _length_text(now: list[int], prev: list[int]) -> str | None:
 
 def _days(items: list[dict], resolved: set[int]) -> list[dict]:
     """캘린더용: 날짜마다 정리한 답장 수, 해결되지 않은 답장 중 가장 높은 수준, 목소리가 처진 답장·말과 목소리가 다른 답장이 있었는지.
-    그날 살펴볼 답장이 모두 해결 완료면 resolved (수준은 '없음', 이름은 해결 완료)"""
+    그날 살펴볼 답장이 모두 해결 완료면 resolved (수준은 '없음', 이름은 해결 완료).
+    any_resolved: 해결 완료된 답장이 하나라도 있는 날 (✓ 배지. 남은 살펴보기가 있으면 색은 그 수준)"""
     days: dict[str, dict] = {}
     for item in items:
         day = days.setdefault(item["date"], {"date": item["date"], "analyzed": 0, "level": None, "label": "",
-                                             "resolved": False, "voice_down": False, "mismatch": False,
-                                             "_fixed": False, "_status": set()})
+                                             "resolved": False, "any_resolved": False, "voice_down": False,
+                                             "mismatch": False, "_status": set()})
         if item["level"]:
             day["analyzed"] += 1
             level = "없음" if item["reply_id"] in resolved else item["level"]
-            day["_fixed"] = day["_fixed"] or item["reply_id"] in resolved
+            day["any_resolved"] = day["any_resolved"] or item["reply_id"] in resolved
             if day["level"] is None or RANK[level] > RANK[day["level"]]:
                 day["level"] = level
         else:
@@ -359,8 +387,8 @@ def _days(items: list[dict], resolved: set[int]) -> list[dict]:
         day["voice_down"] = day["voice_down"] or item["voice_down"]
         day["mismatch"] = day["mismatch"] or item["mismatch"]
     for day in days.values():
-        status, fixed = day.pop("_status"), day.pop("_fixed")
-        day["resolved"] = fixed and day["level"] == "없음"
+        status = day.pop("_status")
+        day["resolved"] = day["any_resolved"] and day["level"] == "없음"
         day["label"] = (RESOLVED_LABEL if day["resolved"] else rules.LEVEL_UI[day["level"]][0] if day["level"]
                         else "정리 중" if status & {"queued", "running"}
                         else "받아쓰기 불확실" if "stt_uncertain" in status else "정리하지 못함")
