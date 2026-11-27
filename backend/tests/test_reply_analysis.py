@@ -241,7 +241,7 @@ class ReplyAnalysisTests(unittest.TestCase):
         self.assertTrue(rows[3].voice["voice_down"])
         self.assertEqual((rows[3].level, rows[3].voice_mismatch), ("살펴보기", True))
         self.assertEqual((rows[4].voice["text"], rows[4].level), ("평소와 비슷해요", "없음"))
-        self.assertEqual(rows[0].prompt_id, "v2-6af325")
+        self.assertEqual(rows[0].prompt_id, "v2-536a43")
 
         # CLOVA에는 가린 받아쓰기·최근 기록 3개만 들어가고 목소리 정보는 들어가지 않는다
         prompts = [request["body"]["messages"][1]["content"] for request in self.fake.llm_requests]
@@ -748,9 +748,23 @@ class ReplyAnalysisTests(unittest.TestCase):
         self.assertEqual(len(health[0]["steps"]), 4)
         # CLOVA가 빠뜨린 답장: 신호대로 갈래에 넣고(건강 → 마음·외로움 → 생활·안전 순), 신호가 없으면 일상
         filled = reply_month._fill_missing([{"name": "가족", "status": "평소 이야기", "replies": [1], "steps": []}],
-                                           [set(), {("health", "아픔")}, set(), {("life", "사기 의심"), ("mind", "외로움")}])
+                                           ["없음", "살펴보기", "없음", "살펴보기"],
+                                           [set(), {("health", "아픔")}, set(), {("life", "사기 의심"), ("mind", "외로움")}],
+                                           [None, None, "경로당에서 노래를 배우셨어요.", None])
         self.assertEqual([(t["name"], t["replies"]) for t in filled],
                          [("건강", [2]), ("마음·외로움", [4]), ("가족", [1]), ("일상", [3])])
+        # 신호 없이 살펴볼 답장(말·목소리 불일치)은 마음·외로움, 평범한 답장은 AI 요약에 가족 말이 있으면 가족 ('딸기'는 아님).
+        # CLOVA가 가족·일상에 넣은 살펴볼 답장은 빼서 다시 넣는다 (흐름 점도 같이 빠지고, 빈 갈래는 지운다)
+        filled = reply_month._fill_missing([{"name": "일상", "status": "평소 이야기", "replies": [1, 2],
+                                             "steps": [{"reply": 1, "label": "피곤함"}, {"reply": 2, "label": "노래교실"}]},
+                                            {"name": "가족", "status": "평소 이야기", "replies": [5], "steps": []}],
+                                           ["살펴보기", "없음", "없음", "없음", "살펴보기"], [set(), set(), set(), set(), {("health", "아픔")}],
+                                           [None, "노래교실에 다녀오셨어요.", "손주 돌잔치 영상을 보셨어요.", "딸기를 사 오셨어요.", None])
+        self.assertEqual([(t["name"], t["replies"], [s["reply"] for s in t["steps"]]) for t in filled],
+                         [("일상", [2, 4], [2]), ("건강", [5], []), ("마음·외로움", [1], []), ("가족", [3], [])])
+        self.assertEqual(settle(filled, [], ["살펴보기", "없음", "없음", "없음", "살펴보기"],
+                                [set(), set(), set(), set(), {("health", "아픔")}]), [])
+        self.assertEqual({t["name"]: t["status"] for t in filled}["일상"], "평소 이야기")   # 일상은 '이어지는 중'이 되지 않는다
         # 해결되지 않은 '바로 연락 필요' 날짜가 정리 문장에 없으면: 첫 검사는 다시 만들게 하고, 두 번째는 그 날 문장을 붙인다
         calm_end = {"summary": "6일에는 산책을 하셨고 이번 달은 평온하게 끝났어요.", "topics": [
             {"name": "일상", "status": "평소 이야기", "replies": [1], "steps": []},
@@ -760,7 +774,12 @@ class ReplyAnalysisTests(unittest.TestCase):
             reply_month._check_summary(json.loads(json.dumps(calm_end)), *args, strict=True)
         lenient = json.loads(json.dumps(calm_end))
         reply_month._check_summary(lenient, *args)
-        self.assertTrue(lenient["summary"].endswith("11월 26일에는 바로 연락이 필요한 답장이 있었어요."))
+        self.assertTrue(lenient["summary"].endswith("11월 26일 답장은 '바로 연락해 보세요'로 표시돼 있어요. 그날 대화를 꼭 확인해 보세요."))
+        # 11/19 시연: CLOVA가 "사기 전화는 해결됐다"고 쓰고 짝(바로 연락 → 뒤 살펴보기 답장)을 주면, 이제 코드도 해결로 받아 문장을 붙이지 않는다
+        scam_ok = {"summary": "중순에 사기 의심 전화가 있었지만 돈은 보내지 않아 해결됐어요.", "topics": [
+            {"name": "생활·안전", "status": "해결 완료", "replies": [1, 2], "steps": []}], "resolved": [{"reply": 1, "by": 2}]}
+        reply_month._check_summary(scam_ok, ["바로 연락 필요", "살펴보기"], [scam, scam], ["2026-11-19", "2026-11-19"], strict=True)
+        self.assertEqual((scam_ok["resolved"], scam_ok["summary"]), ([1], "중순에 사기 의심 전화가 있었지만 돈은 보내지 않아 해결됐어요."))
         mentioned = dict(json.loads(json.dumps(calm_end)), summary="11월 26일 넘어지신 일이 있어 바로 연락해 보시면 좋겠어요.")
         reply_month._check_summary(mentioned, *args, strict=True)   # 날짜가 있으면 그대로 받는다
         self.assertEqual(mentioned["summary"], "11월 26일 넘어지신 일이 있어 바로 연락해 보시면 좋겠어요.")

@@ -29,7 +29,7 @@ def hist(n, **values):
 
 class PromptTests(unittest.TestCase):
     def test_prompt_id_matches_reference(self):
-        self.assertEqual(ra.PROMPT_ID, "v2-6af325")
+        self.assertEqual(ra.PROMPT_ID, "v2-536a43")   # 정답지 v2-6af325 + 2026-11-27 예시 두 줄 (reply_analysis.py 맨 위 예외 2)
 
     def test_build_prompt_turns_thinking_off(self):
         p = ra.build_prompt(ra.SYSTEM, "질문", False)

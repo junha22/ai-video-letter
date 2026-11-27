@@ -58,17 +58,17 @@ SUMMARY_SYSTEM = """너는 자녀에게 부모님이 한 달 동안 남긴 답�
 - 입력에 있는 사실만 쓴다. 없는 일을 짐작하거나 원인을 추측하지 않는다.
 - 진단하지 않는다. 병명, 점수, 등급, 진단 같은 말을 쓰지 않는다.
 - 부모님은 [부르는 말]로 부른다. 말투는 "~했어요", "~보여요"처럼 부드럽게 쓴다.
-[summary] 한 달 동안 무엇이 이어졌고, 달의 처음과 끝이 어떻게 달라졌는지를 2~3문장으로 쓴다. 날짜는 "11월 10일", "중순"처럼 쓴다. 지난달과 비교한 숫자가 있으면 한 번만 짧게 말한다. 숫자를 늘어놓지 않는다. '바로 연락 필요' 답장 중 뒤에서 해결되지 않은 것이 있으면 그 날짜와 일을 꼭 쓰고, 그런 달은 끝이 평온했다고 쓰지 않는다.
+[summary] 한 달 동안 무엇이 이어졌고, 달의 처음과 끝이 어떻게 달라졌는지를 2~3문장으로 쓴다. 날짜는 "11월 10일", "중순"처럼 쓴다. 지난달과 비교한 숫자가 있으면 한 번만 짧게 말한다. 숫자를 늘어놓지 않는다. '바로 연락 필요' 답장 중 뒤에서 해결되지 않은 것이 있으면 그 날짜와 일을 꼭 쓰고, 그런 달은 끝이 평온했다고 쓰지 않는다. 끝났다고 쓰는 일은 resolved 목록에도 꼭 넣는다.
 [topics] 이번 달 답장을 아래 다섯 갈래로 나눈다. 답장이 없는 갈래는 쓰지 않고, 같은 갈래는 한 번만 쓴다. 답장이 많은 갈래부터 쓴다.
 - 건강: 몸, 아픔, 다침, 병원·약, 식사·잠
 - 마음·외로움: 외로움, 쓸쓸함, 의욕, 서운함 같은 마음 이야기
 - 생활·안전: 돈, 사기 의심 전화, 집 고장처럼 생활에서 생긴 일
 - 가족: 자녀·손주·가족 소식과 만남
 - 일상: 나들이, 취미, 음식, 날씨 같은 하루 이야기
-'확인해 볼 것'에 건강 신호가 있으면 건강, 마음 신호가 있으면 마음·외로움, 생활·안전 신호가 있으면 생활·안전에 넣는다(여럿이면 가장 중요한 하나). 신호가 없어도 앞 답장의 걱정되는 일이 이어지거나 끝난 이야기(예: "이제 괜찮아", "병원 다녀왔어", "돈 안 보냈어")면 그 일의 갈래에 넣는다. 그 밖에 신호가 없으면 가족이나 일상에 넣는다.
+'확인해 볼 것'에 건강 신호가 있으면 건강, 마음 신호가 있으면 마음·외로움, 생활·안전 신호가 있으면 생활·안전에 넣는다(여럿이면 가장 중요한 하나). 확인해 볼 것이 없는데 '살펴보기'인 답장(말과 목소리가 다른 답장 등)은 마음·외로움에 넣는다. 가족·일상에는 '살펴보기'나 '바로 연락 필요' 답장을 넣지 않는다. 신호가 없어도 앞 답장의 걱정되는 일이 이어지거나 끝난 이야기(예: "이제 괜찮아", "병원 다녀왔어", "돈 안 보냈어")면 그 일의 갈래에 넣는다. 그 밖에 신호가 없으면 가족이나 일상에 넣는다.
 - name: 갈래 이름 (위 다섯 가지 글자 그대로)
 - status: 그 갈래 이야기가 이번 달 어떻게 흘러갔는지 하나. 이어지는 중(살펴볼 일이 마지막 답장까지 이어짐) / 나아지는 중(살펴볼 일이 뒤 답장에서 나아지고 있지만 끝나지는 않음) / 해결 완료(살펴볼 일이 뒤 답장에서 끝났다고 확인됨) / 평소 이야기(살펴볼 일이 없던 갈래)
-- replies: 그 갈래에 넣은 [답장별 정리]의 번호 목록. 답장 하나는 한 갈래에만 넣고, 평범한 답장도 가족이나 일상에 넣어 하나도 빠뜨리지 않는다.
+- replies: 그 갈래에 넣은 [답장별 정리]의 번호 목록. 1번부터 마지막 번호까지 모든 답장을 꼭 한 갈래에 넣는다(답장 하나는 한 갈래에만). 살펴볼 일이 없는 평범한 답장도 빠뜨리지 말고 가족이나 일상에 넣는다.
 - steps: 그 갈래 이야기의 흐름을 보여 주는 답장 1~4개 (날짜 순). 첫 상황과 마지막 상황(특히 '바로 연락 필요'나 해결된 일)은 꼭 넣는다. reply=그 답장의 번호, label=그 답장에서 있었던 일을 2~10자로 짧게 (예: "무릎 통증 시작", "정형외과·약", "계단 오를 만큼", "송금 멈춤")
 [resolved] '살펴보기'나 '바로 연락 필요'였던 답장 중, 그 뒤에 온 답장(같은 날 뒤 답장 포함, 살펴볼 정도가 원래보다 낮은 답장)에서 바로 그 일이 끝났거나 위험이 지나갔다고 확인되는 것의 목록. reply=끝난 일의 답장 번호, by=끝났다고 알려 준 뒤 답장 번호. 나아지고 있지만 끝나지 않은 일, 다른 일을 말한 답장, 확실하지 않은 것은 넣지 않는다. 없으면 빈 목록.
 출력은 JSON 하나: summary=정리한 2~3문장, topics=갈래 목록, resolved=해결된 답장 목록."""
@@ -183,19 +183,39 @@ def _settle(topics: list[dict], resolved, levels: list[str], signals: list[set])
 
 
 SIGNAL_TOPIC = {"health": "건강", "mind": "마음·외로움", "life": "생활·안전"}
+CALM_TOPICS = ("가족", "일상")  # 살펴볼 답장을 두지 않는 갈래 (늘 '평소 이야기')
+# CLOVA가 빠뜨린 평범한 답장을 가족에 넣는 말 (답장마다 AI가 쓴 요약에서 찾는다. '딸기'·'아이고' 같은 말은 빼려고 좁게 잡았다)
+FAMILY_WORDS = re.compile(r"손주|손자|손녀|아기|애기|아드님|아들|따님|딸(?!기)|며느리|사위|자녀|가족|조카|돌잔치|돌잡이")
 
 
-def _fill_missing(topics: list[dict], signals: list[set]) -> list[dict]:
-    """CLOVA가 어느 갈래에도 넣지 않은 답장을 코드로 넣는다 (2026-11-27, 시연에서 24개 중 10개만 묶인 일이 있었다).
-    신호가 있으면 그 신호의 갈래(건강 → 마음·외로움 → 생활·안전 순서로 먼저 있는 것), 없으면 일상.
-    새로 생긴 갈래는 흐름 단계가 없고 상태는 _settle이 정한다"""
+def _home_topic(n: int, levels: list[str], signals: list[set], summaries: list[str | None]) -> str:
+    """코드가 고르는 갈래: 신호가 있으면 그 신호의 갈래(건강 → 마음·외로움 → 생활·안전 순서로 먼저 있는 것),
+    신호 없이 살펴볼 답장(말·목소리 불일치, 가라앉은 기분 3번 연속)은 마음·외로움,
+    평범한 답장은 AI 요약에 가족 말(손주·아들·딸 등)이 있으면 가족, 아니면 일상"""
+    keys = {key for key, _value in signals[n - 1]}
+    name = next((SIGNAL_TOPIC[key] for key in SIGNAL_TOPIC if key in keys), None)
+    if name:
+        return name
+    if levels[n - 1] != "없음":
+        return "마음·외로움"
+    return "가족" if FAMILY_WORDS.search(summaries[n - 1] or "") else "일상"
+
+
+def _fill_missing(topics: list[dict], levels: list[str], signals: list[set], summaries: list[str | None]) -> list[dict]:
+    """CLOVA가 어느 갈래에도 넣지 않은 답장을 코드로 넣는다 (_home_topic. 2026-11-27, 시연에서 24개 중 10개만 묶이고
+    나머지가 모두 일상으로 간 일이 있었다). 가족·일상에 든 살펴볼 답장도 빼서 다시 넣는다 (신호 없는 11/18 말·목소리 불일치가
+    일상에 들어가 일상이 '이어지는 중'으로 보였다). 빈 갈래는 지운다. 새로 생긴 갈래는 흐름 단계가 없고 상태는 _settle이 정한다"""
+    for t in topics:
+        if t["name"] in CALM_TOPICS:
+            t["replies"] = [n for n in t["replies"] if levels[n - 1] == "없음"]
+            t["steps"] = [s for s in t["steps"] if s["reply"] in t["replies"]]
+    topics = [t for t in topics if t["replies"]]
     used = {n for t in topics for n in t["replies"]}
     by_name = {t["name"]: t for t in topics}
-    for n in range(1, len(signals) + 1):
+    for n in range(1, len(levels) + 1):
         if n in used:
             continue
-        keys = {key for key, _value in signals[n - 1]}
-        name = next((SIGNAL_TOPIC[key] for key in SIGNAL_TOPIC if key in keys), "일상")
+        name = _home_topic(n, levels, signals, summaries)
         if name not in by_name:
             by_name[name] = {"name": name, "status": None, "replies": [], "steps": []}
             topics.append(by_name[name])
@@ -231,15 +251,24 @@ def _urgent_left(levels: list[str], fixed: list[int], dates: list[str]) -> list[
     return sorted({dates[n - 1] for n in range(1, len(levels) + 1) if levels[n - 1] == "바로 연락 필요" and n not in fixed})
 
 
-def _check_summary(out, levels: list[str], signals: list[set], dates: list[str] | None = None, strict: bool = False) -> None:
-    """정리 문장을 보고, 갈래 묶음·해결 목록은 고친 것으로 바꿔 둔다 (levels·signals·dates = [답장별 정리] 번호 순서의 수준·신호·날짜).
+def _urgent_text(days: list[str]) -> str:
+    """정리 문장에 빠진 '바로 연락 필요' 날에 붙이는 문장. 화면 표시를 그대로 말한다 (2026-11-27: "…답장이 있었어요"라고 붙였더니
+    CLOVA가 '해결됐다'고 쓴 문장 뒤에서 앞뒤가 어긋나 보였다. 코드가 해결로 받지 않은 일이면 화면도 빨강이라 이렇게 말하는 게 맞다)"""
+    return f"{', '.join(_day_text(d) for d in days)} 답장은 '바로 연락해 보세요'로 표시돼 있어요. 그날 대화를 꼭 확인해 보세요."
+
+
+def _check_summary(out, levels: list[str], signals: list[set], dates: list[str] | None = None,
+                   summaries: list[str | None] | None = None, strict: bool = False) -> None:
+    """정리 문장을 보고, 갈래 묶음·해결 목록은 고친 것으로 바꿔 둔다
+    (levels·signals·dates·summaries = [답장별 정리] 번호 순서의 수준·신호·날짜·AI 요약).
     해결되지 않은 '바로 연락 필요' 날짜가 문장에 없으면 strict일 때는 ValueError(seed+1로 한 번 더),
     아니면 그 날의 문장을 끝에 붙인다 (CLOVA가 11/26 넘어짐을 빼고 '평온하게 끝났다'고 쓴 일이 있었다)"""
     text = out.get("summary") if isinstance(out, dict) else None
     if (not isinstance(text, str) or rules.hangul_len(text) < 10 or len(text) > 500
             or any(word in text for word in BANNED)):
         raise ValueError("한 달 정리 문장을 쓸 수 없어요 (summary)")
-    out["topics"] = _fill_missing(_clean_topics(out.get("topics"), levels), signals)
+    out["topics"] = _fill_missing(_clean_topics(out.get("topics"), levels), levels, signals,
+                                  summaries or [None] * len(levels))
     out["resolved"] = _settle(out["topics"], out.get("resolved"), levels, signals)
     _keep_urgent_steps(out["topics"], levels, signals, out["resolved"])
     missing = [d for d in _urgent_left(levels, out["resolved"], dates or [])
@@ -247,7 +276,7 @@ def _check_summary(out, levels: list[str], signals: list[set], dates: list[str] 
     if missing and strict:
         raise ValueError("한 달 정리 문장에 바로 연락이 필요했던 날이 빠졌어요 (summary)")
     if missing:
-        out["summary"] = text.rstrip() + " " + " ".join(f"{_day_text(d)}에는 바로 연락이 필요한 답장이 있었어요." for d in missing)
+        out["summary"] = text.rstrip() + " " + _urgent_text(missing)
 
 
 def _prev_month(month: str) -> str:
@@ -370,7 +399,7 @@ def _length_text(now: list[int], prev: list[int]) -> str | None:
 def _days(items: list[dict], resolved: set[int]) -> list[dict]:
     """캘린더용: 날짜마다 정리한 답장 수, 해결되지 않은 답장 중 가장 높은 수준, 목소리가 처진 답장·말과 목소리가 다른 답장이 있었는지.
     그날 살펴볼 답장이 모두 해결 완료면 resolved (수준은 '없음', 이름은 해결 완료).
-    any_resolved: 해결 완료된 답장이 하나라도 있는 날 (✓ 배지. 남은 살펴보기가 있으면 색은 그 수준)"""
+    any_resolved: 해결 완료된 답장이 하나라도 있는 날 (✓ 배지. 화면은 남은 답장이 살펴보기여도 해결 완료 색, 바로 연락 필요면 빨강)"""
     days: dict[str, dict] = {}
     for item in items:
         day = days.setdefault(item["date"], {"date": item["date"], "analyzed": 0, "level": None, "label": "",
@@ -433,7 +462,7 @@ def _build(db: Session, recipient: Recipient, month: str | None) -> tuple[dict, 
              f"[답장] {now['replies']}개 (음성 {now['voice']}개), AI가 정리한 답장 {len(done)}개",
              "[지난달과 비교] " + " / ".join(f"{row['label']} {row['prev']}{row['unit']} → {row['now']}{row['unit']}"
                                           for row in compare["rows"]) + (f" / {compare['length_text']}" if compare["length_text"] else ""),
-             "[답장별 정리 (날짜 순, [ ] 안이 번호)]"]
+             f"[답장별 정리 (날짜 순, [ ] 안이 번호, 1~{len(done)}번)]"]
     for number, (a, r) in enumerate(done, 1):
         found = ", ".join(f"{area} {a.result[key]}" for key, area in rules.SIG_NAMES if a.result.get(key, "없음") != "없음")
         state = _voice_state(a.voice)
@@ -517,7 +546,7 @@ def summarize(db: Session, recipient: Recipient, month: str | None) -> dict:
     def check(result) -> None:
         checks.append(1)
         _check_summary(result, levels, [item["signals"] for item in order], [item["date"] for item in order],
-                       strict=len(checks) == 1)
+                       [item["summary"] for item in order], strict=len(checks) == 1)
     try:
         out = reply_llm.complete_json(SUMMARY_SYSTEM, facts, SUMMARY_SCHEMA, SUMMARY_PARAMS, check)
     except AnalysisError as e:
@@ -568,7 +597,7 @@ PING_FACTS = """[부르는 말] 엄마
 [달] 2026년 11월
 [답장] 3개 (음성 1개), AI가 정리한 답장 3개
 [지난달과 비교] 답장 2개 → 3개 / 음성 답장 0개 → 1개 / 살펴보기 이상 0번 → 2번 / 바로 연락 필요 0번 → 0번
-[답장별 정리 (날짜 순, [ ] 안이 번호)]
+[답장별 정리 (날짜 순, [ ] 안이 번호, 1~3번)]
 - [1] 11월 3일 | 평소와 같아요 | 밝아 보여요 | 확인해 볼 것: 없음 | 목소리: - | 요약: 경로당에서 점심을 드셨대요.
 - [2] 11월 7일 | 살펴보기 | 평온해 보여요 | 확인해 볼 것: 건강 아픔 | 목소리: - | 요약: 무릎이 아파 병원에 다녀오셨대요.
 - [3] 11월 10일 | 살펴보기 | 평온해 보여요 | 확인해 볼 것: 건강 아픔 | 목소리: 평소와 비슷 | 요약: 무릎이 아직 아프시대요.
