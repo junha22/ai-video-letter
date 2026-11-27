@@ -17,8 +17,8 @@ const LEGEND = [
 ];
 
 /** 한 달 흐름 캘린더. 숫자는 그날 답장 수.
- *  days가 있으면(답장 살펴보기를 켠 방) 그날 해결되지 않은 답장 중 가장 높은 수준의 색, 해결 완료된 답장이 있으면 해결 완료 색(✓)
- *  (남은 답장이 '바로 연락 필요'면 빨강에 ✓만).
+ *  days가 있으면(답장 살펴보기를 켠 방) 그날 해결되지 않은 답장 중 가장 높은 수준의 색. 살펴볼 일이 모두 해결됐거나
+ *  남은 살펴보기가 해결된 일의 뒷답장뿐이면(same_story) 해결 완료 색(✓), 다른 일이 남으면 그 색에 ✓만.
  *  onPick이 있으면 날짜를 눌러 고르고(selected 테두리), 없으면 누르면 그날 대화로 간다 (꺼진 방).
  *  highlight가 있으면 그 날짜만 진하게, 나머지는 흐리게 (이야기 카드를 눌렀을 때) */
 export function MonthCalendar({ month, counts, days, onOpenDate, onPick, selected, highlight }: {
@@ -52,14 +52,14 @@ export function MonthCalendar({ month, counts, days, onOpenDate, onPick, selecte
             className={`flex aspect-square items-start justify-center rounded-lg pt-1 text-[11px] ${date > today ? "text-stone-300" : "text-stone-400"} ${isToday ? "ring-1 ring-[#c8493c]/50" : ""} ${bright ? "opacity-40" : ""}`}>{day}</div>;
         }
         const info = analysis.get(date);
-        // 해결 완료된 답장이 있으면 파랑 (2026-11-27: 해결 완료 + 살펴보기가 같은 날이면 주황이라 해결된 날로 안 보였다).
-        // 해결되지 않은 '바로 연락 필요'가 남은 날만 빨강 그대로
-        const blue = !!info && (info.resolved || (info.any_resolved && info.level !== "바로 연락 필요"));
+        // 해결 완료 + 같은 일의 살펴보기만 남은 날도 파랑 (2026-11-27: 주황이라 해결된 날로 안 보였다).
+        // 상관없는 살펴보기나 '바로 연락 필요'가 남은 날은 그 수준의 색에 ✓만 (다 괜찮은 날로 보이지 않게)
+        const blue = !!info && (info.resolved || (info.any_resolved && !!info.same_story));
         const tone = !days ? COUNT_TONE : blue ? RESOLVED_TONE : info?.level ? LEVEL_TONE[info.level] : PENDING_TONE;
         const voice = !!info && (info.voice_down || info.mismatch);
         const dim = !!bright && !bright.has(date);
         const label = [formatConversationDate(date), `답장 ${count}개`,
-          blue && !info?.resolved ? `해결 완료 (${info?.label} 답장도 있음)` : info?.label,
+          blue && !info?.resolved ? "해결 완료 (같은 일의 살펴보기 답장도 있음)" : info?.label,
           info?.any_resolved && !blue ? "해결 완료된 답장 있음" : "",
           info?.mismatch ? "말과 목소리가 달랐던 답장 있음" : info?.voice_down ? "목소리가 평소보다 처진 답장 있음" : ""].filter(Boolean).join(" · ");
         return <button key={date} type="button" onClick={() => (onPick ? onPick(date) : onOpenDate(date))} aria-label={label} title={label}

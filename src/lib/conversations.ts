@@ -127,8 +127,10 @@ export type ReplyLevel = "없음" | "살펴보기" | "바로 연락 필요";
  *  resolved: 그날 살펴볼 답장이 모두 뒤 답장에서 해결 완료로 확인됨 (level은 "없음", label은 "해결 완료") */
 export type AnalysisDay = {
   date: string; analyzed: number; level: ReplyLevel | null; label: string; resolved: boolean;
-  /** 해결 완료된 답장이 하나라도 있는 날 (✓ 배지와 해결 완료 색. 남은 답장이 '바로 연락 필요'면 색은 빨강) */
+  /** 해결 완료된 답장이 하나라도 있는 날 (✓ 배지) */
   any_resolved: boolean;
+  /** 해결 완료 답장이 있고, 그날 남은 살펴보기가 모두 그 일과 같은 신호인 날 (예: 사기 전화 해결 뒤 "돈 안 보냈어"). 해결 완료 색으로 칠한다 */
+  same_story: boolean;
   voice_down: boolean; mismatch: boolean;
 };
 

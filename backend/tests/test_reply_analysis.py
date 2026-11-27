@@ -678,6 +678,13 @@ class ReplyAnalysisTests(unittest.TestCase):
         self.fake.clova = [{"summary": "우울증이 의심되는 한 달이었어요."}, {"summary": "치매 진단이 필요해 보여요."}]
         failed = self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary", params={"month": "2026-11"})
         self.assertEqual(failed.status_code, 502, failed.text)
+        # 첫 시도의 JSON이 깨져도 두 번째 시도는 덜 엄하게 본다: 갈래를 비워 보내면 코드가 모든 답장을 갈래에 넣어 저장한다
+        self.fake.clova = ['{"summary": "이번', {"summary": "이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 이어졌어요.",
+                                                  "topics": [], "resolved": []}]
+        retried = self.assert_ok(self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary", params={"month": "2026-11"}))
+        self.assertEqual(retried["summary"]["text"], "이번 달에는 무릎 때문에 병원에 다녀오신 이야기가 이어졌어요.")
+        self.assertEqual(sorted((t["name"], t["status"], t["count"]) for t in retried["topics"]),
+                         [("건강", "이어지는 중", 2), ("일상", "평소 이야기", retried["analyzed"] - 2)])
         # 정리한 답장이 3개보다 적은 달은 만들지 않는다
         self.assertEqual(self.client.post(f"/api/recipients/{rid}/portfolio/analysis-summary", params={"month": "2026-10"}).status_code, 409)
 
@@ -708,6 +715,10 @@ class ReplyAnalysisTests(unittest.TestCase):
                        [dict(calm, replies=[5])], [dict(calm, name="무릎 통증", replies=[1])], [dict(calm, name="", replies=[1])]):
             with self.assertRaises(ValueError):
                 clean(broken, calm3)
+        # 빈 갈래 목록: 첫 시도는 다시 만들게 하고, 마지막 시도는 받아서 코드가 채운다
+        with self.assertRaises(ValueError):
+            clean([], calm3)
+        self.assertEqual(clean([], calm3, allow_empty=True), [])
         # 해결: {reply, by} 짝. reply는 살펴볼 일, by는 그 뒤의 평소 답장 (갈래는 보지 않는다).
         # by 뒤에 같은 신호가 다시 살펴볼 일로 나오면 끝나지 않은 것. 상태는 해결 목록과 맞춘다
         levels = ["바로 연락 필요", "없음", "살펴보기", "살펴보기", "없음", "살펴보기", "없음", "살펴보기", "없음"]
@@ -797,6 +808,23 @@ class ReplyAnalysisTests(unittest.TestCase):
                 elif isinstance(value, dict):
                     yield from keywords(value)
         self.assertLessEqual(set(keywords(reply_month.SUMMARY_SCHEMA)), allowed)
+
+    def test_month_days_same_story(self):
+        """캘린더: 해결 완료 + 같은 일의 살펴보기만 남은 날은 same_story(파랑), 상관없는 살펴보기·바로 연락이 남으면 아니다"""
+        scam, knee, fall = {("life", "사기 의심")}, {("health", "아픔")}, {("health", "넘어짐·다침")}
+
+        def item(n, day, level, signals):
+            return {"reply_id": n, "date": f"2026-11-{day:02d}", "status": "done", "level": level, "signals": signals,
+                    "voice_down": False, "mismatch": False}
+        items = [item(1, 19, "바로 연락 필요", scam), item(2, 19, "살펴보기", scam),      # 사기 해결 + "돈 안 보냈어"
+                 item(3, 20, "바로 연락 필요", scam), item(4, 20, "살펴보기", knee),      # 사기 해결 + 상관없는 무릎
+                 item(5, 21, "바로 연락 필요", scam), item(6, 21, "살펴보기", set()),     # 사기 해결 + 신호 없는 목소리 불일치
+                 item(7, 22, "살펴보기", knee), item(8, 22, "바로 연락 필요", fall),       # 무릎 해결 + 넘어짐 바로 연락
+                 item(9, 23, "살펴보기", knee), item(10, 23, "없음", set())]             # 살펴볼 일 모두 해결
+        days = {d["date"][8:]: d for d in reply_month._days(items, {1, 3, 5, 7, 9})}
+        self.assertEqual({k: (d["level"], d["any_resolved"], d["same_story"], d["resolved"]) for k, d in days.items()}, {
+            "19": ("살펴보기", True, True, False), "20": ("살펴보기", True, False, False), "21": ("살펴보기", True, False, False),
+            "22": ("바로 연락 필요", True, False, False), "23": ("없음", True, False, True)})
 
     def test_month_compare_voice_rows(self):
         from types import SimpleNamespace as A

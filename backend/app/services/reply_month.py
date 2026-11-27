@@ -104,12 +104,16 @@ def _number(n, count: int) -> int | None:
     return n if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= count else None
 
 
-def _clean_topics(topics, levels: list[str]) -> list[dict]:
+def _clean_topics(topics, levels: list[str], allow_empty: bool = False) -> list[dict]:
     """CLOVA가 나눈 갈래를 고쳐 쓴다 (levels = [답장별 정리] 번호 순서의 수준). 다섯 갈래가 아닌 이름은 버리고,
     같은 갈래가 두 번 오면 답장을 합친다. 번호가 범위 밖이거나 이미 다른 갈래에 든 답장은 뺀다.
     흐름 단계는 그 갈래 답장만, 이름(2~14자)이 이상하거나 금지어가 있으면 뺀다. 상태는 _settle에서 맞춘다.
-    답장이 많은 갈래부터 (같으면 CATEGORIES 순서). 쓸 수 있는 갈래가 하나도 없으면 ValueError (seed+1로 한 번 더)"""
+    답장이 많은 갈래부터 (같으면 CATEGORIES 순서). 쓸 수 있는 갈래가 하나도 없으면 ValueError (seed+1로 한 번 더).
+    allow_empty(마지막 시도)면 빈 목록을 돌려주고 _fill_missing이 모두 채운다 (2026-11-27: 평온한 달에 CLOVA가 갈래를
+    비워 보내면 두 번 다 실패해 정리 문장까지 못 만들 수 있었다)"""
     problem = ValueError("한 달 정리의 갈래 묶음을 쓸 수 없어요 (topics)")
+    if allow_empty and topics == []:
+        return []
     if not isinstance(topics, list):
         raise problem
     count = len(levels)
@@ -141,7 +145,7 @@ def _clean_topics(topics, levels: list[str]) -> list[dict]:
             if (n in picked and 1 <= rules.hangul_len(label) and len(label) <= 14
                     and not any(word in label for word in BANNED) and all(s["reply"] != n for s in group["steps"])):
                 group["steps"].append({"reply": n, "label": label})
-    if not merged:
+    if not merged and not allow_empty:
         raise problem
     for group in merged.values():
         group["steps"] = sorted(group["steps"], key=lambda s: s["reply"])[:STEPS_MAX]
@@ -267,7 +271,7 @@ def _check_summary(out, levels: list[str], signals: list[set], dates: list[str] 
     if (not isinstance(text, str) or rules.hangul_len(text) < 10 or len(text) > 500
             or any(word in text for word in BANNED)):
         raise ValueError("한 달 정리 문장을 쓸 수 없어요 (summary)")
-    out["topics"] = _fill_missing(_clean_topics(out.get("topics"), levels), levels, signals,
+    out["topics"] = _fill_missing(_clean_topics(out.get("topics"), levels, allow_empty=not strict), levels, signals,
                                   summaries or [None] * len(levels))
     out["resolved"] = _settle(out["topics"], out.get("resolved"), levels, signals)
     _keep_urgent_steps(out["topics"], levels, signals, out["resolved"])
@@ -399,16 +403,25 @@ def _length_text(now: list[int], prev: list[int]) -> str | None:
 def _days(items: list[dict], resolved: set[int]) -> list[dict]:
     """캘린더용: 날짜마다 정리한 답장 수, 해결되지 않은 답장 중 가장 높은 수준, 목소리가 처진 답장·말과 목소리가 다른 답장이 있었는지.
     그날 살펴볼 답장이 모두 해결 완료면 resolved (수준은 '없음', 이름은 해결 완료).
-    any_resolved: 해결 완료된 답장이 하나라도 있는 날 (✓ 배지. 화면은 남은 답장이 살펴보기여도 해결 완료 색, 바로 연락 필요면 빨강)"""
+    any_resolved: 해결 완료된 답장이 하나라도 있는 날 (✓ 배지).
+    same_story: 해결 완료된 답장이 있고, 그날 남은 살펴볼 답장이 모두 '살펴보기'이면서 해결된 답장과 같은 신호(칸·값)를 가진 날
+      (예: 사기 전화가 해결된 날의 "돈 안 보냈어" 답장). 화면은 이런 날도 해결 완료 색으로 칠한다 (2026-11-27).
+      상관없는 살펴보기(무릎 등, 신호 없는 목소리 불일치)나 바로 연락이 남으면 False라 그 수준의 색에 ✓만 붙는다"""
     days: dict[str, dict] = {}
     for item in items:
         day = days.setdefault(item["date"], {"date": item["date"], "analyzed": 0, "level": None, "label": "",
-                                             "resolved": False, "any_resolved": False, "voice_down": False,
-                                             "mismatch": False, "_status": set()})
+                                             "resolved": False, "any_resolved": False, "same_story": False,
+                                             "voice_down": False, "mismatch": False,
+                                             "_status": set(), "_open": [], "_fixed": set()})
         if item["level"]:
             day["analyzed"] += 1
-            level = "없음" if item["reply_id"] in resolved else item["level"]
-            day["any_resolved"] = day["any_resolved"] or item["reply_id"] in resolved
+            done = item["reply_id"] in resolved
+            level = "없음" if done else item["level"]
+            day["any_resolved"] = day["any_resolved"] or done
+            if done:
+                day["_fixed"] |= item["signals"]
+            elif level != "없음":
+                day["_open"].append(item["signals"])
             if day["level"] is None or RANK[level] > RANK[day["level"]]:
                 day["level"] = level
         else:
@@ -416,7 +429,9 @@ def _days(items: list[dict], resolved: set[int]) -> list[dict]:
         day["voice_down"] = day["voice_down"] or item["voice_down"]
         day["mismatch"] = day["mismatch"] or item["mismatch"]
     for day in days.values():
-        status = day.pop("_status")
+        status, open_, fixed = day.pop("_status"), day.pop("_open"), day.pop("_fixed")
+        day["same_story"] = (day["any_resolved"] and day["level"] == "살펴보기"
+                             and all(signals & fixed for signals in open_))
         day["resolved"] = day["any_resolved"] and day["level"] == "없음"
         day["label"] = (RESOLVED_LABEL if day["resolved"] else rules.LEVEL_UI[day["level"]][0] if day["level"]
                         else "정리 중" if status & {"queued", "running"}
@@ -541,14 +556,13 @@ def summarize(db: Session, recipient: Recipient, month: str | None) -> dict:
         raise HTTPException(409, FEW_TEXT)
     order = [item for item in items if item["level"]]  # CLOVA 글의 답장 번호 순서 (번호 n = order[n - 1])
     levels = [item["level"] for item in order]
-    checks = []  # 첫 검사는 엄하게(바로 연락 날짜가 빠지면 seed+1로 다시), 두 번째는 빠진 날 문장을 붙여서 받는다
-
-    def check(result) -> None:
-        checks.append(1)
-        _check_summary(result, levels, [item["signals"] for item in order], [item["date"] for item in order],
-                       [item["summary"] for item in order], strict=len(checks) == 1)
+    facts_of = ([item["signals"] for item in order], [item["date"] for item in order], [item["summary"] for item in order])
+    # 첫 시도는 엄하게(바로 연락 날짜가 빠지거나 갈래가 없으면 seed+1로 다시), 두 번째 시도는 빠진 날 문장을 붙이고 갈래는 코드로 채워서 받는다.
+    # 시도 순서로 정한다 (2026-11-27: 검사 횟수로 정했더니 첫 시도의 JSON이 깨지면 두 번째도 엄하게 봐서 정리 전체가 실패할 수 있었다)
     try:
-        out = reply_llm.complete_json(SUMMARY_SYSTEM, facts, SUMMARY_SCHEMA, SUMMARY_PARAMS, check)
+        out = reply_llm.complete_json(SUMMARY_SYSTEM, facts, SUMMARY_SCHEMA, SUMMARY_PARAMS,
+                                      lambda result: _check_summary(result, levels, *facts_of, strict=True),
+                                      last_check=lambda result: _check_summary(result, levels, *facts_of))
     except AnalysisError as e:
         raise HTTPException(503 if e.retryable else 502, f"한 달 정리를 만들지 못했어요. {e}")
     month = trends["month"]
